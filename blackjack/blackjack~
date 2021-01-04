@@ -1,3 +1,0 @@
-#!/bin/sh
-
-python -W all -m "empyre" "$@"
