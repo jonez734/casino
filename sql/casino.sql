@@ -1,5 +1,5 @@
 \i schema.sql
 \i player.sql
-\i table.sql
+\i cardtable.sql
 \i game.sql
 \i betlog.sql

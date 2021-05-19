@@ -1,5 +1,5 @@
 \echo cardtable
-create table casino.__cardtable (
+create table if not exists casino.__cardtable (
   "id" bigserial unique not null primary key,
   "type" text,
   "minimumbet" numeric(10,0) default 100,
@@ -18,20 +18,20 @@ create table casino.__cardtable (
 grant all on casino.__cardtable to apache;
 grant all on casino.__cardtable_id_seq to apache;
 
-create view casino.cardtable as 
+create or replace view casino.cardtable as 
   select __cardtable.*,
-   extract(epoch from lastplayed) as lastplayedepoch,
+--   extract(epoch from lastplayed) as lastplayedepoch,
    extract(epoch from ownersince) as ownersinceepoch,
-   m1.name as ownermembername,
-   m2.name as lastplayedbyname
+   m1.name as ownermembername
+--   m2.name as lastplayedbyname
   from casino.__cardtable
   left join engine.member m1 on m1.id = casino.__cardtable.ownerid
-  left join engine.member m2 on m2.id = casino.__cardtable.lastplayedbyid
+--  left join engine.member m2 on m2.id = casino.__cardtable.lastplayedbyid
 ;
 
 grant all on casino.cardtable to apache;
 
-create table map_cardtable_player (
+create table if not exists map_cardtable_player (
     "cardtableid" bigint constraint fk_cardtable_id references casino.__cardtable(id) on update cascade on delete cascade,
     "playerid" bigint constraint fk_cardtable_playerid references casino.__player(id) on update cascade on delete cascade
 );
