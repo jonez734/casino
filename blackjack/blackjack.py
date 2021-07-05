@@ -1,7 +1,9 @@
 import argparse
 
 import ttyio4 as ttyio
-import bbsengine4 as bbsengine
+import bbsengine5 as bbsengine
+
+import casino
 
 def main():
     parser = argparse.ArgumentParser("blackjack")
@@ -13,6 +15,15 @@ def main():
     bbsengine.buildargdatabasegroup(parser, defaults)
 
     args = parser.parse_args()
+
+    bbsengine.title("blackjack")
+    shoe = casino.initshoe(decks=3)
+    casino.shuffleshoe(shoe)
+#    ttyio.echo("after shuffle: shoe=%r" % (shoe))
+    card = casino.drawcard(shoe)
+#    ttyio.echo("after drawcard: shoe=%r" % (shoe))
+    ttyio.echo("card=%r" % (card))
+#    ttyio.echo("cards=%d decks=%d" % (len(shoe), len(shoe)/52))
 
 if __name__ == "__main__":
     main()
