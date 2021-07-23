@@ -118,6 +118,11 @@ class Hand:
             ttyio.echo("%s%s " % (c.pips, c.suit), end="")
         ttyio.echo(" [%d]" % (self.calcvalue()))
 
+def Player():
+    def __init__(self, memberid=None, playerid=None):
+        self.memberid = memberid
+        self.id = playerid
+
 def play(shoe, dealerhand, playerhand):
     choice = None
 
