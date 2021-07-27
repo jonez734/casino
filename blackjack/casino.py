@@ -61,6 +61,8 @@ class Shoe:
         self.id = None
         self.tableid = tableid
         self.cards = []
+        if decks is None:
+          return
         for d in range(0, decks):
             for suit in [ "S", "D", "C", "H" ]: # {u:spade}", "{u:diamond}", "{u:club}", "{u:heart}" ]:
                 for pips in ["A", "K", "Q", "J", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]:
@@ -89,6 +91,13 @@ class Shoe:
 
     def draw(self):
         return self.cards.pop()
+
+    def append(self, card:object=None):
+      if card is None:
+        return
+
+      self.cards.append(card)
+      return
 
 def getcardtablelocations():
     cardtablelocations = [
