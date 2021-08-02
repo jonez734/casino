@@ -121,16 +121,54 @@ class Casino:
     def __edit(self):
       pass
 
+def casino(args):
+  def add():
+    casino = {"minimumbet": 1, "maximumbet": 10 }
+    return
+
+  done = False
+  while not done:
+    bbsengine.title("casino")
+    ttyio.echo("[A]dd")
+    ttyio.echo("[L]ist")
+    ttyio.echo("[E]dit")
+    ttyio.echo("{f6}[Q]uit{f6}")
+    ch = ttyio.inputchar("casino [ALEQ]: ", "ALEQ", "Q")
+    if ch == "Q":
+      ttyio.echo("Quit")
+      done = True
+    elif ch == "A":
+      ttyio.echo("Add")
+      add()
+    elif ch == "L":
+      ttyio.echo("List")
+      summary()
+    elif ch == "E":
+      ttyio.echo("Edit")
+      edit()
+
 def maint(args):
   sysop = bbsengine.checkflag(args, "SYSOP")
   if sysop is False:
     ttyio.echo("permission denied.")
+    # make a log entry for the security issue
     return
-  ttyio.echo("maint mode!")
-  bbsengine.title("casino maint mode")
-  ttyio.echo("[C]asino")
-  ttyio.echo("[T]able")
-  ttyio.echo("{f6}[Q]uit")
+
+  done = False
+  while not done:
+    bbsengine.title("casino maint mode")
+    ttyio.echo("[C]asino")
+    ttyio.echo("[T]able")
+    ttyio.echo("{f6}[Q]uit{f6}")
+    ch = ttyio.inputchar("casino maint [CTQ]: ", "CTQ", "")
+    if ch == "Q":
+      ttyio.echo("Quit")
+      done = True
+      continue
+    elif ch == "C":
+      ttyio.echo("Casino")
+      casino()
+      continue
   return
 
 def main():
