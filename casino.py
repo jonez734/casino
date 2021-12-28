@@ -309,7 +309,7 @@ if __name__ == "__main__":
     main()
   except EOFError:
     ttyio.echo("{/all}{bold}EOF{/bold}")
-  except KeyboardInterupt:
+  except KeyboardInterrupt:
     ttyio.echo("{/all}{bold}INTR{/bold}")
   finally:
     ttyio.echo("{/all}")
