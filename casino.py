@@ -2,7 +2,7 @@ import random
 import locale
 import argparse
 
-import ttyio4 as ttyio
+import ttyio5 as ttyio
 import bbsengine5 as bbsengine
 
 suits = {
@@ -186,92 +186,38 @@ def casino(args, **kwargs):
   def delete(args, **kwargs):
     pass
 
-  menu = [
-    { "label": "add",    "callback": add,     "description":""},# , "help": alphahelp},
-    { "label": "edit",   "callback": edit,    "description":""},
-    { "label": "list",   "callback": summary, "description":""},
-    { "label": "delete", "callback": delete,  "description":""}
+  menuitems = [
+    { "name": "add",    "label": "add",    "callback": add,     },# , "help": alphahelp},
+    { "name": "edit",   "label": "edit",   "callback": edit,    },
+    { "name": "list",   "label": "list",   "callback": summary, },
+    { "name": "delete", "label": "delete", "callback": delete,  }
   ]
 
-  done = False
-  while not done:
-    bbsengine.displaymenu(menu, "casino")
-    res = bbsengine.handlemenu("casino: ", menu)
-    if res is None:
-      return
-    elif type(res) == tuple:
-      (op, i) = res
-    else:
-      ttyio.echo("invalid return type from handle menu %r!" % (type(res)), level="error")
-      break
-
-    if i < len(menu):
-      if op == "select":
-        ttyio.echo("{decrc}{var:menu.inputcolor}%s: %s{/all}" % (chr(ord('A')+i), menu[i]["label"]))
-        bbsengine.runcallback(None, menu[i]["callback"], menuitem=menu[i])
-        continue
-      elif op == "help":
-        m = menu[i]
-        ttyio.echo("{decrc}display help for %s" % (m["label"]))
-        if "help" in m:
-          ttyio.echo(m["help"]+"{f6:2}")
-        else:
-          ttyio.echo("{f6}no help defined for this option{f6}")
-        continue
-    else:
-      ttyio.echo("{decrc}Q: Quit{/all}")
-      done = True
-      break
+  menu = bbsengine.Menu("casino maint", menuitems, args=args)
+  menu.run("casino: ")
   return
 
 def table(args, **kwargs):
   pass
 
-def maint(args):
+def maint(args, **kwargs):
   sysop = bbsengine.checkflag(args, "SYSOP")
   if sysop is False:
     ttyio.echo("permission denied.")
     # make a log entry for the security issue
     return
 
-  menu = [
-    { "label": "casino",  "callback": casino, "description":""},
-    { "label": "table",   "callback": table, "description":""}
+  menuitems = [
+    { "name":"casino", "label": "casino",  "callback": casino},
+    { "name":"table",  "label": "table",   "callback": table},
+    { "name":"game",   "label": "game",    "callback": "game"},
+    { "name":"hand",   "label": "hand",    "callback": "hand"},
+    { "name":"player", "label": "player",  "callback": "player"},
   ]
 
-  done = False
-  while not done:
-    bbsengine.displaymenu(menu, "maint")
-    try:
-      res = bbsengine.handlemenu("casino maint: ", menu)
-    except EOFError:
-      ttyio.echo("{decrc}EOF")
-      return
-    if res is None:
-      return
-    elif type(res) == tuple:
-      (op, i) = res
-    else:
-      ttyio.echo("invalid return type from handle menu %r!" % (type(res)), level="error")
-      break
-
-    if i < len(menu):
-      if op == "select":
-        ttyio.echo("{decrc}{var:menu.inputcolor}%s: %s{/all}" % (chr(ord('A')+i), menu[i]["label"]))
-        bbsengine.runcallback(None, menu[i]["callback"], menuitem=menu[i])
-        continue
-      elif op == "help":
-        m = menu[i]
-        ttyio.echo("{decrc}display help for %s" % (m["label"]))
-        if "help" in m:
-          ttyio.echo(m["help"]+"{f6:2}")
-        else:
-          ttyio.echo("{f6}no help defined for this option{f6}")
-        continue
-    else:
-      ttyio.echo("{decrc}Q: Quit{/all}")
-      done = True
-      break
+  menu = bbsengine.Menu("casino maint", menuitems, args=args)
+  menu.run("maint: ")
+#    bbsengine.poparea()
   return
 
 def main():
@@ -291,17 +237,32 @@ def main():
   if args is not None and "debug" in args and args.debug is True:
       ttyio.echo("casino.main.100: args=%r" % (args))
 
-  ttyio.setvariable("menu.boxcharcolor", "{bglightgray}{white}")
-  ttyio.setvariable("menu.backgroundcolor", "{bggray}")
-  ttyio.setvariable("menu.shadowbackgroundcolor", "{bgdarkgray}")
-  ttyio.setvariable("menu.cursorcolor", "{bglightgray}{blue}")
-  ttyio.setvariable("menu.boxcolor", "{bgblue}{green}")
-  ttyio.setvariable("menu.itemcolor", "{blue}{bglightgray}")
-  ttyio.setvariable("menu.titlecolor", "{black}{bglightgray}")
-  ttyio.setvariable("menu.promptcolor", "{white}{bgblack}")
-  ttyio.setvariable("menu.inputcolor", "{white}{bgblack}")
+  ttyio.setvariable("engine.menu.boxcharcolor", "{bglightgray}{darkgreen}")
+  ttyio.setvariable("engine.menu.color", "{bggray}")
+  ttyio.setvariable("engine.menu.shadowcolor", "{bgdarkgray}")
+  ttyio.setvariable("engine.menu.cursorcolor", "{bglightgray}{blue}")
+  ttyio.setvariable("engine.menu.boxcolor", "{bgblue}{green}")
+  ttyio.setvariable("engine.menu.itemcolor", "{blue}{bglightgray}")
+  ttyio.setvariable("engine.menu.titlecolor", "{black}{bglightgray}")
+  ttyio.setvariable("engine.menu.promptcolor", "{lightgray}")
+  ttyio.setvariable("engine.menu.inputcolor", "{white}")
+  ttyio.setvariable("engine.menu.disableditemcolor", "{darkgray}")
+  ttyio.setvariable("engine.menu.resultfailedcolor", "{bgred}{white}")
+  ttyio.setvariable("engine.currentoptioncolor", "{bggray}{white}")
+  ttyio.setvariable("engine.areacolor", "{bggray}{white}")
+  
+  dbh = bbsengine.databaseconnect(args)
 
-  maint(args)
+  menuitems = []
+  if bbsengine.getflag(dbh, "SYSOP") is True:
+    menuitems.append({ "name": "maint",     "label": "maint",     "callback": maint})
+  menuitems.append({ "name": "blackjack", "label": "blackjack", "callback": "blackjack"})
+  menuitems.append({ "name": "yahtzee",   "label": "yahtzee",   "callback": "yahtzee"})
+  menuitems.append({ "name": "poker",     "label": "poker",     "callback": "poker"})
+  menu = bbsengine.Menu("casino", menuitems, args=args)
+  menu.run("casino: ")
+
+#  maint(args)
   return
 
 if __name__ == "__main__":
