@@ -31,7 +31,7 @@ create or replace view casino.cardtable as
 
 grant all on casino.cardtable to apache;
 
-create table if not exists map_cardtable_player (
+create table if not exists casino.map_cardtable_player (
     "cardtableid" bigint constraint fk_cardtable_id references casino.__cardtable(id) on update cascade on delete cascade,
     "playerid" bigint constraint fk_cardtable_playerid references casino.__player(id) on update cascade on delete cascade
 );
