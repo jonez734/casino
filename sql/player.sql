@@ -1,12 +1,12 @@
 create table if not exists casino.__player (
-  "id" serial unique not null primary key,
+  "id" bigserial unique not null primary key,
   "memberid" integer constraint fk_player_memberid references engine.__member(id) on update cascade on delete set null,
   "location" text,
   "lastplayed" timestamptz
 );
 
-grant all on casino.__player_id_seq to apache;
-grant all on casino.__player to apache;
+--grant all on casino.__player_id_seq to apache;
+--grant all on casino.__player to apache;
 
 create or replace view casino.player as
   select 
