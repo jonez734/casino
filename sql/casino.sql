@@ -2,4 +2,4 @@
 \i player.sql
 \i cardtable.sql
 \i game.sql
-\i betlog.sql
+--\i betlog.sql
