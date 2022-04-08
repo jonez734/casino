@@ -1,3 +1,6 @@
+import ttyio5 as ttyio
+import bbsengine5 as bbsengine
+
 suits = {
     "H": "{u:heart}",
     "D": "{u:diamond}",
@@ -109,11 +112,11 @@ def getcardtablelocations():
 
 class Casino(bbsengine.Node):
     def __init__(self, args, casinoid=None, location=None, bank=None):
-      self.attributes = [
+      super().__init__("casino.casino"))
+      self.attributes += [
         { "name":"location", "type":"completelocation", "default":None },
         { "name":"bank", "type":"int", "default": 0}
       ]
-      self.id = casinoid
       self.location = location
       self.bank = bank
       self.dbh = bbsengine.databaseconnect(args)
@@ -125,15 +128,12 @@ class Casino(bbsengine.Node):
           self.load(casinoid)
 
     def __edit(self, rec={}):
-      rec = {}
-      rec["id"] = ttyio.inputinteger("casinoid: ", self.id)
+      origrec = copy.deepcopy()
+#      rec["id"] = ttyio.inputinteger("casinoid: ", self.id)
       rec["location"] = ttyio.inputstring("location: ", self.location)
       rec["bank"] = ttyio.inputinteger("bank: ", self.bank)
       return rec
 
     def add(self):
-      rec = self.__edit()
-      c = Casino()
-      c.location = rec["location"]
-      c.bank = rec["bank"]
-      c.id = rec["id"]
+      origrec = {}
+      rec = self.__edit(origrec)
