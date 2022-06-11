@@ -1,10 +1,10 @@
 import argparse
 import random
 
-import ttyio4 as ttyio
+import ttyio5 as ttyio
 import bbsengine5 as bbsengine
 
-import casino
+import libcasino
 
 player = None
 dealer = None
@@ -49,7 +49,7 @@ class Hand:
                 return "blackjack"
         return "play"
 
-    def append(self, card):
+    def append(self, card, hidden=False):
         self.cards.append(card)
 
     def show(self, hide=True):
@@ -59,7 +59,7 @@ class Hand:
             if len(self.cards) == 2 and counter == 1 and self.label == "dealer" and hide is True:
                 ttyio.echo("{u:solidblock:2} ", end="")
             else:
-                ttyio.echo("%s%s " % (c.pips, casino.suits[c.suit]), end="")
+                ttyio.echo("%s%s " % (c.pips, libcasino.suits[c.suit]), end="")
             counter += 1
 
         ttyio.echo(" [%d]" % (self.calcvalue()), level="debug")
@@ -200,21 +200,22 @@ def play(shoe, dealerhand, playerhand):
     else:
         ttyio.echo("push")
 
-def main():
-    global player, dealer
-
+def buildargs():
     parser = argparse.ArgumentParser("blackjack")
-    
+
     parser.add_argument("--verbose", action="store_true", dest="verbose")
     parser.add_argument("--debug", action="store_true", dest="debug")
 
     defaults = {"databasename": "zoidweb5", "databasehost":"localhost", "databaseuser": None, "databaseport":5433, "databasepassword":None}
     bbsengine.buildargdatabasegroup(parser, defaults)
 
-    args = parser.parse_args()
+    return parser
+
+def main(args):
+    global player, dealer
 
     bbsengine.title("blackjack")
-    shoe = casino.Shoe(decks=3) # casino.initshoe(decks=3)
+    shoe = libcasino.Shoe(decks=3) # casino.initshoe(decks=3)
 #    shoe.show()
     shoe.shuffle(3) # casino.shuffleshoe(shoe)
 #    ttyio.echo("------")
@@ -244,4 +245,6 @@ def main():
             break
 
 if __name__ == "__main__":
-    main()
+    parser = buildargs()
+    args = parser.parse_args()
+    main(args)
