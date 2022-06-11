@@ -81,7 +81,7 @@ def maint(args, **kwargs):
 #    bbsengine.poparea()
   return
 
-def main():
+def buildargs():
   parser = argparse.ArgumentParser("casino")
 
   parser.add_argument("--verbose", action="store_true", dest="verbose")
@@ -90,6 +90,9 @@ def main():
 
   defaults = {"databasename": "zoidweb5", "databasehost":"localhost", "databaseuser": None, "databaseport":5432, "databasepassword":None}
   bbsengine.buildargdatabasegroup(parser, defaults)
+  return parser
+
+def main(args):
 
   args = parser.parse_args()
 
@@ -127,8 +130,11 @@ def main():
   return
 
 if __name__ == "__main__":
+  parser = buildargs()
+  args = parser.parse_args()
+
   try:
-    main()
+    main(args)
   except EOFError:
     ttyio.echo("{/all}{bold}EOF{/bold}")
   except KeyboardInterrupt:
