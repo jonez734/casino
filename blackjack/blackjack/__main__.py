@@ -1,5 +1,7 @@
-import argparse
+import time
 import random
+import locale
+import argparse
 
 import ttyio5 as ttyio
 import bbsengine5 as bbsengine
@@ -65,25 +67,27 @@ class Hand:
         ttyio.echo(" [%d]" % (self.calcvalue()), level="debug")
 
 class Player(object):
-    def __init__(self, memberid=None, playerid=None):
-        self.memberid = memberid
-        self.id = playerid
+    def __init__(self):
+        self.memberid = None
+        self.playerid = None
         self.currentbet = 0
         self.hand = None
-
-    def sethand(self, hand=None):
-        self.hand = hand
+        self.stats = {}
+        for s in ("win", "loss", "draw", "bust", "blackjack", "naturalblackjack"):
+            self.stats[s] = 0
 
 def play(shoe, dealerhand, playerhand):
     global player, dealer
 
     choice = None
 
-    dealer.sethand(dealerhand)
-    player.sethand(playerhand)
+    dealer.hand = dealerhand
+    player.hand = playerhand
 
     done = False
     while not done:
+        libcasino.setarea(args, player, "blackjack")
+
         player.hand.show()
         dealer.hand.show()
 
@@ -92,10 +96,14 @@ def play(shoe, dealerhand, playerhand):
         if playerstatus == "win" or playerstatus == "naturalblackjack" or playerstatus == "blackjack":
             ttyio.echo("player wins: %s" % (playerstatus))
             ttyio.echo("dealer loss")
+            player.stats["win"] += 1
+            dealer.stats["loss"] += 1
             break
         if playerstatus == "bust":
             ttyio.echo("player bust")
             ttyio.echo("dealer win")
+            player.stats["bust"] += 1
+            dealer.stats["win"] += 1
             break
 
         dealerstatus = dealer.hand.status()
@@ -103,11 +111,16 @@ def play(shoe, dealerhand, playerhand):
         if dealerstatus == "win" or dealerstatus == "naturalblackjack" or dealerstatus == "blackjack":
             ttyio.echo("dealer wins: %s" % (dealerstatus))
             ttyio.echo("player loss")
+            player.loss += 1
+            dealer.win += 1
             break
         if dealerstatus == "bust":
             ttyio.echo("dealer bust")
             ttyio.echo("player win")
+            player.stats["win"] += 1
+            dealer.stats["loss"] += 1
             break
+
         if choice != "stand":
             ch = ttyio.inputchar("player [H]it or [S]tand: ", "HS", "")
             if ch == "S":
@@ -163,6 +176,8 @@ def play(shoe, dealerhand, playerhand):
     if dealerhandvalue > 21:
         playerstatus = "win"
         dealerstatus = "bust"
+        player.stats["win"] += 1
+        dealer.stats["bust"] += 1
     elif playerhandvalue > 21:
         playerstatus = "bust"
         dealerstatus = "win"
@@ -200,7 +215,7 @@ def play(shoe, dealerhand, playerhand):
     else:
         ttyio.echo("push")
 
-def buildargs():
+def buildargs(args=None, **kw):
     parser = argparse.ArgumentParser("blackjack")
 
     parser.add_argument("--verbose", action="store_true", dest="verbose")
@@ -211,16 +226,15 @@ def buildargs():
 
     return parser
 
-def main(args):
+def init(args, **kw):
+    pass
+
+def main(args, **kw):
     global player, dealer
 
     bbsengine.title("blackjack")
-    shoe = libcasino.Shoe(decks=3) # casino.initshoe(decks=3)
-#    shoe.show()
-    shoe.shuffle(3) # casino.shuffleshoe(shoe)
-#    ttyio.echo("------")
-#    shoe.show()
-#    ttyio.echo("shuffled shoe=%r" % (shoe))
+    shoe = libcasino.Shoe(decks=3)
+    shoe.shuffle(3)
 
     player = Player()
     ttyio.echo("player=%r" % (player), level="debug")
@@ -228,23 +242,37 @@ def main(args):
 
     done = False
     while not done:
-        playerhand = Hand("player")
-        player.sethand(playerhand)
+        player.hand = Hand("player 1")
 
-        dealerhand = Hand("dealer")
-        dealer.sethand(dealerhand)
+        dealer.hand = Hand("dealer")
 
         player.hand.append(shoe.draw())
         dealer.hand.append(shoe.draw())
 
-        playerhand.append(shoe.draw())
+        player.hand.append(shoe.draw())
         dealer.hand.append(shoe.draw())
 
-        play(shoe, dealerhand, playerhand)
+        play(shoe, dealer.hand, player.hand)
         if ttyio.inputboolean("another hand? [Yn]: ", "Y") is False:
             break
 
 if __name__ == "__main__":
+    locale.setlocale(locale.LC_ALL, "")
+    time.tzset()
+
     parser = buildargs()
     args = parser.parse_args()
-    main(args)
+
+    ttyio.echo("{f6:3}{cursorup:3}") # curpos:%d,0}" % (ttyio.getterminalheight()-3))
+    bbsengine.initscreen(bottommargin=1)
+
+    init(args)
+
+    try:
+        main(args)
+    except KeyboardInterrupt:
+        ttyio.echo("{/all}{bold}INTR{bold}")
+    except EOFError:
+        ttyio.echo("{/all}{bold}EOF{/bold}")
+    finally:
+        ttyio.echo("{decsc}{curpos:%d,0}{eraseline}{decrc}{reset}{/all}" % (ttyio.getterminalheight()))
