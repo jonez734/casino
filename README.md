@@ -8,7 +8,7 @@
 - if player and dealer have the same value, it's called a "push" and no bets are paid.
 - https://www.casinocenter.com/rules-strategy-blackjack/
 - if player has < 21, don't end hand
-- handle 'push' properly.. check only at end of hand
+- [ ] handle 'push' properly.. check only at end of hand
   * http://www.casinostrategy.org/blackjack/blackjack-terminology.htm
   * https://www.quora.com/What-is-a-push-in-blackjack
 - [ ] handle "split" of a pair-- player now plays two hands at the same time
@@ -114,16 +114,24 @@ another hand? [Yn]: No
 - every player gets two cards face up, dealer's 2nd card is face down - [Blackjack Tournament Magic May 5th 2018](https://youtu.be/r0urRi_zQGk)
 - it would be interesting to collect stats re: hands, wins, losses, etc
 - dealer and player have a "12".. what should happen?
-- there can be *no* in-tangible benefit from the games.. and make up a new currency for every game?
+- there can be *no* remuneration from the games.. and make up a new currency for every game?
   * tax fraud?
   * wire fraud?
-  * there will always be somebody trying to game the system. (bryce)
+  * there will always be somebody trying to game the system. (@ty pscug)
 - [ ] allow player surrender (drop out of hand, refund 50% of total bets on the hand)
 - [ ] player may have multiple hands (splits)
 - [ ] mapping table which tracks playerid, inetaddr, and gameid
 - [ ] slots are complex.
   * stigg has a 3 wheel slots game on his board
+- 'greed' for image bbs 3.0 has a yes/no prompt for each dice you can replace. might work for yahtzee if cursor keys not viable.
+- https://stackoverflow.com/a/43794884 -- answers how to do subpackages using setuptools (@since 20220404)
+- [ ] make a way to decide who can play what games and/or which tables (security) (@since 20220404)
+- handle table min/max
 
+"""
+Under traditional rules, a natural blackjack (the player draws an ace and a ten-value card) pays three to two, meaning a $100 bet returns $150. All other bets pay even money;
+"""
 
-- 'greed' for image bbs 3.0 has a yes/no prompt for each dice you can
-  replace. might work for yahtzee if cursor keys not viable.
+https://www.google.com/url?sa=t&rct=j&q=&esrc=s&source=web&cd=&cad=rja&uact=8&ved=2ahUKEwiAx-Xaxsz5AhVqmmoFHXYNATMQFnoECBUQAw&url=https%3A%2F%2Fwww.forbes.com%2Fsites%2Fdavidschwartz%2F2018%2F07%2F16%2Fblackjacks-rise-and-fall-shows-what-drives-customers-away%2F&usg=AOvVaw0sUpI0_IDl6oScfj9Q2nE_
+https://www.google.com/search?client=firefox-b-1-d&q=what+is+a+draw+in+blackjack
+https://www.google.com/search?client=firefox-b-1-d&q=calculate+probabilty+of+winning+blackjack+hand
