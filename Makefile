@@ -2,5 +2,5 @@ all:
 
 clean:
 	-rm *~
-	-$(MAKE) -C blackjack clean
-	-$(MAKE) -C poker clean
+	-$(MAKE) -C casino clean
+	-$(MAKE) -C sql clean
