@@ -1,14 +1,26 @@
 #!/usr/bin/env python
 
+import time
+
+from setuptools import setup
+#from distutils.core import setup
+
+r = 1
+v = time.strftime("%Y%m%d%H%M")
+
 with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
-setuptools.setup(
+setup(
     name="casino",
-    version="0.0.1",
+    packages=["casino"],
+#    py_modules=["casino", "libcasino"],
+    requires=["ttyio5", "bbsengine5"],
+    scripts=["bin/casino"],
+    version=v,
     author="zoidtechnologies.com",
     author_email="casino@projects.zoidtechnologies.com",
-    description="Casino games (blackjack, slots, etc) for bbsengine5",
+    description="Casino games for bbsengine5",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/jonez734/casino",
@@ -17,8 +29,7 @@ setuptools.setup(
     },
     classifiers=[
         "Programming Language :: Python :: 3",
-        "License :: OSI Approved :: MIT License",
-        "Operating System :: OS Independent",
+#        "License :: OSI Approved :: MIT License",
     ],
 #    package_dir={"": "blackjack"},
 #    packages=setuptools.find_packages(where="src"),
