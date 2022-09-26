@@ -1,40 +1,8 @@
-import random
-import locale
-import argparse
-
-import ttyio5 as ttyio
-import bbsengine5 as bbsengine
-
-def casino(args):
-  def add(args, **kwargs):
-    return
-
-  done = False
-  while not done:
-    bbsengine.title("casino")
-    ttyio.echo("[A]dd")
-    ttyio.echo("[L]ist")
-    ttyio.echo("[E]dit")
-    ttyio.echo("{f6}[Q]uit{f6}")
-    ch = ttyio.inputchar("casino [ALEQ]: ", "ALEQ", "Q")
-    if ch == "Q":
-      ttyio.echo("Quit")
-      done = True
-    elif ch == "A":
-      ttyio.echo("Add")
-      add()
-    elif ch == "L":
-      ttyio.echo("List")
-      summary()
-    elif ch == "E":
-      ttyio.echo("Edit")
-      edit()
-
 def casino(args, **kwargs):
   def add(args, **kwargs):
     bbsengine.title("add casino")
     ttyio.echo("casino.add.120: args=%r" % (args), interpret=False)
-    c = Casino(args)
+    c = libcasino.Casino(args)
     c.add()
     ttyio.echo("casino.add.100: %r" % (c), level="debug", interpret=False)
 
@@ -54,34 +22,34 @@ def casino(args, **kwargs):
     { "name": "delete", "label": "delete", "callback": delete,  }
   ]
 
-  menu = bbsengine.Menu("casino maint", menuitems, args=args)
-  menu.run("casino: ")
+  menu = bbsengine.Menu("maint casino", menuitems, args=args)
+  menu.run("maint casino: ")
   return
 
 def table(args, **kwargs):
   pass
 
 def maint(args, **kwargs):
-  sysop = bbsengine.checkflag(args, "SYSOP")
+  sysop = bbsengine.checksysop(args)
   if sysop is False:
     ttyio.echo("permission denied.")
     # make a log entry for the security issue
     return
 
   menuitems = [
-    { "name":"casino", "label": "casino",  "callback": casino},
-    { "name":"table",  "label": "table",   "callback": table},
+    { "name":"casino", "label": "casino",  "callback": "casino"},
+    { "name":"table",  "label": "table",   "callback": "table"},
     { "name":"game",   "label": "game",    "callback": "game"},
     { "name":"hand",   "label": "hand",    "callback": "hand"},
     { "name":"player", "label": "player",  "callback": "player"},
   ]
 
-  menu = bbsengine.Menu("casino maint", menuitems, args=args)
+  menu = bbsengine.Menu("maint", menuitems, args=args)
   menu.run("maint: ")
 #    bbsengine.poparea()
   return
 
-def buildargs():
+def buildargs(args=None, **kw):
   parser = argparse.ArgumentParser("casino")
 
   parser.add_argument("--verbose", action="store_true", dest="verbose")
@@ -92,14 +60,10 @@ def buildargs():
   bbsengine.buildargdatabasegroup(parser, defaults)
   return parser
 
-def main(args):
-
-  args = parser.parse_args()
-
-  locale.setlocale(locale.LC_ALL, "")
+def main(args, **kw):
 
   if args is not None and "debug" in args and args.debug is True:
-      ttyio.echo("casino.main.100: args=%r" % (args))
+      ttyio.echo("casino.main.100: args=%r" % (args), level="debug")
 
   ttyio.setvariable("engine.menu.boxcharcolor", "{bglightgray}{darkgreen}")
   ttyio.setvariable("engine.menu.color", "{bggray}")
@@ -118,26 +82,16 @@ def main(args):
   dbh = bbsengine.databaseconnect(args)
 
   menuitems = []
-  if bbsengine.getflag(dbh, "SYSOP") is True:
-    menuitems.append({ "name": "maint",     "label": "maint",     "callback": maint})
+  if bbsengine.checksysop(args) is True:
+    menuitems.append({ "name": "maint",     "label": "maint",     "callback": "maint"})
   menuitems.append({ "name": "blackjack", "label": "blackjack", "callback": "blackjack"})
   menuitems.append({ "name": "yahtzee",   "label": "yahtzee",   "callback": "yahtzee"})
   menuitems.append({ "name": "poker",     "label": "poker",     "callback": "poker"})
-  menu = bbsengine.Menu("casino", menuitems, args=args)
-  menu.run("casino: ")
+
+
+  print(bbsengine.runsubmodule(args, "casino.blackjack"))
+#  menu = bbsengine.Menu("casino", menuitems, args=args)
+#  menu.run("casino: ")
 
 #  maint(args)
   return
-
-if __name__ == "__main__":
-  parser = buildargs()
-  args = parser.parse_args()
-
-  try:
-    main(args)
-  except EOFError:
-    ttyio.echo("{/all}{bold}EOF{/bold}")
-  except KeyboardInterrupt:
-    ttyio.echo("{/all}{bold}INTR{/bold}")
-  finally:
-    ttyio.echo("{/all}")
