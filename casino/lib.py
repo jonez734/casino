@@ -1,3 +1,6 @@
+import copy
+import random
+
 import ttyio5 as ttyio
 import bbsengine5 as bbsengine
 
@@ -9,9 +12,10 @@ suits = {
 }
 
 class Card:
-    def __init__(self, suit=None, pips=None):
+    def __init__(self, suit=None, pips=None, **attributes):
         self.pips = pips
         self.suit = suit
+        self.attributes = attributes
 
     def value(self):
         if self.pips == "A":
@@ -111,24 +115,20 @@ def getcardtablelocations():
     return cardtablelocations
 
 class Casino(bbsengine.Node):
-    def __init__(self, args, casinoid=None, location=None, bank=None):
-      super().__init__("casino.casino"))
-      self.attributes += [
-        { "name":"location", "type":"completelocation", "default":None },
-        { "name":"bank", "type":"int", "default": 0}
+    def __init__(self, args, location=None, bank=None):
+      super().__init__("casino.casino")
+      self.attributes = [
+        { "name":"location", "type":"location", "default":location },
+        { "name":"bank",     "type":"int",      "default": bank}
       ]
-      self.location = location
-      self.bank = bank
+#      self.location = location
+#      self.bank = bank
       self.dbh = bbsengine.databaseconnect(args)
       for a in self.attributes:
           setattr(self, a["name"], a["default"])
 
-      if casinoid is not None:
-          ttyio.echo("Casino.__init__.100: calling load(%r)" % (casinoid), level="debug")
-          self.load(casinoid)
-
     def __edit(self, rec={}):
-      origrec = copy.deepcopy()
+      origrec = copy.deepcopy(rec)
 #      rec["id"] = ttyio.inputinteger("casinoid: ", self.id)
       rec["location"] = ttyio.inputstring("location: ", self.location)
       rec["bank"] = ttyio.inputinteger("bank: ", self.bank)
@@ -137,3 +137,34 @@ class Casino(bbsengine.Node):
     def add(self):
       origrec = {}
       rec = self.__edit(origrec)
+    
+    def load(self, casinoid):
+      pass
+
+# @since 20220815
+def setarea(args, player, left):
+  def right():
+    currentmember = bbsengine.getcurrentmember(args)
+    if currentmember is None:
+      return ""
+    rightbuf = "| %s | %s" % (currentmember["name"], bbsengine.pluralize(currentmember["credits"], "credit", "credits"))
+    if args.debug is True:
+      rightbuf += " | debug"
+    return rightbuf
+  bbsengine.setarea(left, right)
+
+class Player(object):
+  def __init__(self):
+    self.memberid = None
+    self.status = "active"
+    self.lastvisit = "now()"
+    self.tokens = 0
+    self.stats = {}
+  def incstat(self, game, stat):
+    if game not in self.stats:
+      self.stats[game] = {}
+    
+    if stat not in self.stats[game]:
+      self.stats[game][stat] = 0
+    self.stats[game][stat] += 1
+    return
