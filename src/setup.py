@@ -8,7 +8,7 @@ from setuptools import setup
 r = 1
 v = time.strftime("%Y%m%d%H%M")
 
-with open("README.md", "r", encoding="utf-8") as fh:
+with open("../README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
 setup(
@@ -16,7 +16,7 @@ setup(
     packages=["casino"],
 #    py_modules=["casino", "libcasino"],
     requires=["ttyio5", "bbsengine5"],
-    scripts=["bin/casino"],
+    scripts=["../bin/casino"],
     version=v,
     author="zoidtechnologies.com",
     author_email="casino@projects.zoidtechnologies.com",
