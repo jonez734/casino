@@ -11,61 +11,6 @@ from . import lib
 player = None
 dealer = None
 
-class Hand:
-    def __init__(self, label="NEEDINFO"):
-        self.playerid = None
-        self.id = None
-        self.cards = []
-        self.value = 0
-        self.label = label
-
-    def adjustace(self):
-        adjust = 0
-        for card in self.cards:
-            if card.isace() is False:
-                continue
-            if self.value > 21:
-                adjust = 10
-                ttyio.echo("set adjust to %s" % (adjust), level="debug")
-                break
-        return adjust
-
-    def calcvalue(self):
-        self.value = 0
-        for c in self.cards:
-            self.value += c.value()
-
-        adjust = 0
-        if self.value > 21:
-            adjust = self.adjustace()
-        return self.value - adjust
-
-    def status(self):
-        value = self.calcvalue()
-        if value > 21:
-            return "bust"
-        if value == 21:
-            if len(self.cards) == 2:
-                return "naturalblackjack"
-            else:
-                return "blackjack"
-        return "play"
-
-    def append(self, card, hidden=False):
-        self.cards.append(card)
-
-    def show(self, hide=True):
-        ttyio.echo("%s: " % (self.label), end="")
-        counter = 0
-        for c in self.cards:
-            if len(self.cards) == 2 and counter == 1 and self.label == "dealer" and hide is True:
-                ttyio.echo("{u:solidblock:2} ", end="")
-            else:
-                ttyio.echo("%s%s " % (c.pips, lib.suits[c.suit]), end="")
-            counter += 1
-
-        ttyio.echo(" [%d]" % (self.calcvalue()), level="debug")
-
 class BlackjackPlayer(lib.Player):
     def __init__(self):
         super().__init__()
@@ -238,7 +183,7 @@ def buildargs(args=None, **kw):
     return parser
 
 def init(args, **kw):
-    pass
+    return True
 
 def main(args, **kw):
     global player, dealer
@@ -255,19 +200,21 @@ def main(args, **kw):
 
     done = False
     while not done:
-        player.hand = Hand("player 1")
+        player.hand = lib.Hand("player 1")
 
-        dealer.hand = Hand("dealer")
+        dealer.hand = lib.Hand("dealer")
 
-        player.hand.append(shoe.draw())
-        dealer.hand.append(shoe.draw())
+        player.hand.add(shoe.draw())
+        dealer.hand.add(shoe.draw())
 
-        player.hand.append(shoe.draw())
-        dealer.hand.append(shoe.draw())
+        player.hand.add(shoe.draw())
+        dealer.hand.add(shoe.draw())
 
         play(args, shoe, dealer.hand, player.hand)
         if ttyio.inputboolean("{var:promptcolor}another hand? [{var:optioncolor}Yn{var:promptcolor}]: {var:inputcolor}", "Y") is False:
             break
+            
+    return True
 
 if __name__ == "__main__":
     locale.setlocale(locale.LC_ALL, "")
@@ -277,7 +224,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     ttyio.echo("{f6:3}{cursorup:3}") # curpos:%d,0}" % (ttyio.getterminalheight()-3))
-    bbsengine.initscreen(bottommargin=1)
+    bbsengine.initscreen()
 
     init(args)
 
