@@ -13,14 +13,14 @@ with open("../README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="casino",
-    packages=["casino"],
+    packages=["casino", "casino.blackjack"],
 #    py_modules=["casino", "libcasino"],
-    requires=["ttyio5", "bbsengine5"],
+    requires=["bbsengine6"],
     scripts=["../bin/casino"],
     version=v,
     author="zoidtechnologies.com",
     author_email="casino@projects.zoidtechnologies.com",
-    description="Casino games for bbsengine5",
+    description="Casino games for bbsengine6",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/jonez734/casino",
