@@ -1,46 +1,39 @@
-import copy
+import argparse
 import random
 
-#import ttyio5 as ttyio
-#import bbsengine5 as bbsengine
-from bbsengine6 import io
+# import ttyio5 as ttyio
+# import bbsengine5 as bbsengine
+from bbsengine6 import io, database, screen, module, member, util
 
 import tkinter as tk
-import tkinter.font as tkf
 from PIL import Image, ImageTk, ImageOps
 
 PACKAGENAME = "casino"
 
-suits = {
-    "H": "{u:heart}",
-    "D": "{u:diamond}",
-    "S": "{u:spade}",
-    "C": "{u:club}"
-}
+suits = {"H": "{u:heart}", "D": "{u:diamond}", "S": "{u:spade}", "C": "{u:club}"}
+
 
 class Card(object):
-    def __init__(self, shorthand:str="", facedown=True, **kw):
-      self.shorthand = shorthand
-      if shorthand is not None and shorthand != "":
-        self.pips, self.suit = self.shorthand[:-1], self.shorthand[-1:]
-        self.blank = False
-      else:
-        self.pips, self.suit = None, None
-        self.blank = True
+    def __init__(self, shorthand: str = "", facedown=True, **kw):
+        self.shorthand = shorthand
+        if shorthand is not None and shorthand != "":
+            self.pips, self.suit = self.shorthand[:-1], self.shorthand[-1:]
+            self.blank = False
+        else:
+            self.pips, self.suit = None, None
+            self.blank = True
 
-      self.tkart = None
-      self.show = True
-#      self.blank = blank
-      self.facedown = facedown
-      self.artpath = self.getartpath()
-      self.art = None # self.getart()
+        self.tkart = None
+        self.show = True
+        self.facedown = facedown
+        self.art = None  # self.getart()
 
     def __repr__(self):
-      return f"Card(shorthand={self.shorthand!r}, artpath={self.artpath!r}, suit={self.suit!r}, pips={self.pips!r} art={self.getart()!r} facedown={self.facedown!r})"
+        return f"Card({self.shorthand=}, {self.suit=}, {self.pips=} {self.art=} {self.facedown=})"
 
     def value(self):
         if self.blank is True:
-          return 0
+            return 0
 
         if self.pips == "A":
             v = 11
@@ -48,9 +41,10 @@ class Card(object):
             v = 10
         else:
             v = int(self.pips)
-        suit = self.suit if self.suit in suits else "??"
 
-        io.echo("Card.value.120: card=%s%s value=%r" % (self.pips, suits[self.suit], v), level="debug")
+        io.echo(
+            f"Card.value.120: card={self.pips}{suits[self.suit]} {v=}", level="debug"
+        )
         return v
 
     def isace(self):
@@ -58,17 +52,21 @@ class Card(object):
             return True
         return False
 
+
+class tkCard(Card):
+    def __init__(self, args, **kw):
+        super().__init__(args, **kw)
+        self.artpath = self.getartpath()
+
+    def __repr__(self):
+        return f"tkCard({self.shorthand=}, {self.artpath=}, {self.suit=}, {self.pips=} {self.getart()=} {self.facedown=})"
+
     def getartpath(self):
         if self.suit is None and self.pips is None:
-          artpath = "cards/card-blank-008000.png"
-          return artpath
-        
-        if self.facedown is True:
-          artpath = "cards/card-back-electricblue.png"
-          return artpath
-
-#        ttyio.echo(f"suit={self.suit!r}", level="debug")
-        if self.suit == "D":
+            artpath = "cards/card-blank-008000.png"
+        elif self.facedown is True:
+            artpath = "cards/card-back-electricblue.png"
+        elif self.suit == "D":
             suitname = "diamonds"
         elif self.suit == "H":
             suitname = "hearts"
@@ -86,28 +84,32 @@ class Card(object):
         elif self.pips == "K":
             short = "king"
         else:
-          short = self.pips
+            short = self.pips
 
         artpath = f"cards/{short}_of_{suitname}.png"
-#        ttyio.echo(f"artpath={artpath!r}", level="debug")
         return artpath
 
     def getart(self):
         self.artpath = self.getartpath()
-#        ttyio.echo(f"lib.card.getart.100: artpath={self.artpath}", level="debug")
-        self.img = Image.open(self.artpath) # tk.Image.open("cards/2_of_diamonds.png")) # playerframe, file="cards/2_of_diamonds.png")
+        self.img = Image.open(
+            self.artpath
+        )  # tk.Image.open("cards/2_of_diamonds.png")) # playerframe, file="cards/2_of_diamonds.png")
         self.containedimage = ImageOps.contain(self.img, (100, 250))
         self.tkart = ImageTk.PhotoImage(self.containedimage)
-#        ttyio.echo(f"lib.card.getart.120: self.tkart={self.tkart!r}", level="debug")
         return self.tkart
+
+    def add(self, card, facedown=False):
+        card.getart()
+        super().add(card, facedown)
+
 
 class Hand(object):
     def __init__(self, label, **kw):
         self.id = None
         self.label = label
-#        self.shoe = shoe
-        self.playerid = playerid if "playerid" in kw else None
-#        self.cards = []
+        #        self.shoe = shoe
+        self.playerid = kw.get("playerid", None)
+        #        self.cards = []
         self.value = 0
         self.index = 0
         self.cards = []
@@ -122,7 +124,7 @@ class Hand(object):
                 continue
             if self.value > 21:
                 adjust = 10
-                io.echo("set adjust to %s" % (adjust), level="debug")
+                io.echo(f"set adjust to {adjust}", level="debug")
                 break
         return adjust
 
@@ -148,107 +150,128 @@ class Hand(object):
         return "play"
 
     def add(self, card, facedown=False):
-        card.getart()
         card.facedown = facedown
-#        ttyio.echo(f"--> len(self.cards)={len(self.cards)}, self.index={self.index}")
+        #        ttyio.echo(f"--> len(self.cards)={len(self.cards)}, self.index={self.index}")
         self.cards[self.index] = card
         self.index += 1
         self.refresh()
-        
+
     def show(self, hide=True):
-        io.echo("%s: " % (self.label), end="")
+        io.echo(f"{self.label}: ", end="")
         counter = 0
         for c in self.cards:
-            if len(self.cards) == 2 and counter == 1 and self.label == "dealer" and hide is True:
+            if (
+                len(self.cards) == 2
+                and counter == 1
+                and self.label == "dealer"
+                and hide is True
+            ):
                 io.echo("{u:solidblock:2} ", end="")
             else:
-                io.echo("%s%s " % (c.pips, lib.suits[c.suit]), end="")
+                io.echo(f"{c.pips}{suits[c.suit]} ", end="")
             counter += 1
 
-        io.echo(" [%d]" % (self.calcvalue()), level="debug")
+        io.echo(f" [{self.calcvalue()}]", level="debug")
 
     def hit(self):
-      pass
-    
+        pass
+
     def stand(self):
-      pass
-    
+        pass
+
     def refresh(self):
-      pass
-    
+        pass
+
     def totalpoints(self):
-      for card in self.cards:
-        points += card.value()
-      return points
+        points = 0
+        for card in self.cards:
+            points += card.value()
+        return points
+
 
 class tkHand(Hand):
-  def __init__(self, text, **kw):
-    super().__init__(text, **kw)
+    def __init__(self, text, **kw):
+        super().__init__(text, **kw)
 
-#    self.tklabels = []
-#    self.images = []
+        #    self.tklabels = []
+        #    self.images = []
 
-    self.frame = kw["frame"] if "frame" in kw else None
+        self.frame = kw["frame"] if "frame" in kw else None
 
-#    ttyio.echo(f"--> tkhand.init: self.frame={self.frame!r}", level="debug")
+        #    ttyio.echo(f"--> tkhand.init: self.frame={self.frame!r}", level="debug")
 
-    self.row = kw["row"] if "row" in kw else 0
-    self.paddings = kw["paddings"] if "paddings" in kw else {}
+        self.row = kw["row"] if "row" in kw else 0
+        self.paddings = kw["paddings"] if "paddings" in kw else {}
 
-    labelfont = tkf.Font(family="Helvetica", size=24, weight="bold")
+        #    ttyio.echo(f"--> self.frame={self.frame!r}", level="debug")
 
-#    ttyio.echo(f"--> self.frame={self.frame!r}", level="debug")
+        #    self.playerframe = tk.LabelFrame(self, borderwidth=4, relief=tk.GROOVE, text=f"player: {playername}")
+        #    self.playerframe.grid(column=0, row=row, **self.paddings)
+        #    self.playerframe.configure(font=labelfont)
 
-#    self.playerframe = tk.LabelFrame(self, borderwidth=4, relief=tk.GROOVE, text=f"player: {playername}")
-#    self.playerframe.grid(column=0, row=row, **self.paddings)
-#    self.playerframe.configure(font=labelfont)
+        #    for x in range(0, 5):
+        #      card = self.cards[x]
+        ##      card = Card(shortname="4S", blank=False, facedown=False)
+        #      ttyio.echo(f"lib.tkHand.100: {card!r}", level="debug")
+        #      art = card.getart()
+        #      label = tk.Label(self.frame, bd=2, relief="solid", padx=20, pady=10)#, image=card.getart())
+        #      label.configure(image=art)
+        #      label.image = art
+        #      label.grid(row=0, column=x)
+        #      card.tklabel = label
+        #      self.tklabels.append(label)
+        self.refresh()
 
-#    for x in range(0, 5):
-#      card = self.cards[x]
-##      card = Card(shortname="4S", blank=False, facedown=False)
-#      ttyio.echo(f"lib.tkHand.100: {card!r}", level="debug")
-#      art = card.getart()
-#      label = tk.Label(self.frame, bd=2, relief="solid", padx=20, pady=10)#, image=card.getart())
-#      label.configure(image=art)
-#      label.image = art
-#      label.grid(row=0, column=x)
-#      card.tklabel = label
-#      self.tklabels.append(label)
-    self.refresh()
-#    ttyio.echo(f"---> tkHand.120: tklabels={self.tklabels!r}", level="debug")
+    #    ttyio.echo(f"---> tkHand.120: tklabels={self.tklabels!r}", level="debug")
 
-  def show(self):
-    for card in self.cards:
-      io.echo(f"{self.label}: {card!r}", level="debug")
+    def show(self):
+        for card in self.cards:
+            io.echo(f"{self.label=}: {card=}", level="debug")
 
-  def refresh(self):
-    totalpoints = 0
-    for x in range(0, 5):
-      points = 0
-      card = self.cards[x]
-#      ttyio.echo(f"lib.tkHand.100: {card!r}", level="debug")
-      art = card.getart()
-      label = tk.Label(self.frame, bd=0, relief="solid", padx=50, pady=10)
-      label.configure(image=art)
-      label.image = art
-      label.grid(row=0, column=x, padx=20)
-      points = card.value()
-      totalpoints += points
+    def refresh(self):
+        totalpoints = 0
+        for x in range(0, 5):
+            points = 0
+            card = self.cards[x]
+            #      ttyio.echo(f"lib.tkHand.100: {card!r}", level="debug")
+            art = card.getart()
+            label = tk.Label(self.frame, bd=0, relief="solid", padx=50, pady=10)
+            label.configure(image=art)
+            label.image = art
+            label.grid(row=0, column=x, padx=20)
+            points = card.value()
+            totalpoints += points
 
-      if points == 0:
-        pointslabel = tk.Label(self.frame, bd=0, relief=tk.SOLID, padx=50, pady=10)
-      else:
-        pointslabel = tk.Label(self.frame, bd=0, relief=tk.SOLID, padx=50, pady=10, text=points)
-      pointslabel.grid(row=1, column=x)
-    if totalpoints > 0:
-      totalpointslabel = tk.Label(self.frame, bd=0, relief=tk.SOLID, padx=50, pady=10, text=totalpoints)
-    else:
-      totalpointslabel = tk.Label(self.frame, bd=0, relief=tk.SOLID, padx=50, pady=10)
-    
-    totalpointslabel.grid(row=2, column=0, columnspan=5, sticky=tk.W+tk.E)
-  
+            if points == 0:
+                pointslabel = tk.Label(
+                    self.frame, bd=0, relief=tk.SOLID, padx=50, pady=10
+                )
+            else:
+                pointslabel = tk.Label(
+                    self.frame, bd=0, relief=tk.SOLID, padx=50, pady=10, text=points
+                )
+            pointslabel.grid(row=1, column=x)
+        if totalpoints > 0:
+            totalpointslabel = tk.Label(
+                self.frame, bd=0, relief=tk.SOLID, padx=50, pady=10, text=totalpoints
+            )
+        else:
+            totalpointslabel = tk.Label(
+                self.frame, bd=0, relief=tk.SOLID, padx=50, pady=10
+            )
+
+        totalpointslabel.grid(row=2, column=0, columnspan=5, sticky=tk.W + tk.E)
+
+
 class Table:
-    def __init__(self, shoeid:int=None, casinoid:int=None, minimumbet:int=1, maximumbet:int=10, bank:int=0):
+    def __init__(
+        self,
+        shoeid: int = None,
+        casinoid: int = None,
+        minimumbet: int = 1,
+        maximumbet: int = 10,
+        bank: int = 0,
+    ):
         self.id = None
         self.shoeid = shoeid
         self.casinoid = casinoid
@@ -256,20 +279,27 @@ class Table:
         self.maximumbet = maximumbet
         self.shoeid = shoeid
         self.bank = bank
+
     def update(self):
-      pass
+        pass
+
     def insert(self):
-      attributes = { "casinoid": self.casinoid, "minimumbet": self.minimumbet, "maximumbet": self.maximumbet, "shoeid": self.shoeid, "bank": self.bank }
-      pass
+        pass
+
     def show(self):
-      io.echo("table: id=%r, casinoid=%r, shoeid=%r, minimumbet=%r, maximumbet=%r, bank=%r" % (self.id, self.casinoid, self.shoeid, self.minimumbet, self.maximumbet, self.bank), level="debug")
-      return
+        io.echo(
+            f"table: {self.id=}, {self.casinoid=}, {self.shoeid=}, {self.minimumbet=}, {self.maximumbet=}, {self.bank=}",
+            level="debug",
+        )
+        return
+
 
 class tkTable(Table):
-  def __init__(self, parent):
-    super().Table.__init__(self)
-    self.parent = parent
-    
+    def __init__(self, parent):
+        super().__init__()
+        self.parent = parent
+
+
 class Shoe:
     def __init__(self, tableid=None, decks=1):
         self.id = None
@@ -277,12 +307,33 @@ class Shoe:
         self.cards = []
 
         if decks is None:
-          return
+            return
 
         for d in range(0, decks):
-            for suit in [ "S", "D", "C", "H" ]: # {u:spade}", "{u:diamond}", "{u:club}", "{u:heart}" ]:
-                for pips in ["A", "K", "Q", "J", "2", "3", "4", "5", "6", "7", "8", "9", "10"]:
-                    self.cards.append(Card(shorthand=f"{pips}{suit}", facedown=False, blank=False))
+            for suit in [
+                "S",
+                "D",
+                "C",
+                "H",
+            ]:  # {u:spade}", "{u:diamond}", "{u:club}", "{u:heart}" ]:
+                for pips in [
+                    "A",
+                    "K",
+                    "Q",
+                    "J",
+                    "2",
+                    "3",
+                    "4",
+                    "5",
+                    "6",
+                    "7",
+                    "8",
+                    "9",
+                    "10",
+                ]:
+                    self.cards.append(
+                        Card(shorthand=f"{pips}{suit}", facedown=False, blank=False)
+                    )
 
     def shuffle(self, rounds=1):
         for x in range(0, rounds):
@@ -306,88 +357,117 @@ class Shoe:
                 return
 
     def draw(self):
-      card = self.cards.pop()
-      io.echo(f"shoe.draw.100: card={card!r}", level="debug")
-      return card
+        card = self.cards.pop()
+        io.echo(f"shoe.draw.100: {card=}", level="debug")
+        return card
 
-    def append(self, card:object=None):
-      if card is None:
+    def append(self, card: object = None):
+        if card is None:
+            return
+
+        self.cards.append(card)
         return
 
-      self.cards.append(card)
-      return
 
 def getcardtablelocations():
     cardtablelocations = [
-      'Arnhem - Netherlands',
-      'Barcelona - Spain',
-      'Birmingham - England',
-      'Budapest - Hungary',
-      'Helsinki - Finland',
-      'Munich - Germany',
-      'Sicily - Italy',
-      'Oslo - Norway',
-      'Vienna - Austria',
-      'Cape Town - South Africa'
+        "Arnhem - Netherlands",
+        "Barcelona - Spain",
+        "Birmingham - England",
+        "Budapest - Hungary",
+        "Helsinki - Finland",
+        "Munich - Germany",
+        "Sicily - Italy",
+        "Oslo - Norway",
+        "Vienna - Austria",
+        "Cape Town - South Africa",
     ]
     return cardtablelocations
 
+
 class Casino(object):
     def __init__(self, args, location=None, bank=None, ui="tk"):
-      super().__init__("casino.casino")
-      self.attributes = [
-        { "name":"location", "type":"location", "default":location },
-        { "name":"bank",     "type":"int",      "default": bank}
-      ]
-#      self.location = location
-#      self.bank = bank
-      self.dbh = database.connect(args)
-      for a in self.attributes:
-          setattr(self, a["name"], a["default"])
+        super().__init__("casino.casino")
+        self.attributes = [
+            {"name": "location", "type": "location", "default": location},
+            {"name": "bank", "type": "int", "default": bank},
+        ]
+        #      self.location = location
+        #      self.bank = bank
+        self.dbh = database.connect(args)
+        for a in self.attributes:
+            setattr(self, a["name"], a["default"])
 
-    def __edit(self, rec={}):
-      origrec = copy.deepcopy(rec)
-#      rec["id"] = ttyio.inputinteger("casinoid: ", self.id)
-      rec["location"] = io.inputstring("location: ", self.location)
-      rec["bank"] = io.inputinteger("bank: ", self.bank) # as in an amount of credits
-      return rec
+    def __edit(self, rec=None):
+        if rec is None:
+            rec = {}
+        #      rec["id"] = ttyio.inputinteger("casinoid: ", self.id)
+        rec["location"] = io.inputstring("location: ", self.location)
+        rec["bank"] = io.inputinteger("bank: ", self.bank)  # as in an amount of credits
+        return rec
 
     def add(self):
-      origrec = {}
-      rec = self.__edit(origrec)
+        self.__edit({})
 
     def load(self, casinoid):
-      pass
+        pass
+
 
 class Seat:
-  def __init__(self, memberid):
-    self.memberid = memberid
-    pass
+    def __init__(self, memberid):
+        self.memberid = memberid
+        pass
+
 
 # @since 20220815
-def setarea(args, player, left):
-  def right():
-    currentmember = member.getcurrent(args)
-    if currentmember is None:
-      return ""
-    rightbuf = "| %s | %s" % (currentmember["name"], bbsengine.pluralize(currentmember["credits"], "credit", "credits"))
-    if args.debug is True:
-      rightbuf += " | debug"
-    return rightbuf
-  screen.setarea(left, right)
+def setarea(args, left, player=None):
+    def right():
+        currentmember = member.getcurrent(args)
+        if currentmember is None:
+            return ""
+        rightbuf = f"| {currentmember['moniker']} | {util.pluralize(currentmember['credits'], 'credit', 'credits')}"
+        if args.debug is True:
+            rightbuf += " | debug"
+        return rightbuf
+
+    screen.setarea(left, right)
+
 
 class Player(object):
-  def __init__(self):
-    self.memberid = None
-    self.status = "active"
-    self.lastvisit = "now()"
-    self.tokens = 0
-    self.stats = {}
-  def incstat(self, game, stat):
-    if game not in self.stats:
-      self.stats[game] = {}
-    
-    if stat not in self.stats[game]:
-      self.stats[game][stat] = 0
-    self.stats[game][stat] += 1
-    return
+    def __init__(self):
+        self.memberid = None
+        self.status = "active"
+        self.lastvisit = "now()"
+        self.tokens = 0
+        self.stats = {}
+
+    def incstat(self, game, stat):
+        if game not in self.stats:
+            self.stats[game] = {}
+
+        if stat not in self.stats[game]:
+            self.stats[game][stat] = 0
+        self.stats[game][stat] += 1
+        return
+
+
+def buildargs(args=None, **kw):
+    parser = argparse.ArgumentParser("skel")
+    parser.add_argument("--verbose", action="store_true", dest="verbose")
+    parser.add_argument("--debug", action="store_true", dest="debug")
+
+    defaults = {
+        "databasename": "zoid6",
+        "databasehost": "localhost",
+        "databaseuser": None,
+        "databaseport": 5432,
+        "databasepassword": None,
+    }
+    database.buildarggroup(parser, defaults)
+
+    return parser
+
+
+def runmodule(args, modulename, **kw):
+    io.echo(f"{args=} {modulename=}", level="debug")
+    return module.runmodule(args, f"casino.{modulename}", **kw)
