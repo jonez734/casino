@@ -91,11 +91,9 @@ class tkCard(Card):
 
     def getart(self):
         self.artpath = self.getartpath()
-        self.img = Image.open(
-            self.artpath
-        )  # tk.Image.open("cards/2_of_diamonds.png")) # playerframe, file="cards/2_of_diamonds.png")
-        self.containedimage = ImageOps.contain(self.img, (100, 250))
-        self.tkart = ImageTk.PhotoImage(self.containedimage)
+        with Image.open(self.artpath) as img:
+            self.containedimage = ImageOps.contain(img, (100, 250))
+            self.tkart = ImageTk.PhotoImage(self.containedimage)
         return self.tkart
 
     def add(self, card, facedown=False):
@@ -203,6 +201,10 @@ class tkHand(Hand):
         self.row = kw["row"] if "row" in kw else 0
         self.paddings = kw["paddings"] if "paddings" in kw else {}
 
+        self.card_labels = []
+        self.points_labels = []
+        self.totalpoints_label = None
+
         #    ttyio.echo(f"--> self.frame={self.frame!r}", level="debug")
 
         #    self.playerframe = tk.LabelFrame(self, borderwidth=4, relief=tk.GROOVE, text=f"player: {playername}")
@@ -229,16 +231,26 @@ class tkHand(Hand):
             io.echo(f"{self.label=}: {card=}", level="debug")
 
     def refresh(self):
+        for label in self.card_labels:
+            label.destroy()
+        for label in self.points_labels:
+            label.destroy()
+        if self.totalpoints_label is not None:
+            self.totalpoints_label.destroy()
+
+        self.card_labels = []
+        self.points_labels = []
+
         totalpoints = 0
         for x in range(0, 5):
             points = 0
             card = self.cards[x]
-            #      ttyio.echo(f"lib.tkHand.100: {card!r}", level="debug")
             art = card.getart()
             label = tk.Label(self.frame, bd=0, relief="solid", padx=50, pady=10)
             label.configure(image=art)
             label.image = art
             label.grid(row=0, column=x, padx=20)
+            self.card_labels.append(label)
             points = card.value()
             totalpoints += points
 
@@ -251,16 +263,18 @@ class tkHand(Hand):
                     self.frame, bd=0, relief=tk.SOLID, padx=50, pady=10, text=points
                 )
             pointslabel.grid(row=1, column=x)
+            self.points_labels.append(pointslabel)
+
         if totalpoints > 0:
-            totalpointslabel = tk.Label(
+            self.totalpoints_label = tk.Label(
                 self.frame, bd=0, relief=tk.SOLID, padx=50, pady=10, text=totalpoints
             )
         else:
-            totalpointslabel = tk.Label(
+            self.totalpoints_label = tk.Label(
                 self.frame, bd=0, relief=tk.SOLID, padx=50, pady=10
             )
 
-        totalpointslabel.grid(row=2, column=0, columnspan=5, sticky=tk.W + tk.E)
+        self.totalpoints_label.grid(row=2, column=0, columnspan=5, sticky=tk.W + tk.E)
 
 
 class Table:
