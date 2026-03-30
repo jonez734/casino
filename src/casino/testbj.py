@@ -2,12 +2,9 @@ import argparse
 
 import tkinter as tk
 import tkinter.font as tkf
-from tkinter import ttk
+import tkinter.ttk as ttk
 
-
-# import bbsengine5 as bbsengine
-# import ttyio5 as ttyio
-from bbsengine6 import io, member, database
+from bbsengine6 import io, database, member
 
 import lib
 
@@ -44,10 +41,12 @@ class App(tk.Tk):
 
         self.args = args
 
-        playermoniker = member.getcurrentmoniker(args)
-        if playermoniker is None:
+        currentmember = member.getcurrent(self.args)
+        if currentmember is None:
             io.echo("You do not exist! Go away!", level="error")
             return
+
+        playername = currentmember.get("moniker")
 
         self.sysop = False  # bbsengine.checksysop(args)
 
@@ -76,13 +75,13 @@ class App(tk.Tk):
         self.row = 0
 
         self.playerframe = tk.LabelFrame(
-            self, borderwidth=4, relief=tk.GROOVE, text=f"player: {playermoniker}"
+            self, borderwidth=4, relief=tk.GROOVE, text=f"player: {playername}"
         )
         self.playerframe.grid(column=0, row=self.row, **self.paddings)
         self.playerframe.configure(font=self.labelfont)
 
         self.playerhand = PlayerHand(
-            f"Player: {playermoniker}", row=self.row, frame=self.playerframe
+            f"Player: {playername}", row=self.row, frame=self.playerframe
         )
         io.echo(f"--> self.playerhand={self.playerhand!r}", level="debug")
 
@@ -115,6 +114,10 @@ class App(tk.Tk):
         self.playerhand.add(self.shoe.draw(), facedown=False)  # lib.Card("4S"))
         self.dealerhand.add(self.shoe.draw(), facedown=True)  # lib.Card("4S"))
 
+    #        self.playerhand.show()
+    #        for card in self.playerhand.cards:
+    #            print(f"card={card!r}")
+    #
     def actions(self):
         self.actionframe = tk.LabelFrame(self, borderwidth=2, text="player actions")
         self.actionframe.grid(
@@ -139,30 +142,27 @@ class App(tk.Tk):
         self.hitbutton.configure(state=tk.DISABLED)
         self.dealerhand.cards[1].facedown = False
         self.dealerhand.refresh()
+
         return
 
     def hit(self):
-        # count non-blank cards, and if the total is 5, automatic win
-        nonblankcount = 0
-        totalpoints = 0
-        for card in self.playerhand.cards:
-            if card.blank is False:
-                nonblankcount += 1
-                totalpoints += card.value()
+        #        if len(self.cards) == 5:
+        #            io.echo("Automagic win, 5 cards without a bust!")
+        #            return "WIN"
 
-        if totalpoints >= 21:
-            io.echo("player loss: bust")
-            self.playerhand.status = "bust"
-            return
-
-        if nonblankcount == 5:
-            io.echo("player wins: 5 cards without a bust")
-            self.playerhand.status = "win"
-            return
+        #        if self.check() == "OK"
 
         io.echo("hit me!")
         card = self.shoe.draw()
+        # card.tklabel = tk.Label(self.playerframe, image=self.playerart[index], **self.paddings)
+        # card.tklabel.pack(side=tk.LEFT) # grid(column=index, row=0)
+
         self.playerhand.add(card)
+        #        for i in range(0, 5):
+        #            self.image = self.cards[i].getart()
+        #            self.tklabels[i].configure(image=self.image)
+        #            self.tklabels[i].pack()
+        #            self.images.append(self.image)
         return "OK"
 
 

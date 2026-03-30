@@ -4,8 +4,7 @@ import tkinter as tk
 import tkinter.font as tkf
 import ttk
 
-import ttyio5 as ttyio
-import bbsengine5 as bbsengine
+from bbsengine6 import io, database, member
 
 
 class App(tk.Tk):
@@ -14,12 +13,12 @@ class App(tk.Tk):
 
         self.args = args
 
-        playername = bbsengine.getmembername(self.args)
-        if playername is None:
-            ttyio.echo("You do not exist! Go away!", level="error")
+        currentmember = member.getcurrent(self.args)
+        if currentmember is None:
+            io.echo("You do not exist! Go away!", level="error")
             return
 
-        self.sysop = False  # bbsengine.checksysop(args)
+        self.sysop = False  # member.checkflag(args, "sysop")
 
         self.bind("<Escape>", lambda e: self.quit())
         self.title("Blackjack")
@@ -86,7 +85,14 @@ def buildargs(args=None, **kw):
     parser.add_argument("--verbose", action="store_true", dest="verbose")
     parser.add_argument("--debug", action="store_true", dest="debug")
 
-    bbsengine.buildargdatabasegroup(parser)
+    defaults = {
+        "databasename": "zoid6",
+        "databasehost": "localhost",
+        "databaseuser": None,
+        "databaseport": 5432,
+        "databasepassword": None,
+    }
+    database.buildargs(parser, defaults)
 
     return parser
 
