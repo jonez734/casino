@@ -2,7 +2,7 @@ import argparse
 
 import tkinter as tk
 import tkinter.font as tkf
-import ttk
+from tkinter import ttk
 
 from bbsengine6 import io, database, member
 
@@ -38,6 +38,7 @@ class App(tk.Tk):
         self.configure(background="#009000")
 
         self.row = 0
+        self.tkfields = []
         self.fields = {
             "casinoid": {
                 "type": "combobox",
@@ -69,7 +70,7 @@ class App(tk.Tk):
         }
 
         for n, v in self.fields.items():
-            self.tkfields.append(tk.Label(self, n))
+            self.tkfields.append(tk.Label(self, text=n))
 
 
 def init(args, **kw):

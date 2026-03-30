@@ -1,5 +1,8 @@
 # casino
 
+## Python 2 → Python 3 Migration Notes
+- Python 2 had `ttk` as a separate package (`import ttk`). Python 3 ships `ttk` as part of tkinter (`from tkinter import ttk`). This matters when migrating code or creating dependency lists.
+
 ## blackjack
 - account for players standing, still give dealer a chance to draw cards and win
 - blackjack should not keep drawing cards to bust the player or the dealer
@@ -13,6 +16,7 @@
   * https://www.quora.com/What-is-a-push-in-blackjack
 - [ ] handle "split" of a pair-- player now plays two hands at the same time
 - [ ] double down
+- [ ] https://stackoverflow.com/questions/11068872/pil-imagetk-equivalent-in-python-3-x @since 20221117
 
 ## poker
 - https://bicyclecards.com/how-to-play/basics-of-poker/
@@ -135,3 +139,28 @@ Under traditional rules, a natural blackjack (the player draws an ace and a ten-
 https://www.google.com/url?sa=t&rct=j&q=&esrc=s&source=web&cd=&cad=rja&uact=8&ved=2ahUKEwiAx-Xaxsz5AhVqmmoFHXYNATMQFnoECBUQAw&url=https%3A%2F%2Fwww.forbes.com%2Fsites%2Fdavidschwartz%2F2018%2F07%2F16%2Fblackjacks-rise-and-fall-shows-what-drives-customers-away%2F&usg=AOvVaw0sUpI0_IDl6oScfj9Q2nE_
 https://www.google.com/search?client=firefox-b-1-d&q=what+is+a+draw+in+blackjack
 https://www.google.com/search?client=firefox-b-1-d&q=calculate+probabilty+of+winning+blackjack+hand
+
+- there is no card w value one other than an ace @since 20221112 @ty chuck
+
+- if player splits aces, they only get one card on each ace, they cannot hit
+  again. only with aces. if it is anything other than aces, player can keep hitting.
+- always bet same amount on both side of split
+- dealer does not bet
+- some tables have a rule that says dealer must hit on soft 17 (A+6)
+- if player has blackjack, dealer stops playing, redeal
+- if player gets blackjack, dealer has 2 cards, player has 2 cards, dealer does not have blackjack, payout is 1.5x
+
+- if player gets 5 cards without a bust, player wins
+
+- https://opengameart.org/content/playing-cards-vector-png
+- https://techvidvan.com/tutorials/python-image-viewer/
+- [ ] find a way to resize() png files which represent card faces (@since 20221121)
+- https://www.geeksforgeeks.org/how-to-set-font-for-text-in-tkinter/ (@since 20221124)
+
+- https://stackoverflow.com/questions/52875751/is-their-a-grid-remember-reversible-grid-forget
+- https://www.geeksforgeeks.org/python-forget_pack-and-forget_grid-method-in-tkinter/
+- https://www.google.com/search?client=firefox-b-1-d&q=what+is+the+C+FILE+structure
+- https://www.geeksforgeeks.org/python-pack-method-in-tkinter/
+- (https://youtu.be/bi42B7RW_wI)[Using Structs and Classes with Python Ctypes]
+- https://edge.twinspires.com/blackjack-terms-explained-blackjack-glossary-and-terminology/
+- (https://youtu.be/gBS2pYAGUgA)[Build A Blackjack Card Game - Python Tkinter GUI Tutorial 208]
