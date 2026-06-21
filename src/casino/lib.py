@@ -1,5 +1,9 @@
+from __future__ import annotations
+
 import argparse
 import random
+from argparse import Namespace
+from typing import Any
 
 # import ttyio5 as ttyio
 # import bbsengine5 as bbsengine
@@ -433,6 +437,51 @@ class Seat:
         pass
 
 
+_current_args = None
+_current_player = None
+_casino_fragments = []
+
+
+def _casino_player_fragment(**kwargs) -> str:
+    if _current_player is None:
+        return ""
+    return f"{_current_player.moniker}"
+
+
+def _casino_credits_fragment(**kwargs) -> str:
+    if _current_player is None:
+        return ""
+    return util.pluralize(_current_player.credits, "credit", "credits")
+
+
+def _register_casino_fragments() -> None:
+    for fn in (_casino_player_fragment, _casino_credits_fragment):
+        if fn not in _casino_fragments:
+            screen.register_bottombar_fragment(fn)
+            _casino_fragments.append(fn)
+
+
+def _unregister_casino_fragments() -> None:
+    for fn in _casino_fragments:
+        screen.unregister_bottombar_fragment(fn)
+    _casino_fragments.clear()
+
+
+def setbottombar(args, buf, **kwargs) -> None:
+    global _current_args, _current_player
+    _current_args = args
+    _current_player = kwargs.get("player", _current_player)
+    screen_kwargs = {}
+    if args is not None:
+        screen_kwargs["args"] = args
+    pool = kwargs.get("pool", None)
+    if pool is not None:
+        screen_kwargs["pool"] = pool
+    screen.setbottombar(buf, **screen_kwargs)
+    _register_casino_fragments()
+    return
+
+
 # @since 20220815
 def setarea(args, left, player=None):
     def right():
@@ -465,7 +514,23 @@ class Player(object):
         return
 
 
-def buildargs(args=None, **kw):
+class CasinoPlayer:
+    def __init__(self, args, membermoniker=None, pool=None):
+        self.args = args
+        self.pool = pool
+        self.moniker = membermoniker
+        self.credits = 1000
+        self.stats = {}
+        self._load()
+
+    def _load(self):
+        pass
+
+    def save(self):
+        pass
+
+
+def buildargs(args: Namespace | None = None, **kw: Any) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser("skel")
     parser.add_argument("--verbose", action="store_true", dest="verbose")
     parser.add_argument("--debug", action="store_true", dest="debug")
@@ -482,6 +547,6 @@ def buildargs(args=None, **kw):
     return parser
 
 
-def runmodule(args, modulename, **kw):
+def runmodule(args: Namespace | None, modulename: str, **kw: Any) -> Any:
     io.echo(f"{args=} {modulename=}", level="debug")
     return module.runmodule(args, f"casino.{modulename}", **kw)

@@ -1,27 +1,38 @@
+from __future__ import annotations
+
+import argparse
 import time
 import locale
+from argparse import Namespace
 
 from bbsengine6 import io, screen, session, database
 from . import lib
 
-parser = lib.buildargs()
-args = parser.parse_args() if parser is not None else None
 
-with database.getpool(args, dbname=args.databasename) as pool:
-    session.start(args, pool=pool)
+def main() -> None:
+    parser: argparse.ArgumentParser | None = lib.buildargs()
+    args: Namespace | None = parser.parse_args() if parser is not None else None
 
-screen.init()
+    if args is not None:
+        with database.getpool(args, dbname=args.databasename) as pool:
+            session.start(args, pool=pool)
 
-locale.setlocale(locale.LC_ALL, "")
-time.tzset()
+    screen.init()
 
-try:
-    lib.runmodule(args, "main")
-except KeyboardInterrupt:
-    io.echo("{/all}{bold}INTR{bold}")
-except EOFError:
-    io.echo("{/all}{bold}EOF{/bold}")
-finally:
-    io.echo(
-        f"{{savecursor}}{{curpos:{io.terminal.height()},0}}{{el}}{{reset}}{{restorecursor}}"
-    )
+    locale.setlocale(locale.LC_ALL, "")
+    time.tzset()
+
+    try:
+        lib.runmodule(args, "main")
+    except KeyboardInterrupt:
+        io.echo("{/all}{bold}INTR{bold}")
+    except EOFError:
+        io.echo("{/all}{bold}EOF{/bold}")
+    finally:
+        io.echo(
+            f"{{savecursor}}{{curpos:{io.terminal.height()},0}}{{el}}{{reset}}{{restorecursor}}"
+        )
+
+
+if __name__ == "__main__":
+    main()
