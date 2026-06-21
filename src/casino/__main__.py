@@ -1,13 +1,14 @@
 import time
 import locale
 
-from bbsengine6 import io, screen, session
+from bbsengine6 import io, screen, session, database
 from . import lib
 
 parser = lib.buildargs()
 args = parser.parse_args() if parser is not None else None
 
-session.start(args)
+with database.getpool(args, dbname=args.databasename) as pool:
+    session.start(args, pool=pool)
 
 screen.init()
 
