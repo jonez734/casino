@@ -490,7 +490,7 @@ def setarea(args: Namespace, left: str, player: Any = None) -> None:
             rightbuf += " | debug"
         return rightbuf
 
-    # screen.setarea(left, right)  # Not available in bbsengine6
+    io.screen.setbottombar(left, right)
 
 
 class Player(object):
