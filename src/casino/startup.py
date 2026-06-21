@@ -69,8 +69,21 @@ def main(args, **kwargs):
                 io.echo(" ok ", level="ok")
 
             classlist: tuple[tuple[str, str], ...] = (
-                ("casino.table", "table.sql"),
-                ("casino.hand", "hand.sql"),
+                ("casino.__player", "player.sql"),
+                ("casino.player", "player_view.sql"),
+                ("casino.__table", "table.sql"),
+                ("casino.table", "table_view.sql"),
+                ("casino.__game", "game.sql"),
+                ("casino.mapgameplayer", "mapgameplayer.sql"),
+                ("casino.game", "game_view.sql"),
+                ("casino.__account", "account.sql"),
+                ("casino.account", "account_view.sql"),
+                ("casino.__betlog", "betlog.sql"),
+                ("casino.betlog", "betlog_view.sql"),
+                ("casino.__log", "log.sql"),
+                ("casino.log", "log_view.sql"),
+                ("casino.__hand", "hand.sql"),
+                ("casino.hand", "hand_view.sql"),
             )
 
             failcount = 0
