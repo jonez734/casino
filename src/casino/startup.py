@@ -46,6 +46,57 @@ def main(args, **kwargs):
 
     with database.getpool(args, dbname=args.databasename) as pool:
         with database.connect(args, pool=pool) as conn:
+            # --- ensure bank schema exists (dependency) ---
+            io.echo("schema {var:valuecolor}bank{var:labelcolor}: ", end="")
+            if database.schemaexists(args, "bank", conn=conn) is False:
+                io.echo("create ", end="")
+                if database.createschema(args, "bank", conn=conn) is False:
+                    io.echo("fail", level="error")
+                    return False
+            io.echo(" ok ", level="ok")
+
+            # --- bank schema privs ---
+            for r in ("web", "term", "sysop"):
+                if (
+                    database.manage_schema_priv(
+                        args, "grant", "usage", "bank", r, conn=conn, **kwargs
+                    )
+                    is False
+                ):
+                    io.echo("fail", level="error")
+                    return False
+                else:
+                    io.echo(" ok ", level="ok")
+
+            failcount = 0
+
+            # --- bank classes ---
+            bank_classes = (
+                ("bank.__account", "bank.sql"),
+                ("bank.account", "bank.sql"),
+                ("bank.__transaction", "bank.sql"),
+                ("bank.transaction", "bank.sql"),
+                ("bank.__transfer", "bank.sql"),
+                ("bank.transfer", "bank.sql"),
+            )
+            for c, sql in bank_classes:
+                io.echo(
+                    f"{{var:labelcolor}}class {{var:valuecolor}}{c}{{var:labelcolor}}: ",
+                    end="",
+                )
+                if database.classexists(args, c, conn=conn) is False:
+                    io.echo("import ", end="")
+                    if (
+                        database.importsql(args, sql, conn=conn, package="bbsengine6.sql")
+                        is False
+                    ):
+                        failcount += 1
+                        io.echo("fail", level="error")
+                    else:
+                        io.echo(" ok ", level="ok")
+                else:
+                    io.echo("ok", level="ok")
+
             io.echo("schema {var:valuecolor}casino{var:labelcolor}: ", end="")
             if database.schemaexists(args, "casino", conn=conn) is False:
                 io.echo("create ", end="")
@@ -73,6 +124,7 @@ def main(args, **kwargs):
                 ("casino.player", "player_view.sql"),
                 ("casino.__table", "table.sql"),
                 ("casino.table", "table_view.sql"),
+                ("casino.map_cardtable_player", "table_map.sql"),
                 ("casino.__game", "game.sql"),
                 ("casino.mapgameplayer", "mapgameplayer.sql"),
                 ("casino.game", "game_view.sql"),
@@ -86,7 +138,6 @@ def main(args, **kwargs):
                 ("casino.hand", "hand_view.sql"),
             )
 
-            failcount = 0
             for c, sql in classlist:
                 io.echo(
                     f"{{var:labelcolor}}class {{var:valuecolor}}{c}{{var:labelcolor}}: ",

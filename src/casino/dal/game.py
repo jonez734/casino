@@ -7,20 +7,20 @@ from bbsengine6 import database
 from bbsengine6.database import Jsonb
 
 
-def create_game(args: Any, table_id: int, game_type: str) -> Dict[str, Any]:
+def create_game(args: Any, table_moniker: str, game_type: str) -> Dict[str, Any]:
     """Create a new game instance at a table."""
     with database.connect(args) as conn:
         with database.cursor(conn) as cur:
             cur.execute(
-                """INSERT INTO casino.__game (casinoid, kind, status, datestarted)
-                   VALUES (%s, %s, 'waiting', NOW())
-                   RETURNING id, casinoid, kind, status, datestarted, dateended""",
-                (table_id, game_type),
+                database.query(
+                    "INSERT INTO $casino.__game (tablemoniker, kind, status, datestarted) VALUES (:table_moniker, :kind, 'waiting', NOW()) RETURNING id, tablemoniker, kind, status, datestarted, dateended",
+                    table_moniker=table_moniker, kind=game_type
+                )
             )
             row = cur.fetchone()
             return {
                 "id": row["id"],
-                "casinoid": row["casinoid"],
+                "tablemoniker": row["tablemoniker"],
                 "kind": row["kind"],
                 "status": row["status"],
                 "datestarted": row["datestarted"],
@@ -28,22 +28,44 @@ def create_game(args: Any, table_id: int, game_type: str) -> Dict[str, Any]:
             }
 
 
-def get_active_game(args: Any, table_id: int) -> Optional[Dict[str, Any]]:
+def get_active_game(args: Any, table_moniker: str) -> Optional[Dict[str, Any]]:
     """Get the active game at a table."""
     with database.connect(args) as conn:
         with database.cursor(conn) as cur:
             cur.execute(
-                """SELECT id, casinoid, kind, status, datestarted, dateended
-                   FROM casino.__game 
-                   WHERE casinoid = %s AND status NOT IN ('settled', 'cancelled')
-                   ORDER BY datestarted DESC LIMIT 1""",
-                (table_id,),
+                database.query(
+                    "SELECT id, tablemoniker, kind, status, datestarted, dateended FROM $casino.__game WHERE tablemoniker = :table_moniker AND status NOT IN ('settled', 'cancelled') ORDER BY datestarted DESC LIMIT 1",
+                    table_moniker=table_moniker
+                )
             )
             row = cur.fetchone()
             if row:
                 return {
                     "id": row["id"],
-                    "casinoid": row["casinoid"],
+                    "tablemoniker": row["tablemoniker"],
+                    "kind": row["kind"],
+                    "status": row["status"],
+                    "datestarted": row["datestarted"],
+                    "dateended": row["dateended"],
+                }
+            return None
+
+
+def get_current_game(args: Any, table_moniker: str) -> Optional[Dict[str, Any]]:
+    """Get the most recent game at a table (including settled games)."""
+    with database.connect(args) as conn:
+        with database.cursor(conn) as cur:
+            cur.execute(
+                database.query(
+                    "SELECT id, tablemoniker, kind, status, datestarted, dateended FROM $casino.__game WHERE tablemoniker = :table_moniker ORDER BY datestarted DESC LIMIT 1",
+                    table_moniker=table_moniker
+                )
+            )
+            row = cur.fetchone()
+            if row:
+                return {
+                    "id": row["id"],
+                    "tablemoniker": row["tablemoniker"],
                     "kind": row["kind"],
                     "status": row["status"],
                     "datestarted": row["datestarted"],
@@ -58,13 +80,17 @@ def update_game_status(args: Any, game_id: int, status: str) -> None:
         with database.cursor(conn) as cur:
             if status in ("settled", "cancelled"):
                 cur.execute(
-                    "UPDATE casino.__game SET status = %s, dateended = NOW() WHERE id = %s",
-                    (status, game_id),
+                    database.query(
+                        "UPDATE $casino.__game SET status = :status, dateended = NOW() WHERE id = :game_id",
+                        status=status, game_id=game_id
+                    )
                 )
             else:
                 cur.execute(
-                    "UPDATE casino.__game SET status = %s WHERE id = %s",
-                    (status, game_id),
+                    database.query(
+                        "UPDATE $casino.__game SET status = :status WHERE id = :game_id",
+                        status=status, game_id=game_id
+                    )
                 )
 
 
@@ -73,8 +99,10 @@ def get_game_hands(args: Any, game_id: int) -> List[Dict[str, Any]]:
     with database.connect(args) as conn:
         with database.cursor(conn) as cur:
             cur.execute(
-                "SELECT id, gameid, playermoniker, cards, attrs FROM casino.__hand WHERE gameid = %s ORDER BY id",
-                (game_id,),
+                database.query(
+                    "SELECT id, gameid, playermoniker, cards, attrs FROM $casino.__hand WHERE gameid = :game_id ORDER BY id",
+                    game_id=game_id
+                )
             )
             hands = []
             for row in cur:
@@ -95,10 +123,10 @@ def create_hand(args: Any, game_id: int, player_moniker: str) -> Dict[str, Any]:
     with database.connect(args) as conn:
         with database.cursor(conn) as cur:
             cur.execute(
-                """INSERT INTO casino.__hand (gameid, playermoniker, cards, attrs)
-                   VALUES (%s, %s, %s, %s)
-                   RETURNING id, gameid, playermoniker, cards, attrs""",
-                (game_id, player_moniker, [], Jsonb({})),
+                database.query(
+                    "INSERT INTO $casino.__hand (gameid, playermoniker, cards, attrs) VALUES (:game_id, :player_moniker, :cards, :attrs) RETURNING id, gameid, playermoniker, cards, attrs",
+                    game_id=game_id, player_moniker=player_moniker, cards=[], attrs=Jsonb({})
+                )
             )
             row = cur.fetchone()
             return {
@@ -115,8 +143,22 @@ def update_hand_cards(args: Any, hand_id: int, cards: List[str]) -> None:
     with database.connect(args) as conn:
         with database.cursor(conn) as cur:
             cur.execute(
-                "UPDATE casino.__hand SET cards = %s WHERE id = %s",
-                (Jsonb(cards), hand_id),
+                database.query(
+                    "UPDATE $casino.__hand SET cards = :cards WHERE id = :hand_id",
+                    cards=Jsonb(cards), hand_id=hand_id
+                )
+            )
+
+
+def update_hand_status(args: Any, hand_id: int, status: str) -> None:
+    """Update hand status (e.g., 'bust', 'won', 'lost')."""
+    with database.connect(args) as conn:
+        with database.cursor(conn) as cur:
+            cur.execute(
+                database.query(
+                    "UPDATE $casino.__hand SET attrs = attrs || :status WHERE id = :hand_id",
+                    status=Jsonb({"status": status}), hand_id=hand_id
+                )
             )
 
 
@@ -125,8 +167,10 @@ def get_hand(args: Any, hand_id: int) -> Optional[Dict[str, Any]]:
     with database.connect(args) as conn:
         with database.cursor(conn) as cur:
             cur.execute(
-                "SELECT id, gameid, playermoniker, cards, attrs FROM casino.__hand WHERE id = %s",
-                (hand_id,),
+                database.query(
+                    "SELECT id, gameid, playermoniker, cards, attrs FROM $casino.__hand WHERE id = :hand_id",
+                    hand_id=hand_id
+                )
             )
             row = cur.fetchone()
             if row:
@@ -147,8 +191,10 @@ def get_player_hand(
     with database.connect(args) as conn:
         with database.cursor(conn) as cur:
             cur.execute(
-                "SELECT id, gameid, playermoniker, cards, attrs FROM casino.__hand WHERE gameid = %s AND playermoniker = %s",
-                (game_id, player_moniker),
+                database.query(
+                    "SELECT id, gameid, playermoniker, cards, attrs FROM $casino.__hand WHERE gameid = :game_id AND playermoniker = :player_moniker",
+                    game_id=game_id, player_moniker=player_moniker
+                )
             )
             row = cur.fetchone()
             if row:
@@ -170,8 +216,10 @@ def get_dealer_hand(args: Any, game_id: int) -> Optional[Dict[str, Any]]:
     with database.connect(args) as conn:
         with database.cursor(conn) as cur:
             cur.execute(
-                "SELECT id, gameid, playermoniker, cards, attrs FROM casino.__hand WHERE gameid = %s AND playermoniker = %s",
-                (game_id, DEALER_MONIKER),
+                database.query(
+                    "SELECT id, gameid, playermoniker, cards, attrs FROM $casino.__hand WHERE gameid = :game_id AND playermoniker = :dealer_moniker",
+                    game_id=game_id, dealer_moniker=DEALER_MONIKER
+                )
             )
             row = cur.fetchone()
             if row:
@@ -190,10 +238,10 @@ def create_dealer_hand(args: Any, game_id: int) -> Dict[str, Any]:
     with database.connect(args) as conn:
         with database.cursor(conn) as cur:
             cur.execute(
-                """INSERT INTO casino.__hand (gameid, playermoniker, cards, attrs)
-                   VALUES (%s, %s, %s, %s)
-                   RETURNING id, gameid, playermoniker, cards, attrs""",
-                (game_id, DEALER_MONIKER, [], Jsonb({"is_dealer": True})),
+                database.query(
+                    "INSERT INTO $casino.__hand (gameid, playermoniker, cards, attrs) VALUES (:game_id, :dealer_moniker, :cards, :attrs) RETURNING id, gameid, playermoniker, cards, attrs",
+                    game_id=game_id, dealer_moniker=DEALER_MONIKER, cards=[], attrs=Jsonb({"is_dealer": True})
+                )
             )
             row = cur.fetchone()
             return {
@@ -210,8 +258,10 @@ def update_dealer_hand_cards(args: Any, game_id: int, cards: List[str]) -> None:
     with database.connect(args) as conn:
         with database.cursor(conn) as cur:
             cur.execute(
-                "UPDATE casino.__hand SET cards = %s WHERE gameid = %s AND playermoniker = %s",
-                (Jsonb(cards), game_id, DEALER_MONIKER),
+                database.query(
+                    "UPDATE $casino.__hand SET cards = :cards WHERE gameid = :game_id AND playermoniker = :dealer_moniker",
+                    cards=Jsonb(cards), game_id=game_id, dealer_moniker=DEALER_MONIKER
+                )
             )
 
 
