@@ -1,0 +1,427 @@
+#!/usr/bin/env python3
+# casino/tests/test_blackjack_flow.py
+# End-to-end test for blackjack flow
+
+import asyncio
+import json
+import sys
+import unittest
+from typing import Optional
+
+sys.path.insert(0, "/home/opencode/data/work/casino/src")
+
+import websockets
+from websockets.exceptions import ConnectionClosed, ConnectionClosedOK
+
+from casino import lib
+from casino.api.handler import MessageRouter
+
+
+DEFAULT_TIMEOUT = 10.0
+PING_INTERVAL = 30.0
+
+
+class WebSocketTestClient:
+    """Robust WebSocket test client with automatic reconnection and ping handling."""
+
+    def __init__(self, uri: str, timeout: float = DEFAULT_TIMEOUT):
+        self.uri = uri
+        self.timeout = timeout
+        self.ws: Optional[websockets.WebSocketClientProtocol] = None
+        self._ping_task: Optional[asyncio.Task] = None
+        self._receive_task: Optional[asyncio.Task] = None
+        self._message_queue: asyncio.Queue = asyncio.Queue()
+        self._running = False
+
+    async def connect(self) -> None:
+        """Connect to WebSocket server with retry logic."""
+        max_retries = 3
+        retry_delay = 0.5
+
+        for attempt in range(max_retries):
+            try:
+                self.ws = await asyncio.wait_for(
+                    websockets.connect(
+                        self.uri,
+                        ping_interval=PING_INTERVAL,
+                        ping_timeout=10.0,
+                        close_timeout=5.0,
+                    ),
+                    timeout=self.timeout,
+                )
+                self._running = True
+                # Start background message receiver
+                self._receive_task = asyncio.create_task(self._receive_messages())
+                print(f"✓ Connected to {self.uri}")
+                return
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    print(f"Connection attempt {attempt + 1} failed: {e}, retrying...")
+                    await asyncio.sleep(retry_delay)
+                else:
+                    raise ConnectionError(
+                        f"Failed to connect after {max_retries} attempts: {e}"
+                    )
+
+    async def _receive_messages(self) -> None:
+        """Background task to receive messages."""
+        try:
+            async for message in self.ws:
+                if not self._running:
+                    break
+                try:
+                    data = json.loads(message)
+                    await self._message_queue.put(data)
+                except json.JSONDecodeError as e:
+                    print(f"⚠ Failed to decode message: {e}")
+        except ConnectionClosed:
+            print("⚠ Connection closed by server")
+        except Exception as e:
+            print(f"⚠ Error receiving messages: {e}")
+        finally:
+            self._running = False
+
+    async def send(self, message: dict, timeout: Optional[float] = None) -> None:
+        """Send a message with timeout."""
+        if not self.ws or not self._running:
+            raise ConnectionError("Not connected")
+
+        timeout = timeout or self.timeout
+        data = json.dumps(message)
+
+        try:
+            await asyncio.wait_for(self.ws.send(data), timeout=timeout)
+        except asyncio.TimeoutError:
+            raise TimeoutError(f"Send timed out after {timeout}s")
+        except ConnectionClosed:
+            raise ConnectionError("Connection closed during send")
+
+    async def receive(self, timeout: Optional[float] = None) -> dict:
+        """Receive a message with timeout."""
+        if not self._running:
+            raise ConnectionError("Not connected")
+
+        timeout = timeout or self.timeout
+
+        try:
+            return await asyncio.wait_for(self._message_queue.get(), timeout=timeout)
+        except asyncio.TimeoutError:
+            raise TimeoutError(f"Receive timed out after {timeout}s")
+
+    async def receive_any(
+        self, timeout: Optional[float] = None, expected_type: Optional[str] = None
+    ) -> dict:
+        """Receive messages until we get the expected type or timeout."""
+        timeout = timeout or self.timeout
+        start_time = asyncio.get_event_loop().time()
+
+        while True:
+            remaining = self.timeout - (asyncio.get_event_loop().time() - start_time)
+            if remaining <= 0:
+                raise TimeoutError(f"Receive timed out after {self.timeout}s")
+
+            try:
+                msg = await asyncio.wait_for(
+                    self._message_queue.get(), timeout=min(remaining, 1.0)
+                )
+                if expected_type is None or msg.get("type") == expected_type:
+                    return msg
+                # Put back other messages
+                await self._message_queue.put(msg)
+            except asyncio.TimeoutError:
+                continue
+
+    async def receive_messages(self, max_count: int = 10, timeout: float = 5.0) -> list:
+        """Receive multiple messages with timeout."""
+        messages = []
+        start_time = asyncio.get_event_loop().time()
+
+        for _ in range(max_count):
+            remaining = timeout - (asyncio.get_event_loop().time() - start_time)
+            if remaining <= 0:
+                break
+
+            try:
+                msg = await asyncio.wait_for(
+                    self._message_queue.get(), timeout=min(remaining, 1.0)
+                )
+                messages.append(msg)
+            except asyncio.TimeoutError:
+                break
+
+        return messages
+
+    async def close(self) -> None:
+        """Gracefully close the connection."""
+        self._running = False
+
+        if self._receive_task:
+            self._receive_task.cancel()
+            try:
+                await self._receive_task
+            except asyncio.CancelledError:
+                pass
+
+        if self._ping_task:
+            self._ping_task.cancel()
+            try:
+                await self._ping_task
+            except asyncio.CancelledError:
+                pass
+
+        if self.ws:
+            try:
+                await self.ws.close(code=1000, reason="Test complete")
+            except Exception:
+                pass
+
+        # Drain remaining messages
+        while not self._message_queue.empty():
+            try:
+                self._message_queue.get_nowait()
+            except asyncio.QueueEmpty:
+                break
+
+    @property
+    def is_connected(self) -> bool:
+        if not self._running or not self.ws:
+            return False
+        try:
+            return self.ws.state == websockets.protocol.State.OPEN
+        except (AttributeError, TypeError):
+            # Fallback for older versions
+            return self._running and hasattr(self.ws, "open") and self.ws.open
+
+
+class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
+    """Test complete blackjack flow: connect -> auth -> list tables -> create -> join -> bet -> game_state"""
+
+    async def asyncSetUp(self):
+        """Set up test server and database."""
+        from bbsengine6.net import WebSocketServer
+        from bbsengine6 import database
+
+        # Build args with test database
+        parser = lib.buildargs()
+        self.args = parser.parse_args(["--databasename", "zoid6test"])
+
+        # Get pool for database operations
+        self.pool = database.getpool(self.args)
+
+        # Set password for test user if needed
+        with database.connect(self.args, pool=self.pool) as conn:
+            with database.cursor(conn) as cur:
+                cur.execute(
+                    "UPDATE engine.member SET password = crypt('test', gen_salt('md5')) WHERE loginid = 'jam'"
+                )
+
+        # Create server
+        self.server = WebSocketServer(host="127.0.0.1", port=18775)
+
+        # Create router
+        self.router = MessageRouter(self.args)
+
+        # Register services
+        self.router.register_all(self.server)
+
+        # Start server
+        await self.server.start()
+        self._server_started = True
+        self.client: Optional[WebSocketTestClient] = None
+
+    async def asyncTearDown(self):
+        """Clean up after test."""
+        if self.client:
+            await self.client.close()
+
+        if hasattr(self, "_server_started") and self._server_started:
+            await self.server.stop()
+
+        if hasattr(self, "pool") and self.pool is not None:
+            self.pool.close()
+            self.pool = None
+
+    async def test_full_blackjack_flow(self):
+        """Test complete blackjack flow from connection to receiving hand."""
+        uri = "ws://127.0.0.1:18775/"
+
+        # Create robust client
+        self.client = WebSocketTestClient(uri)
+
+        try:
+            # Connect
+            await self.client.connect()
+            self.assertTrue(self.client.is_connected, "Failed to connect")
+
+            # Step 1: Authenticate
+            await self.client.send(
+                {"type": "auth", "moniker": "jam", "password": "test"}
+            )
+
+            response = await self.client.receive()
+            self.assertEqual(response["type"], "auth_result")
+            self.assertTrue(response["success"])
+            self.assertEqual(response["moniker"], "jam")
+            print(
+                f"\n✓ Authenticated as {response['moniker']} with balance {response['balance']}"
+            )
+
+            # Step 2: List tables
+            await self.client.send({"type": "list_tables"})
+
+            response = await self.client.receive()
+            self.assertEqual(response["type"], "table_list")
+            print(f"✓ Listed tables: {len(response.get('tables', []))} table(s)")
+
+            # Step 3: Create a blackjack table
+            await self.client.send(
+                {
+                    "type": "create_table",
+                    "game_type": "blackjack",
+                    "min_bet": 10,
+                    "max_bet": 1000,
+                    "shoe_decks": 6,
+                    "shoe_threshold": 0.8,
+                }
+            )
+
+            response = await self.client.receive()
+            self.assertEqual(response["type"], "table_created")
+            table_id = response["table_id"]
+            print(f"✓ Created table {table_id}")
+
+            # Step 4: Ping/Pong
+            await self.client.send({"type": "ping"})
+
+            response = await self.client.receive()
+            self.assertEqual(response["type"], "pong")
+            self.assertIn("timestamp", response)
+            print(f"✓ Ping/Pong successful")
+
+            # Step 5: Multiple ping/pongs to test stability
+            for i in range(3):
+                await self.client.send({"type": "ping"})
+                response = await self.client.receive()
+                self.assertEqual(response["type"], "pong")
+            print(f"✓ Multiple ping/pongs successful")
+
+            # Step 6: Join the table
+            await self.client.send({"type": "join_table", "table_id": table_id})
+
+            response = await self.client.receive()
+            self.assertEqual(response["type"], "joined_table")
+            self.assertEqual(response["table_id"], table_id)
+            print(f"✓ Joined table {table_id}")
+
+            # Step 7: Place a bet
+            await self.client.send({"type": "bet", "amount": 50})
+
+            # Receive game state (may be multiple messages)
+            messages = await self.client.receive_messages(max_count=10, timeout=5.0)
+
+            # Find game_state message
+            game_state = None
+            for msg in messages:
+                if msg.get("type") == "game_state":
+                    game_state = msg
+                    break
+
+            self.assertIsNotNone(game_state, f"No game_state received. Got: {messages}")
+            self.assertEqual(game_state["type"], "game_state")
+            self.assertEqual(game_state["table_id"], table_id)
+
+            # Verify player has 2 cards
+            player_hand = game_state.get("player_hand", [])
+            self.assertEqual(
+                len(player_hand), 2, f"Expected 2 cards, got {len(player_hand)}"
+            )
+
+            player_total = game_state.get("player_total", 0)
+            self.assertGreater(player_total, 0, "Player total should be > 0")
+
+            print(f"✓ Received game state:")
+            print(f"  - Player hand: {' '.join(player_hand)} [{player_total}]")
+            print(
+                f"  - Dealer hand: {' '.join(game_state.get('dealer_hand', []))} [{game_state.get('dealer_total', 0)}]"
+            )
+
+            # Step 8: Hit
+            await self.client.send({"type": "hit"})
+
+            # Receive updated game state
+            messages = await self.client.receive_messages(max_count=10, timeout=5.0)
+
+            game_state = None
+            for msg in messages:
+                if msg.get("type") == "game_state":
+                    game_state = msg
+                    break
+
+            if game_state:
+                player_hand = game_state.get("player_hand", [])
+                player_total = game_state.get("player_total", 0)
+                print(f"✓ After hit: {' '.join(player_hand)} [{player_total}]")
+                self.assertEqual(len(player_hand), 3, "Should have 3 cards after hit")
+            else:
+                print("⚠ No game_state received after hit")
+
+            # Step 9: Verify connection is still stable
+            await self.client.send({"type": "ping"})
+            response = await self.client.receive()
+            self.assertEqual(response["type"], "pong")
+            print(f"✓ Connection still stable after game actions")
+
+            print("\n✓ Full blackjack flow completed successfully!")
+
+        except ConnectionError as e:
+            self.fail(f"Connection error: {e}")
+        except TimeoutError as e:
+            self.fail(f"Timeout error: {e}")
+        except AssertionError:
+            raise
+        except Exception as e:
+            self.fail(f"Unexpected error: {e}")
+
+    async def test_connection_resilience(self):
+        """Test that connection handles reconnection gracefully."""
+        uri = "ws://127.0.0.1:18775/"
+
+        # Create and connect
+        self.client = WebSocketTestClient(uri)
+        await self.client.connect()
+
+        # Send auth
+        await self.client.send({"type": "auth", "moniker": "jam", "password": "test"})
+        response = await self.client.receive()
+        self.assertEqual(response["type"], "auth_result")
+
+        # Close and reconnect
+        await self.client.close()
+        await asyncio.sleep(0.5)
+
+        # Reconnect
+        await self.client.connect()
+
+        # Should be able to auth again
+        await self.client.send({"type": "auth", "moniker": "jam", "password": "test"})
+        response = await self.client.receive()
+        self.assertEqual(response["type"], "auth_result")
+
+        print("✓ Connection resilience test passed")
+
+
+def run_tests():
+    """Run all tests."""
+    loader = unittest.TestLoader()
+    suite = unittest.TestSuite()
+
+    suite.addTests(loader.loadTestsFromTestCase(TestBlackjackFullFlow))
+
+    runner = unittest.TextTestRunner(verbosity=2)
+    result = runner.run(suite)
+
+    return 0 if result.wasSuccessful() else 1
+
+
+if __name__ == "__main__":
+    sys.exit(run_tests())

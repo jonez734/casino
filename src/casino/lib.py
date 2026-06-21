@@ -175,11 +175,15 @@ class Hand(object):
 
         io.echo(f" [{self.calcvalue()}]", level="debug")
 
-    def hit(self):
-        pass
+    def hit(self, shoe):
+        """Draw a card from shoe and add to hand."""
+        card = shoe.draw()
+        self.add(card)
+        return card
 
     def stand(self):
-        pass
+        """Mark hand as standing."""
+        self.standing = True
 
     def refresh(self):
         pass
