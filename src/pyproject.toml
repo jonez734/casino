@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "casino"
+dynamic = ["version"]
+description = "Casino games for bbsengine6"
+readme = "README.md"
+requires-python = ">=3.9,<3.13"
+license = "GPL-2.0-or-later"
+authors = [
+    { name = "zoidtechnologies.com", email = "casino@projects.zoidtechnologies.com" },
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "Operating System :: POSIX",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Communications :: BBS",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Terminals",
+]
+dependencies = [
+    "bbsengine6",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "ruff",
+]
+
+[project.scripts]
+casino = "casino.__main__:main"
+
+[project.urls]
+Homepage = "https://github.com/jonez734/casino"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["casino*"]
+
+[tool.setuptools.dynamic]
+version = { attr = "casino._version.__version__" }

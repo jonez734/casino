@@ -4,19 +4,31 @@ import bbsengine5 as bbsengine
 selected = {}
 dice = []
 
+
 def show(dice):
-    for x in range(0,5):
+    for x in range(0, 5):
         value = dice[x]
         if x in selected:
             ttyio.echo("{gray}", end="")
         else:
             ttyio.echo("{/all}", end="")
-        ttyio.echo("{acs:ulcorner}{acs:hline:3}{acs:urcorner} {cursordown:1}{cursorleft:6}", end="")
-        ttyio.echo("{acs:vline} %d {acs:vline} {cursorleft:6}{cursordown:1}" % (value), end="")
-#        ttyio.echo("{acs:llcorner}{acs:hline:3}{acs:lrcorner}{cursorright:2}{cursorup:2}", end="")
-        ttyio.echo("{acs:llcorner}{acs:hline:3}{acs:lrcorner} {cursordown:1}{cursorleft:6}", end="")
-        ttyio.echo("{reverse}  %d  {/reverse}{cursorup:3}{cursorright:2}" % (x+1), end="")
+        ttyio.echo(
+            "{acs:ulcorner}{acs:hline:3}{acs:urcorner} {cursordown:1}{cursorleft:6}",
+            end="",
+        )
+        ttyio.echo(
+            "{acs:vline} %d {acs:vline} {cursorleft:6}{cursordown:1}" % (value), end=""
+        )
+        #        ttyio.echo("{acs:llcorner}{acs:hline:3}{acs:lrcorner}{cursorright:2}{cursorup:2}", end="")
+        ttyio.echo(
+            "{acs:llcorner}{acs:hline:3}{acs:lrcorner} {cursordown:1}{cursorleft:6}",
+            end="",
+        )
+        ttyio.echo(
+            "{reverse}  %d  {/reverse}{cursorup:3}{cursorright:2}" % (x + 1), end=""
+        )
     ttyio.echo("{/all}{f6:4}", end="")
+
 
 def main():
     global selected
@@ -36,8 +48,8 @@ def main():
                 done = True
                 ttyio.echo("End Round")
                 break
-#            ttyio.echo("selected=%r" % (selected), level="debug", interpret=False)
-            h = ord(ch)-48-1 # 0 based
+            #            ttyio.echo("selected=%r" % (selected), level="debug", interpret=False)
+            h = ord(ch) - 48 - 1  # 0 based
             if h in selected:
                 del selected[h]
             else:
@@ -50,6 +62,7 @@ def main():
 
         round += 1
     ttyio.echo("{f6:3}")
+
 
 if __name__ == "__main__":
     try:

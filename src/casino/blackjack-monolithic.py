@@ -1,5 +1,4 @@
 import time
-import random
 import locale
 import argparse
 
@@ -11,6 +10,7 @@ from . import lib
 player = None
 dealer = None
 
+
 class BlackjackPlayer(lib.Player):
     def __init__(self):
         super().__init__()
@@ -20,8 +20,10 @@ class BlackjackPlayer(lib.Player):
         self.stats["blackjack"] = {}
         for s in ("win", "loss", "draw", "bust", "blackjack", "naturalblackjack"):
             self.stats["blackjack"][s] = 0
+
     def incstat(self, stat):
         return super().incstat("blackjack", stat)
+
 
 def play(args, shoe, dealerhand, playerhand):
     global player, dealer
@@ -34,7 +36,7 @@ def play(args, shoe, dealerhand, playerhand):
     done = False
     while not done:
         lib.setarea(args, player, "blackjack")
-        
+
         bbsengine.title("start hand")
 
         player.hand.show()
@@ -42,36 +44,48 @@ def play(args, shoe, dealerhand, playerhand):
 
         playerstatus = player.hand.status()
         ttyio.echo("player status: %s" % (playerstatus))
-        if playerstatus == "win" or playerstatus == "naturalblackjack" or playerstatus == "blackjack":
+        if (
+            playerstatus == "win"
+            or playerstatus == "naturalblackjack"
+            or playerstatus == "blackjack"
+        ):
             ttyio.echo("player wins: %s" % (playerstatus))
             ttyio.echo("dealer loss")
-#            player.incstat("win")
-#            dealer.incstat("loss")
+            #            player.incstat("win")
+            #            dealer.incstat("loss")
             break
         if playerstatus == "bust":
             ttyio.echo("player bust")
             ttyio.echo("dealer win")
-#            player.incstat("bust")
-#            dealer.incstat("win")
+            #            player.incstat("bust")
+            #            dealer.incstat("win")
             break
 
         dealerstatus = dealer.hand.status()
         ttyio.echo("dealer status: %s" % (dealerstatus))
-        if dealerstatus == "win" or dealerstatus == "naturalblackjack" or dealerstatus == "blackjack":
+        if (
+            dealerstatus == "win"
+            or dealerstatus == "naturalblackjack"
+            or dealerstatus == "blackjack"
+        ):
             ttyio.echo("dealer wins: %s" % (dealerstatus))
             ttyio.echo("player loss")
-#            player.incstat("loss")
-#            dealer.incstat("win")
+            #            player.incstat("loss")
+            #            dealer.incstat("win")
             break
         if dealerstatus == "bust":
             ttyio.echo("dealer bust")
             ttyio.echo("player win")
- #           player.incstat("win")
- #           dealer.incstat("bust")
+            #           player.incstat("win")
+            #           dealer.incstat("bust")
             break
 
         if choice != "stand":
-            ch = ttyio.inputchar("{var:promptcolor}player {var:optioncolor}[H]{var:promptcolor}it, {var:optioncolor}[S]{var:promptcolor}tand, or {var:optioncolor}[Q]{var:promptcolor}uit: {var:inputcolor}", "HSQ", "")
+            ch = ttyio.inputchar(
+                "{var:promptcolor}player {var:optioncolor}[H]{var:promptcolor}it, {var:optioncolor}[S]{var:promptcolor}tand, or {var:optioncolor}[Q]{var:promptcolor}uit: {var:inputcolor}",
+                "HSQ",
+                "",
+            )
             if ch == "S":
                 ttyio.echo("stand")
                 choice = "stand"
@@ -164,12 +178,13 @@ def play(args, shoe, dealerhand, playerhand):
         ttyio.echo("player: %s, dealer: %s" % (playerstatus, dealerstatus))
     else:
         ttyio.echo("push")
-    
+
     player.incstat(playerstatus)
     dealer.incstat(dealerstatus)
 
     ttyio.echo("player.stats=%r" % (player.stats), level="debug")
     ttyio.echo("dealer.stats=%r" % (dealer.stats), level="debug")
+
 
 def buildargs(args=None, **kw):
     parser = argparse.ArgumentParser("blackjack")
@@ -177,13 +192,21 @@ def buildargs(args=None, **kw):
     parser.add_argument("--verbose", action="store_true", dest="verbose")
     parser.add_argument("--debug", action="store_true", dest="debug")
 
-    defaults = {"databasename": "zoidweb5", "databasehost":"localhost", "databaseuser": None, "databaseport":5432, "databasepassword":None}
+    defaults = {
+        "databasename": "zoidweb5",
+        "databasehost": "localhost",
+        "databaseuser": None,
+        "databaseport": 5432,
+        "databasepassword": None,
+    }
     bbsengine.buildargdatabasegroup(parser, defaults)
 
     return parser
 
+
 def init(args, **kw):
     return True
+
 
 def main(args, **kw):
     global player, dealer
@@ -211,10 +234,17 @@ def main(args, **kw):
         dealer.hand.add(shoe.draw())
 
         play(args, shoe, dealer.hand, player.hand)
-        if ttyio.inputboolean("{var:promptcolor}another hand? [{var:optioncolor}Yn{var:promptcolor}]: {var:inputcolor}", "Y") is False:
+        if (
+            ttyio.inputboolean(
+                "{var:promptcolor}another hand? [{var:optioncolor}Yn{var:promptcolor}]: {var:inputcolor}",
+                "Y",
+            )
+            is False
+        ):
             break
-            
+
     return True
+
 
 if __name__ == "__main__":
     locale.setlocale(locale.LC_ALL, "")
@@ -223,7 +253,7 @@ if __name__ == "__main__":
     parser = buildargs()
     args = parser.parse_args()
 
-    ttyio.echo("{f6:3}{cursorup:3}") # curpos:%d,0}" % (ttyio.getterminalheight()-3))
+    ttyio.echo("{f6:3}{cursorup:3}")  # curpos:%d,0}" % (ttyio.getterminalheight()-3))
     bbsengine.initscreen()
 
     init(args)
@@ -235,4 +265,7 @@ if __name__ == "__main__":
     except EOFError:
         ttyio.echo("{/all}{bold}EOF{/bold}")
     finally:
-        ttyio.echo("{decsc}{curpos:%d,0}{eraseline}{decrc}{reset}{/all}" % (ttyio.getterminalheight()))
+        ttyio.echo(
+            "{decsc}{curpos:%d,0}{eraseline}{decrc}{reset}{/all}"
+            % (ttyio.getterminalheight())
+        )

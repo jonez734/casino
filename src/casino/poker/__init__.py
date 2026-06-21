@@ -6,8 +6,8 @@ __version__ = "202210010112"
 
 def init(args, **kw: dict) -> bool:
     register_module(
-        name="casino.yahtzee",
-        module_path="casino.yahtzee",
+        name="casino.poker",
+        module_path="casino.poker",
         version=__version__,
         apis={},
     )
@@ -23,5 +23,5 @@ def buildargs(args, **kw):
 
 
 def main(args, **kw):
-    io.echo("yahtzee module not yet implemented")
+    io.echo("poker module not yet implemented")
     return True

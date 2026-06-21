@@ -1,27 +1,26 @@
-import random
+import time
 import locale
-import argparse
 
-import ttyio5 as ttyio
-import bbsengine5 as bbsengine
+from bbsengine6 import io, screen, session
+from . import lib
 
-import libcasino
+parser = lib.buildargs()
+args = parser.parse_args() if parser is not None else None
 
+session.start(args)
 
-if __name__ == "__main__":
-  locale.setlocale(locale.LC_ALL, "")
+screen.init()
 
-  parser = buildargs()
-  args = parser.parse_args()
+locale.setlocale(locale.LC_ALL, "")
+time.tzset()
 
-  ttyio.echo("{f6:3}{cursorup:3}", end="") # curpos:%d,0}" % (ttyio.getterminalheight()-3))
-  bbsengine.initscreen(bottommargin=1)
-
-  try:
-      main(args)
-  except KeyboardInterrupt:
-      ttyio.echo("{/all}{bold}INTR{bold}")
-  except EOFError:
-      ttyio.echo("{/all}{bold}EOF{/bold}")
-  finally:
-      ttyio.echo("{decsc}{curpos:%d,0}{el}{decrc}{reset}{/all}" % (ttyio.getterminalheight()))
+try:
+    lib.runmodule(args, "main")
+except KeyboardInterrupt:
+    io.echo("{/all}{bold}INTR{bold}")
+except EOFError:
+    io.echo("{/all}{bold}EOF{/bold}")
+finally:
+    io.echo(
+        f"{{savecursor}}{{curpos:{io.terminal.height()},0}}{{el}}{{reset}}{{restorecursor}}"
+    )
