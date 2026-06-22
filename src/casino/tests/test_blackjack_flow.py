@@ -224,7 +224,7 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
                 )
 
         # Create server
-        self.server = WebSocketServer(host="127.0.0.1", port=18775)
+        self.server = WebSocketServer(host="127.0.0.1", port=8766)
 
         # Create router
         self.router = MessageRouter(self.args)
@@ -270,7 +270,7 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
 
     async def test_full_blackjack_flow(self):
         """Test complete blackjack flow from connection to receiving hand."""
-        uri = "ws://127.0.0.1:18775/"
+        uri = "ws://127.0.0.1:8765/"
 
         # Create robust client
         self.client = WebSocketTestClient(uri)
@@ -411,7 +411,7 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
 
     async def test_connection_resilience(self):
         """Test that connection handles reconnection gracefully."""
-        uri = "ws://127.0.0.1:18775/"
+        uri = "ws://127.0.0.1:8765/"
 
         # Create and connect
         self.client = WebSocketTestClient(uri)
@@ -438,7 +438,7 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
 
     async def test_stand_after_bet(self):
         """Test placing a bet and then standing (completing the round)."""
-        uri = "ws://127.0.0.1:18775/"
+        uri = "ws://127.0.0.1:8765/"
 
         self.client = WebSocketTestClient(uri)
 
@@ -523,7 +523,7 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
 
     async def test_hit_then_stand(self):
         """Test full round: bet -> hit -> stand."""
-        uri = "ws://127.0.0.1:18775/"
+        uri = "ws://127.0.0.1:8765/"
 
         self.client = WebSocketTestClient(uri)
 
@@ -609,6 +609,91 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(game_state.get("phase"), "settled", "game_state should show phase is settled")
 
             print("✓ Hit then stand test passed")
+
+        except ConnectionError as e:
+            self.fail(f"Connection error: {e}")
+        except TimeoutError as e:
+            self.fail(f"Timeout error: {e}")
+        except AssertionError:
+            raise
+        except Exception as e:
+            self.fail(f"Unexpected error: {e}")
+
+    async def test_invalid_bet_amounts(self):
+        """Test that invalid bet amounts are rejected via network."""
+        uri = "ws://127.0.0.1:8765/"
+
+        self.client = WebSocketTestClient(uri)
+
+        try:
+            await self.client.connect()
+
+            # Authenticate
+            await self.client.send(
+                {"type": "auth", "moniker": "jam", "password": "test"}
+            )
+            response = await self.client.receive()
+            self.assertEqual(response["type"], "auth_result")
+            self.assertTrue(response["success"])
+
+            # Create a blackjack table
+            await self.client.send(
+                {
+                    "type": "create_table",
+                    "game_type": "blackjack",
+                    "min_bet": 10,
+                    "max_bet": 1000,
+                    "shoe_decks": 6,
+                    "shoe_threshold": 0.8,
+                }
+            )
+            response = await self.client.receive()
+            self.assertEqual(response["type"], "table_created")
+            table_id = response["moniker"]
+
+            # Join the table
+            await self.client.send({"type": "join_table", "moniker": table_id})
+            response = await self.client.receive()
+            self.assertEqual(response["type"], "joined_table")
+
+            # Test 1: Negative bet amount (-1)
+            await self.client.send({"type": "bet", "amount": -1})
+            response = await self.client.receive()
+            self.assertEqual(response["type"], "error")
+            self.assertEqual(response["code"], "invalid_bet")
+            print(f"  ✓ Negative bet -1 rejected: {response['message']}")
+
+            # Test 2: Zero bet amount
+            await self.client.send({"type": "bet", "amount": 0})
+            response = await self.client.receive()
+            self.assertEqual(response["type"], "error")
+            self.assertEqual(response["code"], "invalid_bet")
+            print(f"  ✓ Zero bet rejected: {response['message']}")
+
+            # Test 3: Float bet amount (50.5)
+            await self.client.send({"type": "bet", "amount": 50.5})
+            response = await self.client.receive()
+            self.assertEqual(response["type"], "error")
+            self.assertEqual(response["code"], "invalid_bet")
+            print(f"  ✓ Float bet 50.5 rejected: {response['message']}")
+
+            # Test 4: String bet amount (should be rejected by JSON parsing, but test anyway)
+            # This would fail at JSON level, so we test via the message handler
+
+            # Test 5: Valid bet amount (50)
+            await self.client.send({"type": "bet", "amount": 50})
+            messages = await self.client.receive_messages(max_count=10, timeout=5.0)
+            game_state = None
+            for msg in messages:
+                if msg.get("type") == "game_state":
+                    game_state = msg
+                    break
+            
+            self.assertIsNotNone(game_state, "Valid bet should return game_state")
+            self.assertEqual(len(game_state.get("player_hand", [])), 2)
+            print(f"  ✓ Valid bet 50 accepted: {game_state.get('player_hand')}")
+
+            print("✓ Invalid bet amounts test passed")
 
         except ConnectionError as e:
             self.fail(f"Connection error: {e}")
