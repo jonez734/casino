@@ -115,6 +115,7 @@ class Hand(object):
         self.value = 0
         self.index = 0
         self.cards = []
+        self.status_override = None
         for i in range(0, 5):
             self.cards.append(Card(facedown=False))
         io.echo("hand initialized, blank cards added")
@@ -141,6 +142,8 @@ class Hand(object):
         return self.value - adjust
 
     def status(self):
+        if self.status_override is not None:
+            return self.status_override
         value = self.calcvalue()
         if value > 21:
             return "bust"

@@ -13,10 +13,10 @@ import lib
 
 
 class PlayerHand(lib.tkHand):
-    def __init__(self, label, **kw):
-        super().__init__(label, **kw)
+    def __init__(self, label, **kwargs):
+        super().__init__(label, **kwargs)
 
-        self.frame = kw["frame"] if "frame" in kw else None
+        self.frame = kwargs["frame"] if "frame" in kwargs else None
         io.echo(f"playerhand.init.100: self.frame={self.frame!r}", level="debug")
 
         self.label = label
@@ -26,10 +26,10 @@ class PlayerHand(lib.tkHand):
 
 
 class DealerHand(lib.tkHand):
-    def __init__(self, label, **kw):
-        super().__init__(label, **kw)
+    def __init__(self, label, **kwargs):
+        super().__init__(label, **kwargs)
 
-        self.frame = kw["frame"] if "frame" in kw else None
+        self.frame = kwargs["frame"] if "frame" in kwargs else None
         io.echo(f"dealerhand.init.100: self.frame={self.frame!r}", level="debug")
 
         self.label = label
@@ -78,7 +78,7 @@ class App(tk.Tk):
         self.playerframe = tk.LabelFrame(
             self, borderwidth=4, relief=tk.GROOVE, text=f"player: {playermoniker}"
         )
-        self.playerframe.grid(column=0, row=self.row, **self.paddings)
+        self.playerframe.grid(column=0, row=self.row, padx=10, pady=10)
         self.playerframe.configure(font=self.labelfont)
 
         self.playerhand = PlayerHand(
@@ -94,7 +94,7 @@ class App(tk.Tk):
 
         self.dealerhand = DealerHand("Dealer", row=self.row, frame=self.dealerframe)
 
-        self.dealerframe.grid(column=0, row=self.row, **self.paddings)
+        self.dealerframe.grid(column=0, row=self.row, padx=10, pady=10)
         self.dealerframe.configure(font=self.labelfont)
 
         self.row += 1
@@ -118,7 +118,7 @@ class App(tk.Tk):
     def actions(self):
         self.actionframe = tk.LabelFrame(self, borderwidth=2, text="player actions")
         self.actionframe.grid(
-            column=0, row=self.row, columnspan=5, sticky=tk.W + tk.E, **self.paddings
+            column=0, row=self.row, columnspan=5, sticky=tk.W + tk.E, padx=10, pady=10
         )
         self.actionframe.configure(font=self.labelfont)
 
@@ -152,12 +152,12 @@ class App(tk.Tk):
 
         if totalpoints >= 21:
             io.echo("player loss: bust")
-            self.playerhand.status = "bust"
+            self.playerhand.status_override = "bust"
             return
 
         if nonblankcount == 5:
             io.echo("player wins: 5 cards without a bust")
-            self.playerhand.status = "win"
+            self.playerhand.status_override = "win"
             return
 
         io.echo("hit me!")
@@ -166,7 +166,7 @@ class App(tk.Tk):
         return "OK"
 
 
-def buildargs(args=None, **kw):
+def buildargs(args=None, **kwargs):
     parser = argparse.ArgumentParser("tkbj")
     parser.add_argument("--verbose", action="store_true", dest="verbose")
     parser.add_argument("--debug", action="store_true", dest="debug")
