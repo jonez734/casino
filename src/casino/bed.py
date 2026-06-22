@@ -5,23 +5,17 @@
 
 import argparse
 import asyncio
-import logging
 import signal
 import sys
 
 # Add src to path for imports
 sys.path.insert(0, "/home/opencode/data/work/casino/src")
 
+from bbsengine6 import io
 from bbsengine6.net import WebSocketServer
 from bbsengine6.util import getcurrentloginid
 from bbsengine6.database import buildargs as databasebuildargs
 from casino.api.handler import MessageRouter
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-)
-logger = logging.getLogger(__name__)
 
 
 class BED:
@@ -59,8 +53,8 @@ class BED:
             with db_args.pool.connection() as conn:
                 pass
         except Exception as e:
-            logger.error(f"Database connection failed: {e}")
-            logger.error("Please ensure PostgreSQL is running with correct credentials")
+            io.echo(f"Database connection failed: {e}", level="error")
+            io.echo("Please ensure PostgreSQL is running with correct credentials", level="error")
             return
 
         self.router = MessageRouter(db_args)
@@ -70,22 +64,22 @@ class BED:
         await self.server.start()
         self._running = True
 
-        logger.info(f"BED started on {self.args.host}:{self.args.port}")
-        logger.info(f"Registered services: {self.server.list_services()}")
+        io.echo(f"BED started on {self.args.host}:{self.args.port}", level="info")
+        io.echo(f"Registered services: {self.server.list_services()}", level="info")
 
         # Keep running
         try:
             while self._running:
                 await asyncio.sleep(1)
         except asyncio.CancelledError:
-            logger.info("BED cancelled")
+            io.echo("BED cancelled", level="info")
 
     async def stop(self) -> None:
         """Stop the daemon."""
         self._running = False
         if self.server:
             await self.server.stop()
-        logger.info("BED stopped")
+        io.echo("BED stopped", level="info")
 
     async def restart(self) -> None:
         """Restart the daemon."""
@@ -136,7 +130,7 @@ async def main() -> None:
     loop = asyncio.get_event_loop()
 
     def signal_handler():
-        logger.info("Received shutdown signal")
+        io.echo("Received shutdown signal", level="info")
         asyncio.create_task(bed.stop())
 
     for sig in (signal.SIGTERM, signal.SIGINT):
@@ -149,7 +143,7 @@ async def main() -> None:
     try:
         await bed.start()
     except Exception as e:
-        logger.error(f"BED error: {e}")
+        io.echo_traceback(f"BED error: {e}")
         await bed.stop()
         raise
 

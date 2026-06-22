@@ -4,8 +4,11 @@
 import random
 from typing import Any, Dict, List
 
+from bbsengine6 import io
 from casino.dal import table as dal_table
 from casino.dal import game as dal_game
+from decimal import Decimal
+
 from casino.dal import bet as dal_bet
 
 
@@ -17,7 +20,7 @@ class GameService:
 
     def __init__(self, args: Any):
         self.args = args
-        self._shoes: Dict[int, Dict[str, Any]] = {}  # table_id -> shoe state
+        self._shoes: Dict[str, Dict[str, Any]] = {}  # table_moniker -> shoe state
 
     def _create_shoe(self, decks: int = 6) -> List[str]:
         """Create a shoe with multiple decks."""
@@ -29,18 +32,18 @@ class GameService:
         random.shuffle(shoe)
         return shoe
 
-    def _get_shoe(self, table_id: int) -> Dict[str, Any]:
+    def _get_shoe(self, table_moniker: str) -> Dict[str, Any]:
         """Get or create shoe for a specific table."""
-        if table_id in self._shoes:
-            shoe = self._shoes[table_id]
+        if table_moniker in self._shoes:
+            shoe = self._shoes[table_moniker]
             total_cards = len(shoe["cards"])
             if shoe["uses"] <= total_cards * shoe["threshold"]:
                 return shoe
 
         # Load from database or create new
-        table = dal_table.get_table(self.args, table_id)
+        table = dal_table.get_table(self.args, table_moniker)
         if not table:
-            raise ValueError(f"Table {table_id} not found")
+            raise ValueError(f"Table {table_moniker} not found")
 
         attrs = table.get("attrs", {}) or {}
         shoe_cards = table.get("shoe_cards", []) or []
@@ -56,19 +59,19 @@ class GameService:
             "decks": attrs.get("shoe_decks", 6),
             "threshold": attrs.get("shoe_threshold", 0.8),
         }
-        self._shoes[table_id] = shoe
+        self._shoes[table_moniker] = shoe
         return shoe
 
-    def _save_shoe(self, table_id: int) -> None:
+    def _save_shoe(self, table_moniker: str) -> None:
         """Save shoe state to database."""
-        if table_id not in self._shoes:
+        if table_moniker not in self._shoes:
             return
-        shoe = self._shoes[table_id]
-        dal_table.update_shoe(self.args, table_id, shoe["cards"], shoe["uses"])
+        shoe = self._shoes[table_moniker]
+        dal_table.update_shoe(self.args, table_moniker, shoe["cards"], shoe["uses"])
 
-    def _draw_card(self, table_id: int) -> str:
+    def _draw_card(self, table_moniker: str) -> str:
         """Draw a card from the table's shoe."""
-        shoe = self._get_shoe(table_id)
+        shoe = self._get_shoe(table_moniker)
 
         # Check if shoe needs replacement
         total_cards = len(shoe["cards"])
@@ -78,7 +81,7 @@ class GameService:
 
         card = shoe["cards"].pop()
         shoe["uses"] += 1
-        self._save_shoe(table_id)
+        self._save_shoe(table_moniker)
         return card
 
     def _card_value(self, card: str) -> int:
@@ -101,15 +104,13 @@ class GameService:
 
         return total
 
-    def start_game(self, table_id: int, game_type: str = "blackjack") -> Dict[str, Any]:
+    def start_game(self, table_moniker: str, game_type: str = "blackjack") -> Dict[str, Any]:
         """Start a new game at a table."""
-        # Get table info
-        table = dal_table.get_table(self.args, table_id)
+        table = dal_table.get_table(self.args, table_moniker)
         if not table:
             return {"success": False, "message": "Table not found"}
 
-        # Create game
-        game = dal_game.create_game(self.args, table_id, game_type)
+        game = dal_game.create_game(self.args, table_moniker, game_type)
 
         return {
             "success": True,
@@ -119,17 +120,15 @@ class GameService:
 
     def place_bet(
         self,
-        table_id: int,
+        table_moniker: str,
         player_moniker: str,
         amount: int,
     ) -> Dict[str, Any]:
         """Place a bet and create player hand."""
-        # Get table
-        table = dal_table.get_table(self.args, table_id)
+        table = dal_table.get_table(self.args, table_moniker)
         if not table:
             return {"success": False, "message": "Table not found"}
 
-        # Verify bet amount
         if amount < table["minimumbet"]:
             return {
                 "success": False,
@@ -141,27 +140,24 @@ class GameService:
                 "message": f"Bet cannot exceed {table['maximumbet']}",
             }
 
-        # Get or create active game
-        game = dal_game.get_active_game(self.args, table_id)
+        game = dal_game.get_active_game(self.args, table_moniker)
+        io.echo(f"place_bet: get_active_game returned: {game}", level="info")
         if not game:
-            game_data = self.start_game(table_id)
+            game_data = self.start_game(table_moniker)
             if not game_data["success"]:
                 return game_data
-            game = dal_game.get_active_game(self.args, table_id)
+            game = dal_game.get_active_game(self.args, table_moniker)
 
-        # Place bet
         try:
             bet = dal_bet.place_bet(
-                self.args, player_moniker, table_id, game["id"], amount
+                self.args, player_moniker, table_moniker, game["id"], amount
             )
         except ValueError as e:
             return {"success": False, "message": str(e)}
 
-        # Create hand
         hand = dal_game.create_hand(self.args, game["id"], player_moniker)
 
-        # Deal initial cards (2 to player)
-        cards = [self._draw_card(table_id), self._draw_card(table_id)]
+        cards = [self._draw_card(table_moniker), self._draw_card(table_moniker)]
         dal_game.update_hand_cards(self.args, hand["id"], cards)
 
         return {
@@ -173,25 +169,25 @@ class GameService:
             "message": f"Bet {amount} placed",
         }
 
-    def hit(self, table_id: int, player_moniker: str) -> Dict[str, Any]:
+    def hit(self, table_moniker: str, player_moniker: str) -> Dict[str, Any]:
         """Player hits (takes another card)."""
-        # Get active game
-        game = dal_game.get_active_game(self.args, table_id)
+        game = dal_game.get_active_game(self.args, table_moniker)
         if not game:
             return {"success": False, "message": "No active game"}
 
-        # Get player's hand
         hand = dal_game.get_player_hand(self.args, game["id"], player_moniker)
         if not hand:
             return {"success": False, "message": "No hand found"}
 
-        # Add card
         cards = list(hand["cards"])
-        cards.append(self._draw_card(table_id))
+        cards.append(self._draw_card(table_moniker))
         dal_game.update_hand_cards(self.args, hand["id"], cards)
 
         total = self._hand_value(cards)
         status = "bust" if total > 21 else "playing"
+
+        if status == "bust":
+            dal_game.update_hand_status(self.args, hand["id"], "bust")
 
         return {
             "success": True,
@@ -201,19 +197,19 @@ class GameService:
             "message": "Hit" if status != "bust" else "Bust!",
         }
 
-    def stand(self, table_id: int, player_moniker: str) -> Dict[str, Any]:
+    def stand(self, table_moniker: str, player_moniker: str) -> Dict[str, Any]:
         """Player stands (ends turn)."""
-        # Get active game
-        game = dal_game.get_active_game(self.args, table_id)
+        game = dal_game.get_active_game(self.args, table_moniker)
         if not game:
             return {"success": False, "message": "No active game"}
 
-        # Get player's hand
         hand = dal_game.get_player_hand(self.args, game["id"], player_moniker)
         if not hand:
             return {"success": False, "message": "No hand found"}
 
         total = self._hand_value(list(hand["cards"]))
+
+        self.settle_game(table_moniker)
 
         return {
             "success": True,
@@ -222,16 +218,17 @@ class GameService:
             "message": f"Stood at {total}",
         }
 
-    def get_game_state(self, table_id: int, player_moniker: str) -> Dict[str, Any]:
+    def get_game_state(self, table_moniker: str, player_moniker: str) -> Dict[str, Any]:
         """Get current game state for a player."""
-        table = dal_table.get_table(self.args, table_id)
+        io.echo(f"get_game_state: table_moniker={table_moniker}, player={player_moniker}", level="info")
+        table = dal_table.get_table(self.args, table_moniker)
         if not table:
             return {"error": "Table not found"}
 
-        game = dal_game.get_active_game(self.args, table_id)
+        game = dal_game.get_current_game(self.args, table_moniker)
         if not game:
             return {
-                "table_id": table_id,
+                "table_moniker": table_moniker,
                 "phase": "waiting",
                 "hands": [],
                 "dealer_hand": [],
@@ -245,17 +242,22 @@ class GameService:
         )
 
         if hand and not dealer_cards:
-            dealer_cards = [self._draw_card(table_id), self._draw_card(table_id)]
+            dealer_cards = [self._draw_card(table_moniker), self._draw_card(table_moniker)]
             dal_game.update_dealer_hand_cards(self.args, game["id"], dealer_cards)
 
         dealer_total = self._hand_value(dealer_cards) if dealer_cards else 0
 
+        player_status = None
+        if hand and hand.get("attrs"):
+            player_status = hand["attrs"].get("status")
+
         return {
-            "table_id": table_id,
+            "table_moniker": table_moniker,
             "game_id": int(game["id"]),
             "phase": game["status"],
             "player_hand": hand["cards"] if hand else [],
             "player_total": self._hand_value(list(hand["cards"])) if hand else 0,
+            "player_status": player_status,
             "dealer_hand": dealer_cards,
             "dealer_total": dealer_total,
         }
@@ -264,33 +266,33 @@ class GameService:
         """Check for natural blackjack (21 with exactly 2 cards)."""
         return len(cards) == 2 and self._hand_value(cards) == 21
 
-    def _run_dealer_turn(self, game_id: int, table_id: int) -> list:
+    def _run_dealer_turn(self, game_id: int, table_moniker: str) -> list:
         """Run dealer turn - hit until 17 or more."""
         dealer_hand = dal_game.get_or_create_dealer_hand(self.args, game_id)
         dealer_cards = list(dealer_hand["cards"]) if dealer_hand["cards"] else []
 
         if not dealer_cards:
-            dealer_cards = [self._draw_card(table_id), self._draw_card(table_id)]
+            dealer_cards = [self._draw_card(table_moniker), self._draw_card(table_moniker)]
             dal_game.update_dealer_hand_cards(self.args, game_id, dealer_cards)
 
         dealer_total = self._hand_value(dealer_cards)
         while dealer_total < 17:
-            dealer_cards.append(self._draw_card(table_id))
+            dealer_cards.append(self._draw_card(table_moniker))
             dal_game.update_dealer_hand_cards(self.args, game_id, dealer_cards)
             dealer_total = self._hand_value(dealer_cards)
 
         return dealer_cards
 
-    def settle_game(self, table_id: int) -> Dict[str, Any]:
+    def settle_game(self, table_moniker: str) -> Dict[str, Any]:
         """Settle all bets for a game."""
-        game = dal_game.get_active_game(self.args, table_id)
+        game = dal_game.get_active_game(self.args, table_moniker)
         if not game:
             return {"success": False, "message": "No active game"}
 
         bets = dal_bet.get_table_bets(self.args, game["id"])
         hands = dal_game.get_game_hands(self.args, game["id"])
 
-        dealer_cards = self._run_dealer_turn(game["id"], table_id)
+        dealer_cards = self._run_dealer_turn(game["id"], table_moniker)
         dealer_total = self._hand_value(dealer_cards)
         dealer_blackjack = self._is_blackjack(dealer_cards)
 
@@ -311,7 +313,7 @@ class GameService:
             if player_blackjack and dealer_blackjack:
                 dal_bet.settle_bet(self.args, bet["id"], True, bet["amount"])
             elif player_blackjack:
-                dal_bet.settle_bet(self.args, bet["id"], True, int(bet["amount"] * 2.5))
+                dal_bet.settle_bet(self.args, bet["id"], True, int(bet["amount"] * Decimal("2.5")))
             elif dealer_blackjack:
                 dal_bet.settle_bet(self.args, bet["id"], False, 0)
             elif player_total > 21:

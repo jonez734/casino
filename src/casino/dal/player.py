@@ -3,7 +3,7 @@
 
 from typing import Any, Dict, List, Optional
 
-from bbsengine6 import database
+from bbsengine6 import database, io
 from bbsengine6.database import Jsonb
 
 
@@ -12,19 +12,19 @@ def get_or_create_player(
 ) -> Dict[str, Any]:
     """
     Get existing player or create new one for BBS member.
-    
+
     Args:
         args: Application args (for database connection)
         moniker: BBS member moniker
-        
+
     Returns:
         Player dict with moniker, balance, etc.
     """
-    
+
     def _work(cur):
         cur.execute(
             database.query(
-                "SELECT membermoniker, location, lastplayed, attrs FROM $casino.__player WHERE membermoniker = :moniker",
+                "SELECT membermoniker, location, lastplayed, attrs FROM $casino.player WHERE membermoniker = :moniker",
                 moniker=moniker
             )
         )
@@ -36,7 +36,8 @@ def get_or_create_player(
                 "lastplayed": row["lastplayed"],
                 "attrs": row["attrs"] or {},
             }
-        
+
+        io.echo("casino.dal.player.100: about to insert into __player", level="debug")
         cur.execute(
             database.query(
                 "INSERT INTO $casino.__player (membermoniker, location, attrs) VALUES (:moniker, :location, :attrs) RETURNING membermoniker",
@@ -50,7 +51,7 @@ def get_or_create_player(
             "lastplayed": None,
             "attrs": {},
         }
-    
+
     with database.connect(args) as conn:
         with database.cursor(conn) as cur:
             return _work(cur)
@@ -62,7 +63,7 @@ def get_player_by_moniker(args: Any, moniker: str) -> Optional[Dict[str, Any]]:
         with database.cursor(conn) as cur:
             cur.execute(
                 database.query(
-                    "SELECT membermoniker, location, lastplayed, attrs FROM $casino.__player WHERE membermoniker = :moniker",
+                    "SELECT membermoniker, location, lastplayed, attrs FROM $casino.player WHERE membermoniker = :moniker",
                     moniker=moniker
                 )
             )
@@ -101,3 +102,42 @@ def update_player_lastplayed(args: Any, moniker: str) -> None:
                     moniker=moniker
                 )
             )
+
+
+def test_schema_permissions(args: Any) -> dict:
+    """Test SELECT permissions on all casino tables/views."""
+    results = {}
+    tables_and_views = [
+        ("casino.player", True),
+        ("casino.table", True),
+        ("casino.game", True),
+        ("casino.hand", True),
+        ("casino.betlog", True),
+        ("casino.log", True),
+        ("casino.map_game_player", True),
+        ("casino.map_cardtable_player", True),
+        ("casino.__player", False),
+        ("casino.__table", False),
+        ("casino.__game", False),
+        ("casino.__hand", False),
+        ("casino.__betlog", False),
+        ("casino.__log", False),
+    ]
+
+    for table in tables_and_views:
+        table_name = table[0]
+        is_view = table[1]
+        query = f"SELECT 1 FROM {table_name} LIMIT 1"
+        try:
+            with database.connect(args) as conn:
+                with database.cursor(conn) as cur:
+                    cur.execute(query)
+                    cur.fetchone()
+                    results[table_name] = "OK"
+                    io.echo(f"test_schema_permissions: {table_name} - OK", level="info")
+        except Exception as e:
+            error_msg = str(e)
+            results[table_name] = f"ERROR: {error_msg}"
+            io.echo(f"test_schema_permissions: {table_name} - ERROR: {error_msg}", level="error")
+
+    return results
