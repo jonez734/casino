@@ -463,6 +463,7 @@ class BetServiceHandler(BaseService):
         
         io.echo(f"_handle_bet: {moniker} betting {amount} at {table_moniker}", level="info")
         
+        # TODO: Support passing notes for disciplinary tracking, etc.
         result = self.game_service.place_bet(table_moniker, moniker, amount)
         
         if result.get("success"):
