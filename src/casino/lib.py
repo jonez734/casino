@@ -18,7 +18,7 @@ suits = {"H": "{u:heart}", "D": "{u:diamond}", "S": "{u:spade}", "C": "{u:club}"
 
 
 class Card(object):
-    def __init__(self, shorthand: str = "", facedown: bool = True, **kw: Any) -> None:
+    def __init__(self, shorthand: str = "", facedown: bool = True, **kwargs: Any) -> None:
         self.shorthand = shorthand
         if shorthand is not None and shorthand != "":
             self.pips: str | None = self.shorthand[:-1] if len(self.shorthand) > 1 else None
@@ -61,8 +61,8 @@ class Card(object):
 
 
 class tkCard(Card):
-    def __init__(self, args: Any, **kw: Any) -> None:
-        super().__init__(args, **kw)
+    def __init__(self, args: Any, **kwargs: Any) -> None:
+        super().__init__(args, **kwargs)
         self.artpath = self.getartpath()
 
     def __repr__(self) -> str:
@@ -106,11 +106,11 @@ class tkCard(Card):
 
 
 class Hand(object):
-    def __init__(self, label, **kw):
+    def __init__(self, label, **kwargs):
         self.id = None
         self.label = label
         #        self.shoe = shoe
-        self.playerid = kw.get("playerid", None)
+        self.playerid = kwargs.get("playerid", None)
         #        self.cards = []
         self.value = 0
         self.index = 0
@@ -196,18 +196,18 @@ class Hand(object):
 
 
 class tkHand(Hand):
-    def __init__(self, text, **kw):
-        super().__init__(text, **kw)
+    def __init__(self, text, **kwargs):
+        super().__init__(text, **kwargs)
 
         #    self.tklabels = []
         #    self.images = []
 
-        self.frame = kw["frame"] if "frame" in kw else None
+        self.frame = kwargs["frame"] if "frame" in kwargs else None
 
         #    ttyio.echo(f"--> tkhand.init: self.frame={self.frame!r}", level="debug")
 
-        self.row = kw["row"] if "row" in kw else 0
-        self.paddings = kw["paddings"] if "paddings" in kw else {}
+        self.row = kwargs["row"] if "row" in kwargs else 0
+        self.paddings = kwargs["paddings"] if "paddings" in kwargs else {}
 
         self.card_labels = []
         self.points_labels = []
@@ -531,7 +531,7 @@ class CasinoPlayer:
         pass
 
 
-def buildargs(args: Namespace | None = None, **kw: Any) -> argparse.ArgumentParser:
+def buildargs(args: Namespace | None = None, **kwargs: Any) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser("skel")
     parser.add_argument("--verbose", action="store_true", dest="verbose")
     parser.add_argument("--debug", action="store_true", dest="debug")
@@ -548,6 +548,6 @@ def buildargs(args: Namespace | None = None, **kw: Any) -> argparse.ArgumentPars
     return parser
 
 
-def runmodule(args: Namespace | None, modulename: str, **kw: Any) -> Any:
+def runmodule(args: Namespace | None, modulename: str, **kwargs: Any) -> Any:
     io.echo(f"{args=} {modulename=}", level="debug")
-    return module.runmodule(args, f"casino.{modulename}", **kw)
+    return module.runmodule(args, f"casino.{modulename}", **kwargs)
