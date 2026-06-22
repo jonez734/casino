@@ -167,7 +167,7 @@ def get_table_players(args: Any, moniker: str) -> List[str]:
         with database.cursor(conn) as cur:
             cur.execute(
                 database.query(
-                    "SELECT DISTINCT m.playermoniker FROM $casino.mapgameplayer m JOIN $casino.__game g ON g.id = m.gameid WHERE g.tablemoniker = :moniker AND g.status NOT IN ('settled', 'cancelled')",
+                    "SELECT DISTINCT m.playermoniker FROM $casino.map_game_player m JOIN $casino.__game g ON g.id = m.gameid WHERE g.tablemoniker = :moniker AND g.status NOT IN ('settled', 'cancelled')",
                     moniker=moniker
                 )
             )
@@ -208,7 +208,7 @@ def remove_player_from_table(args: Any, moniker: str, player_moniker: str) -> bo
         with database.cursor(conn) as cur:
             cur.execute(
                 database.query(
-                    "DELETE FROM $casino.mapgameplayer m USING $casino.__game g WHERE m.gameid = g.id AND g.tablemoniker = :moniker AND m.playermoniker = :player_moniker",
+                    "DELETE FROM $casino.map_game_player m USING $casino.__game g WHERE m.gameid = g.id AND g.tablemoniker = :moniker AND m.playermoniker = :player_moniker",
                     moniker=moniker, player_moniker=player_moniker
                 )
             )

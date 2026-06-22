@@ -99,34 +99,20 @@ def main(args, **kwargs):
 
             io.echo("schema {var:valuecolor}casino{var:labelcolor}: ", end="")
             if database.schemaexists(args, "casino", conn=conn) is False:
-                io.echo("create ", end="")
-                if database.createschema(args, "casino", conn=conn) is False:
+                io.echo("import ", end="")
+                if database.importsql(args, "schema.sql", conn=conn, package="casino.sql") is False:
                     io.echo("fail", level="error")
                     return False
             io.echo(" ok ", level="ok")
-            io.echo(
-                "{var:labelcolor}schema {var:valuecolor}casino{var:labelcolor} priv: ",
-                end="",
-            )
-            if (
-                database.manage_schema_priv(
-                    args, "grant", "usage", "casino", "term", conn=conn
-                )
-                is False
-            ):
-                io.echo("fail", level="error")
-                return False
-            else:
-                io.echo(" ok ", level="ok")
 
             classlist: tuple[tuple[str, str], ...] = (
                 ("casino.__player", "player.sql"),
                 ("casino.player", "player_view.sql"),
                 ("casino.__table", "table.sql"),
                 ("casino.table", "table_view.sql"),
-                ("casino.map_cardtable_player", "table_map.sql"),
+                ("casino.map_cardtable_player", "map_cardtable_player.sql"),
                 ("casino.__game", "game.sql"),
-                ("casino.mapgameplayer", "mapgameplayer.sql"),
+                ("casino.map_game_player", "map_game_player.sql"),
                 ("casino.game", "game_view.sql"),
                 ("casino.__account", "account.sql"),
                 ("casino.account", "account_view.sql"),
@@ -154,37 +140,6 @@ def main(args, **kwargs):
                         io.echo(" ok ", level="ok")
                 else:
                     io.echo("ok", level="ok")
-
-            io.echo(
-                "{var:labelcolor}schema {var:valuecolor}casino {var:labelcolor}privs: ",
-                end="",
-            )
-            for r in ("web", "term", "sysop"):
-                if (
-                    database.manage_schema_priv(
-                        args, "grant", "usage", "casino", r, conn=conn, **kwargs
-                    )
-                    is False
-                ):
-                    io.echo("fail", level="error")
-                    failcount += 1
-                else:
-                    io.echo(" ok ", level="ok")
-
-            io.echo(
-                "{var:labelcolor}schema {var:valuecolor}casino {var:labelcolor}create priv for sysop: ",
-                end="",
-            )
-            if (
-                database.manage_schema_priv(
-                    args, "grant", "create", "casino", "sysop", conn=conn, **kwargs
-                )
-                is False
-            ):
-                io.echo("fail", level="error")
-                failcount += 1
-            else:
-                io.echo(" ok ", level="ok")
 
             if failcount == 0:
                 io.echo(" ok ", level="ok")

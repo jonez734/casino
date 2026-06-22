@@ -11,7 +11,7 @@ create or replace view casino.game as
     left join engine.member m on m.moniker = g.playermoniker
     left join (
         select gameid, array_agg(playermoniker) as players
-        from casino.mapgameplayer
+        from casino.map_game_player
         group by gameid
     ) as p on p.gameid = g.id
 ;

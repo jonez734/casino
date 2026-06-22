@@ -15,7 +15,7 @@
 \echo table_view
 \i table_view.sql
 \echo table_map
-\i table_map.sql
+\i map_cardtable_player.sql
 \echo table_shoe_migration
 \i table_shoe_migration.sql
 
@@ -24,7 +24,7 @@
 \echo game_view
 \i game_view.sql
 \echo mapgameplayer
-\i mapgameplayer.sql
+\i map_game_player.sql
 
 \echo account
 \i account.sql
