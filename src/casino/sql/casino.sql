@@ -10,6 +10,14 @@
 \echo player_view
 \i player_view.sql
 
+\echo bank
+\i /home/opencode/data/work/bbsengine6/py/src/bbsengine6/sql/bank.sql
+
+\echo bank_table
+\i bank_table.sql
+\echo bank_player
+\i bank_player.sql
+
 \echo table
 \i table.sql
 \echo table_view
@@ -19,12 +27,15 @@
 \echo table_shoe_migration
 \i table_shoe_migration.sql
 
+\echo bank_migration
+\i bank_migration.sql
+
 \echo game
 \i game.sql
-\echo game_view
-\i game_view.sql
 \echo mapgameplayer
 \i map_game_player.sql
+\echo game_view
+\i game_view.sql
 
 \echo account
 \i account.sql

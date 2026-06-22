@@ -208,11 +208,19 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
         # Get pool for database operations
         self.pool = database.getpool(self.args)
 
-        # Set password for test user if needed
+        # Set password for test user if needed (insert if not exists)
+        # Also ensure user has a bank account with funds and casino credits
         with database.connect(self.args, pool=self.pool) as conn:
             with database.cursor(conn) as cur:
                 cur.execute(
-                    "UPDATE engine.member SET password = crypt('test', gen_salt('md5')) WHERE loginid = 'jam'"
+                    "INSERT INTO engine.__member (moniker, loginid, password, email, credits) "
+                    "VALUES ('jam', 'jam', crypt('test', gen_salt('md5')), 'jam@test.local', 100000) "
+                    "ON CONFLICT (moniker) DO UPDATE SET password = crypt('test', gen_salt('md5')), credits = 100000"
+                )
+                # Ensure user has a bank account with funds
+                cur.execute(
+                    "INSERT INTO bank.__account (moniker, balance) VALUES ('jam', 100000) "
+                    "ON CONFLICT (moniker) DO UPDATE SET balance = 100000"
                 )
 
         # Create server
@@ -231,11 +239,30 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
 
     async def asyncTearDown(self):
         """Clean up after test."""
+        from bbsengine6 import database
+
         if self.client:
             await self.client.close()
 
         if hasattr(self, "_server_started") and self._server_started:
             await self.server.stop()
+
+        # Clean up test data from previous runs
+        if hasattr(self, "pool") and self.pool is not None:
+            try:
+                with database.connect(self.args, pool=self.pool) as conn:
+                    with database.cursor(conn) as cur:
+                        # Reset jam's credits and bank balance for next test
+                        cur.execute("UPDATE engine.__member SET credits = 100000 WHERE moniker = 'jam'")
+                        cur.execute("UPDATE bank.__account SET balance = 100000 WHERE moniker = 'jam'")
+                        # Clean up test tables (blackjack-jam)
+                        cur.execute("DELETE FROM casino.__bank_table WHERE table_moniker = 'blackjack-jam'")
+                        cur.execute("DELETE FROM casino.__table WHERE moniker = 'blackjack-jam'")
+                        # Clean up test games
+                        cur.execute("DELETE FROM casino.__game WHERE tablemoniker = 'blackjack-jam'")
+                        cur.execute("DELETE FROM casino.map_cardtable_player WHERE cardtablemoniker = 'blackjack-jam'")
+            except Exception:
+                pass  # Ignore cleanup errors
 
         if hasattr(self, "pool") and self.pool is not None:
             self.pool.close()
@@ -287,7 +314,7 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
 
             response = await self.client.receive()
             self.assertEqual(response["type"], "table_created")
-            table_id = response["table_id"]
+            table_id = response["moniker"]
             print(f"✓ Created table {table_id}")
 
             # Step 4: Ping/Pong
@@ -306,11 +333,11 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
             print(f"✓ Multiple ping/pongs successful")
 
             # Step 6: Join the table
-            await self.client.send({"type": "join_table", "table_id": table_id})
+            await self.client.send({"type": "join_table", "moniker": table_id})
 
             response = await self.client.receive()
             self.assertEqual(response["type"], "joined_table")
-            self.assertEqual(response["table_id"], table_id)
+            self.assertEqual(response["moniker"], table_id)
             print(f"✓ Joined table {table_id}")
 
             # Step 7: Place a bet
@@ -328,7 +355,7 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
 
             self.assertIsNotNone(game_state, f"No game_state received. Got: {messages}")
             self.assertEqual(game_state["type"], "game_state")
-            self.assertEqual(game_state["table_id"], table_id)
+            self.assertEqual(game_state["table_moniker"], table_id)
 
             # Verify player has 2 cards
             player_hand = game_state.get("player_hand", [])
@@ -408,6 +435,189 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response["type"], "auth_result")
 
         print("✓ Connection resilience test passed")
+
+    async def test_stand_after_bet(self):
+        """Test placing a bet and then standing (completing the round)."""
+        uri = "ws://127.0.0.1:18775/"
+
+        self.client = WebSocketTestClient(uri)
+
+        try:
+            await self.client.connect()
+
+            # Authenticate
+            await self.client.send(
+                {"type": "auth", "moniker": "jam", "password": "test"}
+            )
+            response = await self.client.receive()
+            self.assertEqual(response["type"], "auth_result")
+            self.assertTrue(response["success"])
+
+            # Create a blackjack table
+            await self.client.send(
+                {
+                    "type": "create_table",
+                    "game_type": "blackjack",
+                    "min_bet": 10,
+                    "max_bet": 1000,
+                    "shoe_decks": 6,
+                    "shoe_threshold": 0.8,
+                }
+            )
+            response = await self.client.receive()
+            self.assertEqual(response["type"], "table_created")
+            table_id = response["moniker"]
+
+            # Join the table
+            await self.client.send({"type": "join_table", "moniker": table_id})
+            response = await self.client.receive()
+            self.assertEqual(response["type"], "joined_table")
+
+            # Place a bet
+            await self.client.send({"type": "bet", "amount": 50})
+
+            # Get initial game state
+            messages = await self.client.receive_messages(max_count=10, timeout=5.0)
+            game_state = None
+            for msg in messages:
+                if msg.get("type") == "game_state":
+                    game_state = msg
+                    break
+
+            self.assertIsNotNone(game_state, "No game_state received after bet")
+            player_hand_initial = game_state.get("player_hand", [])
+            player_total_initial = game_state.get("player_total", 0)
+            print(f"  Initial hand: {' '.join(player_hand_initial)} [{player_total_initial}]")
+
+            # Now stand
+            await self.client.send({"type": "stand"})
+
+            # Receive final game state
+            messages = await self.client.receive_messages(max_count=10, timeout=5.0)
+            game_state = None
+            for msg in messages:
+                if msg.get("type") == "game_state":
+                    game_state = msg
+                    break
+
+            self.assertIsNotNone(game_state, "No game_state received after stand")
+
+            # Verify hand didn't change (stand keeps same cards)
+            player_hand_after = game_state.get("player_hand", [])
+            player_total_after = game_state.get("player_total", 0)
+            print(f"  After stand: {' '.join(player_hand_after)} [{player_total_after}]")
+
+            # Verify round is settled after standing
+            self.assertEqual(game_state.get("phase"), "settled", "game_state should show phase is settled")
+
+            print("✓ Stand after bet test passed")
+
+        except ConnectionError as e:
+            self.fail(f"Connection error: {e}")
+        except TimeoutError as e:
+            self.fail(f"Timeout error: {e}")
+        except AssertionError:
+            raise
+        except Exception as e:
+            self.fail(f"Unexpected error: {e}")
+
+    async def test_hit_then_stand(self):
+        """Test full round: bet -> hit -> stand."""
+        uri = "ws://127.0.0.1:18775/"
+
+        self.client = WebSocketTestClient(uri)
+
+        try:
+            await self.client.connect()
+
+            # Authenticate
+            await self.client.send(
+                {"type": "auth", "moniker": "jam", "password": "test"}
+            )
+            response = await self.client.receive()
+            self.assertEqual(response["type"], "auth_result")
+            self.assertTrue(response["success"])
+
+            # Create a blackjack table
+            await self.client.send(
+                {
+                    "type": "create_table",
+                    "game_type": "blackjack",
+                    "min_bet": 10,
+                    "max_bet": 1000,
+                    "shoe_decks": 6,
+                    "shoe_threshold": 0.8,
+                }
+            )
+            response = await self.client.receive()
+            self.assertEqual(response["type"], "table_created")
+            table_id = response["moniker"]
+
+            # Join the table
+            await self.client.send({"type": "join_table", "moniker": table_id})
+            response = await self.client.receive()
+            self.assertEqual(response["type"], "joined_table")
+
+            # Place a bet
+            await self.client.send({"type": "bet", "amount": 50})
+
+            # Get initial game state
+            messages = await self.client.receive_messages(max_count=10, timeout=5.0)
+            game_state = None
+            for msg in messages:
+                if msg.get("type") == "game_state":
+                    game_state = msg
+                    break
+
+            self.assertIsNotNone(game_state)
+            player_hand_after_bet = game_state.get("player_hand", [])
+            player_total_after_bet = game_state.get("player_total", 0)
+            print(f"  After bet: {' '.join(player_hand_after_bet)} [{player_total_after_bet}]")
+            self.assertEqual(len(player_hand_after_bet), 2, "Should have 2 cards after bet")
+
+            # Hit
+            await self.client.send({"type": "hit"})
+
+            messages = await self.client.receive_messages(max_count=10, timeout=5.0)
+            game_state = None
+            for msg in messages:
+                if msg.get("type") == "game_state":
+                    game_state = msg
+                    break
+
+            self.assertIsNotNone(game_state, "No game_state received after hit")
+            player_hand_after_hit = game_state.get("player_hand", [])
+            player_total_after_hit = game_state.get("player_total", 0)
+            print(f"  After hit: {' '.join(player_hand_after_hit)} [{player_total_after_hit}]")
+            self.assertEqual(len(player_hand_after_hit), 3, "Should have 3 cards after hit")
+
+            # Now stand
+            await self.client.send({"type": "stand"})
+
+            messages = await self.client.receive_messages(max_count=10, timeout=5.0)
+            game_state = None
+            for msg in messages:
+                if msg.get("type") == "game_state":
+                    game_state = msg
+                    break
+
+            self.assertIsNotNone(game_state, "No game_state received after stand")
+            player_hand_after_stand = game_state.get("player_hand", [])
+            print(f"  After stand: {' '.join(player_hand_after_stand)} [{game_state.get('player_total', 0)}]")
+
+            # Verify round is settled
+            self.assertEqual(game_state.get("phase"), "settled", "game_state should show phase is settled")
+
+            print("✓ Hit then stand test passed")
+
+        except ConnectionError as e:
+            self.fail(f"Connection error: {e}")
+        except TimeoutError as e:
+            self.fail(f"Timeout error: {e}")
+        except AssertionError:
+            raise
+        except Exception as e:
+            self.fail(f"Unexpected error: {e}")
 
 
 def run_tests():

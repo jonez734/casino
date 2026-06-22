@@ -5,7 +5,12 @@ from datetime import datetime
 from typing import Any, Dict, Optional
 
 from bbsengine6 import io, member
+from bbsengine6.notify import send as notify_send, NotificationUrgency
 from casino.dal import table as dal_table
+from casino.dal.aiosql import table as async_dal_table
+from casino.dal.aiosql import game as async_dal_game
+from casino.dal.aiosql import bet as async_dal_bet
+from casino.dal.aiosql import player as async_dal_player
 
 
 class SessionManager:
@@ -158,6 +163,8 @@ class TableServiceHandler(BaseService):
             return await self._handle_stop_watching(id(websocket), message)
         elif msg_type == "update_table":
             return await self._handle_update_table(id(websocket), message)
+        elif msg_type == "kick_player":
+            return await self._handle_kick_player(id(websocket), message)
         
         return None
     
@@ -271,13 +278,77 @@ class TableServiceHandler(BaseService):
             "message": result["message"],
         }
     
+    async def _handle_kick_player(self, session_id: int, message: Dict[str, Any]) -> Dict[str, Any]:
+        session_moniker = self.sessions.get_moniker(session_id)
+        if not session_moniker:
+            return {"type": "error", "code": "not_authenticated"}
+        
+        is_sysop = self.sessions.get_is_sysop(session_id)
+        
+        table_monikers = message.get("table_monikers", [])
+        player_moniker = message.get("player_moniker", "").strip()
+        
+        if not player_moniker:
+            return {"type": "error", "code": "invalid_request", "message": "player_moniker required"}
+        
+        if not table_monikers:
+            return {"type": "error", "code": "invalid_request", "message": "table_monikers required"}
+        
+        if "all" in [t.lower() for t in table_monikers]:
+            table_monikers = await async_dal_table.get_player_tables(self.args, player_moniker)
+        
+        kicked_tables = []
+        errors = []
+        
+        for table_moniker in table_monikers:
+            table = await async_dal_table.get_table(self.args, table_moniker)
+            if not table:
+                errors.append(f"Table not found: {table_moniker}")
+                continue
+            
+            if not is_sysop and table.get("ownermoniker") != session_moniker:
+                errors.append(f"Permission denied for table: {table_moniker}")
+                continue
+            
+            removed = await async_dal_table.remove_player_from_table(self.args, table_moniker, player_moniker)
+            if removed:
+                kicked_tables.append(table_moniker)
+                try:
+                    notify_send(
+                        notification_type="casino_kick",
+                        recipients=[player_moniker],
+                        template="You have been kicked from table {table_moniker} by {admin_moniker}",
+                        template_vars={"table_moniker": table_moniker, "admin_moniker": session_moniker},
+                        sender_moniker=session_moniker,
+                        urgency=NotificationUrgency.IMPORTANT,
+                        args=self.args,
+                    )
+                except Exception as e:
+                    errors.append(f"Failed to notify player for {table_moniker}: {str(e)}")
+            else:
+                errors.append(f"Player not at table: {table_moniker}")
+        
+        if kicked_tables:
+            return {
+                "type": "player_kicked",
+                "player_moniker": player_moniker,
+                "tables": kicked_tables,
+                "message": f"Kicked {player_moniker} from {len(kicked_tables)} table(s)",
+            }
+        else:
+            return {
+                "type": "error",
+                "code": "kick_failed",
+                "message": "; ".join(errors) if errors else "Player not found at any specified table",
+            }
+    
     async def _handle_watch_table(self, session_id: int, message: Dict[str, Any]) -> Dict[str, Any]:
         table_moniker = message.get("moniker")
         
         if not table_moniker:
             return {"type": "error", "code": "invalid_request", "message": "moniker required"}
         
-        table = dal_table.get_table(self.args, table_moniker)
+        table = await async_dal_table.get_table(self.args, table_moniker)
         if not table:
             return {"type": "error", "code": "invalid_request", "message": "Table not found"}
         
@@ -381,8 +452,16 @@ class BetServiceHandler(BaseService):
             return {"type": "error", "code": "not_at_table"}
         
         amount = message.get("amount", 0)
-        if amount <= 0:
-            return {"type": "error", "code": "invalid_bet", "message": "Bet amount must be positive"}
+        
+        if not isinstance(amount, int) or amount <= 0:
+            io.echo(
+                f"_handle_bet: WARNING: Invalid bet attempt from {moniker} at {table_moniker}: "
+                f"amount={amount!r} (type={type(amount).__name__})",
+                level="warning"
+            )
+            return {"type": "error", "code": "invalid_bet", "message": "Bet amount must be a positive integer"}
+        
+        io.echo(f"_handle_bet: {moniker} betting {amount} at {table_moniker}", level="info")
         
         result = self.game_service.place_bet(table_moniker, moniker, amount)
         
@@ -390,9 +469,15 @@ class BetServiceHandler(BaseService):
             # Return game state directly to the player
             game_state = self.game_service.get_game_state(table_moniker, moniker)
             game_state["type"] = "game_state"
+            io.echo(f"_handle_bet: SUCCESS: {moniker} bet {amount} at {table_moniker}", level="info")
             return game_state
         else:
-            return {"type": "error", "code": "bet_failed", "message": result.get("message", "")}
+            error_msg = result.get("message", "")
+            io.echo(
+                f"_handle_bet: FAILED: {moniker} bet {amount} at {table_moniker}: {error_msg}",
+                level="warning"
+            )
+            return {"type": "error", "code": "bet_failed", "message": error_msg}
 
 
 class ChatServiceHandler(BaseService):

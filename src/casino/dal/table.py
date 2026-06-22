@@ -4,7 +4,7 @@
 import random
 from typing import Any, Dict, List, Optional
 
-from bbsengine6 import database
+from bbsengine6 import database, io
 
 
 COMPASS_POINTS = ["North", "South", "East", "West"]
@@ -48,18 +48,47 @@ def create_table(
         moniker = f"{game_type}-{owner_moniker.lower()}"
 
     table_name = generate_table_name()
-    account_moniker = f"table:{moniker}"
 
     with database.connect(args) as conn:
         with database.cursor(conn) as cur:
             cur.execute(
                 database.query(
-                    "INSERT INTO $bank.__account (moniker, balance) VALUES (:account_moniker, 0) RETURNING id",
-                    account_moniker=account_moniker
+                    "SELECT moniker FROM engine.__member WHERE moniker = :owner_moniker",
+                    owner_moniker=owner_moniker
+                )
+            )
+            if cur.fetchone() is None:
+                io.echo(
+                    f"casino.dal.table.create_table.100: Owner {owner_moniker} does not exist! Go away!",
+                    level="error"
+                )
+                return None
+
+            cur.execute(
+                database.query(
+                    "SELECT id FROM bank.__account WHERE moniker = :owner_moniker",
+                    owner_moniker=owner_moniker
                 )
             )
             account_row = cur.fetchone()
-            account_id = account_row["id"]
+            if account_row:
+                account_id = account_row["id"]
+            else:
+                cur.execute(
+                    database.query(
+                        "INSERT INTO bank.__account (moniker, balance) VALUES (:owner_moniker, 0) RETURNING id",
+                        owner_moniker=owner_moniker
+                    )
+                )
+                account_row = cur.fetchone()
+                account_id = account_row["id"]
+
+            cur.execute(
+                database.query(
+                    "INSERT INTO casino.__bank_table (table_moniker, bank_account_id) VALUES (:moniker, :account_id)",
+                    moniker=moniker, account_id=account_id
+                )
+            )
 
             cur.execute(
                 database.query(
