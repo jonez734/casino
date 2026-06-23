@@ -51,18 +51,21 @@
 
 ## Implement bbsengine6 Message System
 
-**Status:** Not started (depends on bbsengine6 message system being implemented first)
+**Status:** Not started (depends on bbsengine6 message system phases)
 
-See `bbsengine6/TODO.md` for full specification.
-
-Note: The message system is the base layer. The notify system builds on it (for real-time delivery), so bbsengine6 message system must be implemented first.
+See `bbsengine6/TODO.md` for full specification with phases:
+- Phase 1A: Core Channel System
+- Phase 1B: Persistence
+- Phase 1C: Groups, Blocking, Rate Limiting
+- Phase 1D: Multi-Channel Delivery
+- Phase 1E: Templating
 
 ### Casino-Specific Integration
 
 - **Channel naming:** `casino:table:{moniker}` for table game updates
 - **Personal channel:** `member:{moniker}` for direct member-to-member messages
 
-**Integration steps:**
+**Integration steps (depends on Phase 1A+):**
 
 1. Add channel subscription message handlers in `api/handler.py`:
    - `subscribe_channel` - subscribe session to a channel
@@ -215,9 +218,15 @@ Update `casino/startup.py`:
 
 ---
 
-## Phase 2: Expand Message System (Future)
+## Casino Message System Phases
 
-After Phase 1, expand message system to include notify features (persistence, groups, rate limiting, blocking, etc.). See bbsengine6/TODO.md for details.
+The phases here align with bbsengine6 phases:
+
+- **Phase 1A (Core)**: Table channels work immediately
+- **Phase 1B (Persistence)**: Chat persistence in casino.__chat_message
+- **Phase 1C (Groups/Blocking)**: Channel ACL enforcement
+- **Phase 1D (Multi-Channel)**: Email/SMS delivery to members
+- **Phase 1E (Templating)**: Message templating
 
 ### Tests
 
@@ -235,7 +244,7 @@ Add tests for all casino message system features:
 - `test_chat_history_retrieval` - chat_history message type works
 - `test_channel_acl_enforcement` - private/invite channels enforce ACL
 - `test_chat_table_via_channel` - chat_table publishes to casino:table channel
-- `test_chat_global_via_channel` - chat_global publishes to system:announcements
+- `test_chat_global_via_channel` - chat_global publishes to system:shout
 - `test_emote_via_channel` - emote publishes to appropriate channel
 
 ---
