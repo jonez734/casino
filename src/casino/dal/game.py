@@ -208,6 +208,32 @@ def get_player_hand(
             return None
 
 
+def get_player_hands(
+    args: Any, game_id: int, player_moniker: str
+) -> List[Dict[str, Any]]:
+    """Get all hands for a player in a game (supports split hands)."""
+    with database.connect(args) as conn:
+        with database.cursor(conn) as cur:
+            cur.execute(
+                database.query(
+                    "SELECT id, gameid, playermoniker, cards, attrs FROM $casino.__hand WHERE gameid = :game_id AND (playermoniker = :player_moniker OR playermoniker LIKE :split_pattern) ORDER BY id",
+                    game_id=game_id, player_moniker=player_moniker, split_pattern=player_moniker + "_split_%"
+                )
+            )
+            hands = []
+            for row in cur:
+                hands.append(
+                    {
+                        "id": row["id"],
+                        "gameid": row["gameid"],
+                        "playermoniker": row["playermoniker"],
+                        "cards": row["cards"] or [],
+                        "attrs": row["attrs"] or {},
+                    }
+                )
+            return hands
+
+
 DEALER_MONIKER = "__dealer__"
 
 

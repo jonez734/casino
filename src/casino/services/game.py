@@ -221,6 +221,232 @@ class GameService:
             "message": f"Stood at {total}",
         }
 
+    def can_split(self, table_moniker: str, player_moniker: str) -> Dict[str, Any]:
+        """Check if player can split their hand."""
+        game = dal_game.get_active_game(self.args, table_moniker)
+        if not game:
+            return {"success": False, "message": "No active game"}
+
+        hands = dal_game.get_player_hands(self.args, game["id"], player_moniker)
+        if not hands:
+            return {"success": False, "message": "No hand found"}
+
+        hand = hands[0]
+        cards = list(hand["cards"]) if hand["cards"] else []
+
+        if len(cards) != 2:
+            return {"success": False, "message": "Can only split with exactly 2 cards"}
+
+        card1_rank = cards[0][:-1]
+        card2_rank = cards[1][:-1]
+
+        if card1_rank != card2_rank:
+            return {"success": False, "message": "Cards must have same rank to split"}
+
+        from casino.dal import bet as dal_bet
+        player_bet = dal_bet.get_player_bet_for_game(self.args, game["id"], player_moniker)
+        if not player_bet:
+            return {"success": False, "message": "No bet found"}
+
+        from bbsengine6 import database
+        with database.connect(self.args) as conn:
+            with database.cursor(conn) as cur:
+                cur.execute(
+                    database.query(
+                        "SELECT credits FROM $engine.__member WHERE moniker = :player_moniker",
+                        player_moniker=player_moniker
+                    )
+                )
+                row = cur.fetchone()
+                if not row:
+                    return {"success": False, "message": "Player not found"}
+                balance = int(row["credits"])
+                if balance < player_bet["amount"]:
+                    return {"success": False, "message": "Insufficient funds to split"}
+
+        return {
+            "success": True,
+            "message": "Can split",
+            "bet_amount": player_bet["amount"],
+        }
+
+    def split(self, table_moniker: str, player_moniker: str) -> Dict[str, Any]:
+        """Split player's hand into two hands."""
+        can_split = self.can_split(table_moniker, player_moniker)
+        if not can_split["success"]:
+            return can_split
+
+        game = dal_game.get_active_game(self.args, table_moniker)
+        if not game:
+            return {"success": False, "message": "No active game"}
+
+        hands = dal_game.get_player_hands(self.args, game["id"], player_moniker)
+        if not hands:
+            return {"success": False, "message": "No hand found"}
+
+        hand = hands[0]
+        cards = list(hand["cards"]) if hand["cards"] else []
+
+        if len(cards) != 2:
+            return {"success": False, "message": "Can only split with exactly 2 cards"}
+
+        from casino.dal import bet as dal_bet
+        player_bet = dal_bet.get_player_bet_for_game(self.args, game["id"], player_moniker)
+        bet_amount = player_bet["amount"]
+
+        from bbsengine6 import database
+        with database.connect(self.args) as conn:
+            with database.cursor(conn) as cur:
+                cur.execute(
+                    database.query(
+                        "UPDATE $engine.__member SET credits = credits - :amount WHERE moniker = :player_moniker",
+                        amount=bet_amount, player_moniker=player_moniker
+                    )
+                )
+
+        split_bet = dal_bet.place_split_bet(
+            self.args, player_moniker, table_moniker, game["id"], bet_amount
+        )
+
+        card1 = cards[0]
+        card2 = cards[1]
+
+        hand1_cards = [card1, self._draw_card(table_moniker)]
+        hand2_cards = [card2, self._draw_card(table_moniker)]
+
+        dal_game.update_hand_cards(self.args, hand["id"], hand1_cards)
+
+        hand2 = dal_game.create_hand(self.args, game["id"], player_moniker + "_split_2")
+        dal_game.update_hand_cards(self.args, hand2["id"], hand2_cards)
+
+        dal_game.update_hand_status(self.args, hand["id"], "split_1")
+        dal_game.update_hand_status(self.args, hand2["id"], "split_2")
+
+        currenthand1 = ", ".join(hand1_cards)
+        currenthand2 = ", ".join(hand2_cards)
+        dal_bet.update_bet_currenthand(self.args, player_bet["id"], currenthand1)
+        dal_bet.update_bet_currenthand(self.args, split_bet["id"], currenthand2)
+
+        io.echo(f"split: hand1={hand1_cards}, hand2={hand2_cards}", level="info")
+
+        return {
+            "success": True,
+            "message": "Hand split",
+            "hand1": {
+                "cards": hand1_cards,
+                "total": self._hand_value(hand1_cards),
+                "bet": bet_amount,
+            },
+            "hand2": {
+                "cards": hand2_cards,
+                "total": self._hand_value(hand2_cards),
+                "bet": bet_amount,
+            },
+        }
+
+    def can_double(self, table_moniker: str, player_moniker: str) -> Dict[str, Any]:
+        """Check if player can double down."""
+        game = dal_game.get_active_game(self.args, table_moniker)
+        if not game:
+            return {"success": False, "message": "No active game"}
+
+        hands = dal_game.get_player_hands(self.args, game["id"], player_moniker)
+        if not hands:
+            return {"success": False, "message": "No hand found"}
+
+        hand = hands[0]
+        cards = list(hand["cards"]) if hand["cards"] else []
+
+        if len(cards) != 2:
+            return {"success": False, "message": "Can only double with exactly 2 cards"}
+
+        from casino.dal import bet as dal_bet
+        player_bet = dal_bet.get_player_bet_for_game(self.args, game["id"], player_moniker)
+        if not player_bet:
+            return {"success": False, "message": "No bet found"}
+
+        from bbsengine6 import database
+        with database.connect(self.args) as conn:
+            with database.cursor(conn) as cur:
+                cur.execute(
+                    database.query(
+                        "SELECT credits FROM $engine.__member WHERE moniker = :player_moniker",
+                        player_moniker=player_moniker
+                    )
+                )
+                row = cur.fetchone()
+                if not row:
+                    return {"success": False, "message": "Player not found"}
+                balance = int(row["credits"])
+                if balance < player_bet["amount"]:
+                    return {"success": False, "message": "Insufficient funds to double"}
+
+        return {
+            "success": True,
+            "message": "Can double",
+            "additional_cost": player_bet["amount"],
+        }
+
+    def double(self, table_moniker: str, player_moniker: str) -> Dict[str, Any]:
+        """Double down - double bet and get exactly one more card."""
+        can_double = self.can_double(table_moniker, player_moniker)
+        if not can_double["success"]:
+            return can_double
+
+        game = dal_game.get_active_game(self.args, table_moniker)
+        if not game:
+            return {"success": False, "message": "No active game"}
+
+        hands = dal_game.get_player_hands(self.args, game["id"], player_moniker)
+        if not hands:
+            return {"success": False, "message": "No hand found"}
+
+        hand = hands[0]
+        cards = list(hand["cards"]) if hand["cards"] else []
+
+        if len(cards) != 2:
+            return {"success": False, "message": "Can only double with exactly 2 cards"}
+
+        from casino.dal import bet as dal_bet
+        player_bet = dal_bet.get_player_bet_for_game(self.args, game["id"], player_moniker)
+        bet_amount = player_bet["amount"]
+
+        from bbsengine6 import database
+        with database.connect(self.args) as conn:
+            with database.cursor(conn) as cur:
+                cur.execute(
+                    database.query(
+                        "UPDATE $engine.__member SET credits = credits - :amount WHERE moniker = :player_moniker",
+                        amount=bet_amount, player_moniker=player_moniker
+                    )
+                )
+
+        dal_bet.double_bet(self.args, player_bet["id"], bet_amount * 2)
+
+        new_card = self._draw_card(table_moniker)
+        cards.append(new_card)
+        dal_game.update_hand_cards(self.args, hand["id"], cards)
+
+        total = self._hand_value(cards)
+        status = "bust" if total > 21 else "standing"
+
+        if status == "bust":
+            dal_game.update_hand_status(self.args, hand["id"], "bust")
+
+        currenthand = ", ".join(cards)
+        dal_bet.update_bet_currenthand(self.args, player_bet["id"], currenthand)
+
+        io.echo(f"double: {cards}, total={total}, status={status}", level="info")
+
+        return {
+            "success": True,
+            "message": f"Doubled - got {new_card}",
+            "cards": cards,
+            "total": total,
+            "status": status,
+            "bet_amount": bet_amount * 2,
+        }
+
     def get_game_state(self, table_moniker: str, player_moniker: str) -> Dict[str, Any]:
         """Get current game state for a player."""
         io.echo(f"get_game_state: table_moniker={table_moniker}, player={player_moniker}", level="info")

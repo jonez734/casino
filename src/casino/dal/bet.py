@@ -307,3 +307,44 @@ def get_table_bets(args: Any, game_id: int) -> List[Dict[str, Any]]:
                     "currenthand": row["currenthand"],
                 })
             return bets
+
+
+def place_split_bet(
+    args: Any,
+    player_moniker: str,
+    table_moniker: str,
+    game_id: int,
+    amount: int,
+) -> Dict[str, Any]:
+    """Place a bet for a split hand."""
+    with database.connect(args) as conn:
+        with database.cursor(conn) as cur:
+            cur.execute(
+                database.query(
+                    "INSERT INTO $casino.__betlog (membermoniker, cardtablemoniker, gameid, playermoniker, amount, status, dateposted) VALUES (:player_moniker, :table_moniker, :game_id, :player_moniker2, :amount, 'pending', NOW()) RETURNING id, membermoniker, cardtablemoniker, gameid, playermoniker, amount, status, dateposted",
+                    player_moniker=player_moniker, table_moniker=table_moniker, game_id=game_id, player_moniker2=player_moniker + "_split_2", amount=amount
+                )
+            )
+            row = cur.fetchone()
+            return {
+                "id": row["id"],
+                "membermoniker": row["membermoniker"],
+                "cardtablemoniker": row["cardtablemoniker"],
+                "gameid": row["gameid"],
+                "playermoniker": row["playermoniker"],
+                "amount": row["amount"],
+                "status": row["status"],
+                "dateposted": row["dateposted"],
+            }
+
+
+def double_bet(args: Any, bet_id: int, new_amount: int) -> None:
+    """Update bet amount after doubling down."""
+    with database.connect(args) as conn:
+        with database.cursor(conn) as cur:
+            cur.execute(
+                database.query(
+                    "UPDATE $casino.__betlog SET amount = :new_amount WHERE id = :bet_id",
+                    new_amount=new_amount, bet_id=bet_id
+                )
+            )

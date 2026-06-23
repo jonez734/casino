@@ -412,6 +412,12 @@ class GameServiceHandler(BaseService):
             result = self.game_service.stand(table_moniker, moniker)
             # Settle game after stand
             self.game_service.settle_game(table_moniker)
+        elif action == "double":
+            result = self.game_service.double(table_moniker, moniker)
+            # Double ends turn, settle game
+            self.game_service.settle_game(table_moniker)
+        elif action == "split":
+            result = self.game_service.split(table_moniker, moniker)
         
         if result and not result.get("success", True):
             return {"type": "error", "code": "action_failed", "message": result.get("message", "")}
