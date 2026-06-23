@@ -109,7 +109,7 @@ def main(args: Namespace, **kwargs) -> bool:
         return False
 
     try:
-        with database.getpool(args, dbname=args.databasename) as pool:
+        with database.getpool(args, database=args.databasename) as pool:
             if session.start(args, pool=pool) is False:
                 io.echo("casino.main.240: session.start() failed", level="error")
                 return False
@@ -187,7 +187,7 @@ def main(args: Namespace, **kwargs) -> bool:
                             if subcommand is not None:
                                 run_kwargs["subcommand"] = subcommand
 
-                            res = lib.runmodule(args, module, **run_kwargs)
+                            res = lib.runmodule(args, module, prefix="casino.commands", **run_kwargs)
 
                             if module == "connect" and subcommand is None:
                                 remote_client = res

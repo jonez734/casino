@@ -34,7 +34,7 @@ def main():
 
     print(f"Testing permissions on database: {args.databasename} as {args.databaseuser}")
 
-    with database.getpool(args, dbname=args.databasename) as pool:
+    with database.getpool(args, database=args.databasename) as pool:
         with database.connect(args, pool=pool) as conn:
             results = player.test_schema_permissions(args)
             print("\n=== Results ===")

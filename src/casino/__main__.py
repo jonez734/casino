@@ -11,10 +11,13 @@ from . import lib
 
 def main() -> None:
     parser: argparse.ArgumentParser | None = lib.buildargs()
-    args: Namespace | None = parser.parse_args() if parser is not None else None
+    args: Namespace | None = None
+    remaining_argv: list = []
+    if parser is not None:
+        args, remaining_argv = parser.parse_known_args()
 
     if args is not None:
-        with database.getpool(args, dbname=args.databasename) as pool:
+        with database.getpool(args, database=args.databasename) as pool:
             session.start(args, pool=pool)
 
     screen.init()
@@ -23,15 +26,14 @@ def main() -> None:
     time.tzset()
 
     try:
-        lib.runmodule(args, "main")
+        lib.runmodule(args, "main", argv=remaining_argv)
     except KeyboardInterrupt:
         io.echo("{/all}{bold}INTR{bold}")
     except EOFError:
         io.echo("{/all}{bold}EOF{/bold}")
     finally:
-        io.echo(
-            f"{{savecursor}}{{curpos:{io.terminal.height()},0}}{{el}}{{reset}}{{restorecursor}}"
-        )
+        io.echo(f"{{savecursor}}{{curpos:{io.terminal.height()},0}}"
+                f"{{el}}{{reset}}{{restorecursor}}")
 
 
 if __name__ == "__main__":

@@ -27,7 +27,7 @@ def buildargs(args, **kwargs):
 
 
 def main(args, **kwargs):
-    with database.getpool(args, dbname=database.DEFAULTDATABASE) as pool:
+    with database.getpool(args, database=database.DEFAULTDATABASE) as pool:
         with database.connect(args, pool=pool) as conn:
             io.echo(
                 f"database {{var:valuecolor}}{args.databasename}{{var:labelcolor}}: ",
@@ -44,7 +44,7 @@ def main(args, **kwargs):
             else:
                 io.echo(" ok ", level="ok", flush=True)
 
-    with database.getpool(args, dbname=args.databasename) as pool:
+    with database.getpool(args, database=args.databasename) as pool:
         with database.connect(args, pool=pool) as conn:
             # --- ensure bank schema exists (dependency) ---
             io.echo("schema {var:valuecolor}bank{var:labelcolor}: ", end="")
