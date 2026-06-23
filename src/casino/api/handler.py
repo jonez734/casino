@@ -5,6 +5,15 @@ from datetime import datetime
 from typing import Any, Dict, Optional
 
 from bbsengine6 import io, member
+from bbsengine6.message import deliver_pending_on_connect, get_unread_count
+from bbsengine6.net import (
+    ChannelState,
+    channel_subscribe,
+    channel_unsubscribe,
+    channel_unsubscribe_all,
+    channel_get_session_channels,
+    channel_publish,
+)
 from bbsengine6.notify import send as notify_send, NotificationUrgency
 from casino.dal import table as dal_table
 from casino.dal import player as dal_player
@@ -87,9 +96,10 @@ class AuthService(BaseService):
     
     from casino.services.player import PlayerService
     
-    def __init__(self, args: Any, session_manager: SessionManager):
+    def __init__(self, args: Any, session_manager: SessionManager, channel_state: Optional[ChannelState] = None):
         super().__init__(args, session_manager)
         self.player_service = self.PlayerService(args)
+        self.channel_state = channel_state
     
     async def handle_message(
         self, server: Any, websocket: Any, path: str, message: Dict[str, Any]
@@ -119,12 +129,32 @@ class AuthService(BaseService):
             is_sysop = member.issysop(self.args, moniker=moniker) is True
             self.sessions.register_session(session_id, moniker, is_sysop=is_sysop)
             balance = self.player_service.get_balance(moniker)
+            
+            # Auto-subscribe to personal channel for direct messages
+            if self.channel_state:
+                channel_subscribe(self.channel_state, session_id, f"member:{moniker}")
+            
+            # Deliver pending messages on connect
+            pending_messages = []
+            try:
+                pending_messages = deliver_pending_on_connect(moniker, database=self.args.databasename)
+            except Exception as e:
+                io.echo(f"Failed to deliver pending messages: {e}", level="warning")
+            
+            unread_count = 0
+            try:
+                unread_count = get_unread_count(moniker, database=self.args.databasename)
+            except Exception as e:
+                io.echo(f"Failed to get unread count: {e}", level="warning")
+            
             return {
                 "type": "auth_result",
                 "success": True,
                 "moniker": moniker,
                 "balance": balance,
                 "message": "Authenticated",
+                "pending_messages": pending_messages,
+                "unread_count": unread_count,
             }
         else:
             return {
@@ -141,9 +171,10 @@ class TableServiceHandler(BaseService):
     
     from casino.services.table import TableService
     
-    def __init__(self, args: Any, session_manager: SessionManager):
+    def __init__(self, args: Any, session_manager: SessionManager, channel_state: Optional[ChannelState] = None):
         super().__init__(args, session_manager)
         self.table_service = self.TableService(args)
+        self.channel_state = channel_state
     
     async def handle_message(
         self, server: Any, websocket: Any, path: str, message: Dict[str, Any]
@@ -250,6 +281,11 @@ class TableServiceHandler(BaseService):
         
         if result["success"]:
             self.sessions.set_table_moniker(session_id, table_moniker)
+            
+            # Auto-subscribe to table channel for real-time updates
+            if self.channel_state:
+                channel_subscribe(self.channel_state, session_id, f"casino:table:{table_moniker}")
+            
             return {
                 "type": "joined_table",
                 "moniker": result["moniker"],
@@ -272,6 +308,9 @@ class TableServiceHandler(BaseService):
         
         if result["success"]:
             self.sessions.set_table_moniker(session_id, None)
+            # Unsubscribe from table channel
+            if self.channel_state:
+                channel_unsubscribe(self.channel_state, session_id, f"casino:table:{table_moniker}")
         
         return {
             "type": "left_table",
@@ -360,6 +399,10 @@ class TableServiceHandler(BaseService):
         
         self.sessions.add_spectator(table_moniker, session_id)
         
+        # Auto-subscribe to table channel for real-time updates
+        if self.channel_state:
+            channel_subscribe(self.channel_state, session_id, f"casino:table:{table_moniker}")
+        
         return {
             "type": "watching_table",
             "moniker": table_moniker,
@@ -370,6 +413,9 @@ class TableServiceHandler(BaseService):
         table_moniker = message.get("moniker")
         if table_moniker:
             self.sessions.remove_spectator(table_moniker, session_id)
+            # Unsubscribe from table channel
+            if self.channel_state:
+                channel_unsubscribe(self.channel_state, session_id, f"casino:table:{table_moniker}")
         
         return {"type": "stopped_watching", "message": "Stopped watching"}
 
@@ -514,6 +560,51 @@ class ChatServiceHandler(BaseService):
         
         if msg_type in ("chat_table", "chat_global", "emote"):
             return await self._handle_chat(id(websocket), msg_type, message)
+        
+        return None
+    
+    async def _handle_chat(
+        self, session_id: int, msg_type: str, message: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        moniker = self.sessions.get_moniker(session_id)
+        if not moniker:
+            return {"type": "error", "code": "not_authenticated"}
+        
+        chat_msg = message.get("message", "")
+        
+        if msg_type == "chat_table":
+            table_moniker = self.sessions.get_table_moniker(session_id)
+            if not table_moniker:
+                return {"type": "error", "code": "not_at_table"}
+            
+            return {
+                "type": "chat_message",
+                "from_moniker": moniker,
+                "message": chat_msg,
+                "scope": "table",
+                "moniker": table_moniker,
+                "timestamp": datetime.utcnow().isoformat(),
+            }
+        
+        elif msg_type == "chat_global":
+            return {
+                "type": "chat_message",
+                "from_moniker": moniker,
+                "message": chat_msg,
+                "scope": "global",
+                "timestamp": datetime.utcnow().isoformat(),
+            }
+        
+        elif msg_type == "emote":
+            table_moniker = self.sessions.get_table_moniker(session_id)
+            return {
+                "type": "chat_message",
+                "from_moniker": moniker,
+                "message": chat_msg,
+                "scope": "table" if table_moniker else "global",
+                "moniker": table_moniker,
+                "timestamp": datetime.utcnow().isoformat(),
+            }
         
         return None
 
@@ -846,6 +937,78 @@ class BankServiceHandler(BaseService):
         return None
 
 
+class ChannelServiceHandler(BaseService):
+    """Handle channel subscription messages."""
+    
+    def __init__(self, args: Any, session_manager: SessionManager, channel_state: ChannelState, server: Any):
+        super().__init__(args, session_manager)
+        self.channel_state = channel_state
+        self._server = server
+    
+    async def handle_message(
+        self, server: Any, websocket: Any, path: str, message: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        msg_type = message.get("type")
+        
+        if msg_type == "subscribe_channel":
+            return await self._handle_subscribe(id(websocket), message)
+        elif msg_type == "unsubscribe_channel":
+            return await self._handle_unsubscribe(id(websocket), message)
+        elif msg_type == "get_subscriptions":
+            return await self._handle_get_subscriptions(id(websocket))
+        
+        return None
+    
+    async def _handle_subscribe(self, session_id: int, message: Dict[str, Any]) -> Dict[str, Any]:
+        """Subscribe session to a channel."""
+        moniker = self.sessions.get_moniker(session_id)
+        if not moniker:
+            return {"type": "error", "code": "not_authenticated"}
+        
+        channel = message.get("channel", "").strip()
+        if not channel:
+            return {"type": "error", "code": "invalid_request", "message": "channel required"}
+        
+        channel_subscribe(self.channel_state, session_id, channel)
+        
+        return {
+            "type": "subscribed",
+            "channel": channel,
+            "message": f"Subscribed to {channel}",
+        }
+    
+    async def _handle_unsubscribe(self, session_id: int, message: Dict[str, Any]) -> Dict[str, Any]:
+        """Unsubscribe session from a channel."""
+        moniker = self.sessions.get_moniker(session_id)
+        if not moniker:
+            return {"type": "error", "code": "not_authenticated"}
+        
+        channel = message.get("channel", "").strip()
+        if not channel:
+            return {"type": "error", "code": "invalid_request", "message": "channel required"}
+        
+        channel_unsubscribe(self.channel_state, session_id, channel)
+        
+        return {
+            "type": "unsubscribed",
+            "channel": channel,
+            "message": f"Unsubscribed from {channel}",
+        }
+    
+    async def _handle_get_subscriptions(self, session_id: int) -> Dict[str, Any]:
+        """List current subscriptions for session."""
+        moniker = self.sessions.get_moniker(session_id)
+        if not moniker:
+            return {"type": "error", "code": "not_authenticated"}
+        
+        channels = channel_get_session_channels(self.channel_state, session_id)
+        
+        return {
+            "type": "subscriptions",
+            "channels": list(channels),
+        }
+
+
 class MessageRouter:
     """
     Main message handler that coordinates all services.
@@ -856,13 +1019,19 @@ class MessageRouter:
         self.args = args
         self.sessions = SessionManager()
         
+        # Channel subscription state for pub/sub messaging
+        self.channel_state = ChannelState()
+        
         # Create services
-        self.auth_service = AuthService(args, self.sessions)
-        self.table_service = TableServiceHandler(args, self.sessions)
+        self.auth_service = AuthService(args, self.sessions, self.channel_state)
+        self.table_service = TableServiceHandler(args, self.sessions, self.channel_state)
         self.game_service = GameServiceHandler(args, self.sessions)
         self.bet_service = BetServiceHandler(args, self.sessions)
         self.chat_service = ChatServiceHandler(args, self.sessions)
         self.bank_service = BankServiceHandler(args, self.sessions)
+        
+        # Channel service (created in register_all after server is available)
+        self.channel_service: Optional[ChannelServiceHandler] = None
     
     def register_all(self, server: Any) -> None:
         """Register all services with the WebSocketServer."""
@@ -878,6 +1047,14 @@ class MessageRouter:
             "bank_balance", "bank_add", "bank_remove",
             "bank_transfer_request", "bank_transfer_approve", "bank_transfer_reject",
             "bank_pending", "bank_history", "bank_list_all"
+        ])
+        
+        # Register channel service for pub/sub messaging
+        self.channel_service = ChannelServiceHandler(
+            self.args, self.sessions, self.channel_state, server
+        )
+        server.register_service(self.channel_service, [
+            "subscribe_channel", "unsubscribe_channel", "get_subscriptions"
         ])
     
     async def handle_broadcast(
@@ -902,6 +1079,8 @@ class MessageRouter:
     
     def unregister_session(self, session_id: int) -> None:
         """Clean up session on disconnect."""
+        # Unsubscribe from all channels
+        channel_unsubscribe_all(self.channel_state, session_id)
         self.sessions.unregister_session(session_id)
 
 

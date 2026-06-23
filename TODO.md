@@ -51,45 +51,47 @@
 
 ## Implement bbsengine6 Message System
 
-**Status:** Not started (depends on bbsengine6 message system phases)
+**Status:** Phase 1A-1E complete (depends on bbsengine6 message system phases)
 
 See `bbsengine6/TODO.md` for full specification with phases:
-- Phase 1A: Core Channel System
-- Phase 1B: Persistence
-- Phase 1C: Groups, Blocking, Rate Limiting
-- Phase 1D: Multi-Channel Delivery
-- Phase 1E: Templating
+- Phase 1A: Core Channel System ✓
+- Phase 1B: Persistence ✓
+- Phase 1C: Groups, Blocking, Rate Limiting ✓
+- Phase 1D: Multi-Channel Delivery ✓
+- Phase 1E: Templating ✓
 
 ### Casino-Specific Integration
 
 - **Channel naming:** `casino:table:{moniker}` for table game updates
 - **Personal channel:** `member:{moniker}` for direct member-to-member messages
 
-**Integration steps (depends on Phase 1A+):**
+**Integration steps (Phase 1A+1B DONE):**
 
-1. Add channel subscription message handlers in `api/handler.py`:
+1. ✓ Add channel subscription message handlers in `api/handler.py`:
    - `subscribe_channel` - subscribe session to a channel
    - `unsubscribe_channel` - unsubscribe from a channel
+   - `get_subscriptions` - list current subscriptions
 
-2. On `join_table`: auto-subscribe to `casino:table:{moniker}`
+2. ✓ On `join_table`: auto-subscribe to `casino:table:{moniker}`
 
-3. On `watch_table`: also subscribe to `casino:table:{moniker}` (unifies player/watcher logic)
+3. ✓ On `watch_table`: also subscribe to `casino:table:{moniker}` (unifies player/watcher logic)
 
-4. Replace `server.broadcast(message, table_moniker)` with `server.publish(channel, message)` in:
-   - `api/handler.py:handle_broadcast()` for game_state and chat messages
-   - `_handle_game_action()` after each action
-   - `_handle_bet()` after bets
+4. On `leave_table` and `stop_watching`: unsubscribe from table channel
 
 5. On authentication (`auth` message): auto-subscribe to `member:{moniker}` for direct messages
 
-6. Update `startup.py` to include new SQL files
+6. ✓ Update `startup.py` to include message.sql
 
-7. (After Phase 1B) Message system replaces notify - client notification polling uses message tables instead of notify
+7. On disconnect: unsubscribe from all channels
 
-7. Convert chat commands to use message system:
+8. (After Phase 1B) Message system replaces notify - client notification polling uses message tables instead of notify
+
+9. Convert chat commands to use message system:
    - `chat_table` → publish to `casino:table:{moniker}` channel
    - `chat_global` → publish to `system:shout` channel
    - `emote` → publish to table or global channel (same as chat)
+
+**Tests:** 10 integration tests passing
 
 **Channel mapping:**
 | Command | Channel |

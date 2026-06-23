@@ -141,6 +141,38 @@ def main(args, **kwargs):
                 else:
                     io.echo("ok", level="ok")
 
+            # --- engine message tables (Phase 1B) ---
+            io.echo("class {var:valuecolor}engine.__message{var:labelcolor}: ", end="")
+            if database.classexists(args, "engine.__message", conn=conn) is False:
+                io.echo("import ", end="")
+                if database.importsql(args, "message.sql", conn=conn, package="bbsengine6.sql") is False:
+                    failcount += 1
+                else:
+                    io.echo(" ok ", level="ok")
+            else:
+                io.echo("ok", level="ok")
+
+            io.echo("class {var:valuecolor}engine.__message_recipient{var:labelcolor}: ", end="")
+            if database.classexists(args, "engine.__message_recipient", conn=conn) is False:
+                io.echo("import ", end="")
+                if database.importsql(args, "message.sql", conn=conn, package="bbsengine6.sql") is False:
+                    failcount += 1
+                else:
+                    io.echo(" ok ", level="ok")
+            else:
+                io.echo("ok", level="ok")
+
+            # --- engine message groups (Phase 1C) ---
+            io.echo("class {var:valuecolor}engine.__message_group{var:labelcolor}: ", end="")
+            if database.classexists(args, "engine.__message_group", conn=conn) is False:
+                io.echo("import ", end="")
+                if database.importsql(args, "message_groups.sql", conn=conn, package="bbsengine6.sql") is False:
+                    failcount += 1
+                else:
+                    io.echo(" ok ", level="ok")
+            else:
+                io.echo("ok", level="ok")
+
             if failcount == 0:
                 io.echo(" ok ", level="ok")
             else:
