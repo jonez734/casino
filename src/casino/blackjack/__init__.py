@@ -1,9 +1,13 @@
 from bbsengine6 import register_module
 
 from . import lib
+from .hand import Hand
+from .phase import GamePhase
 
 
 __version__ = "202210010112"
+
+__all__ = ["Hand", "GamePhase"]
 
 
 def init(args, **kw: dict) -> bool:
