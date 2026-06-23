@@ -26,7 +26,9 @@
 - [X] **Database schema** - Tables for hands, bets, pots, seats, stats
 - [X] **Commands** - Full CLI for poker actions
 - [X] **Tests** - Unit tests (52) and integration tests (37)
-- [ ] Fix WebSocket broadcast for spectators - spectators watching tables should receive game_state updates via `server.broadcast()` in `api/handler.py`
+- [X] Fix WebSocket broadcast for spectators - spectators watching tables should receive game_state updates after player actions
+
+  **Implemented**: Added `server.broadcast()` calls in `_handle_game_action` and `_handle_bet` in `api/handler.py`. After each player action (hit, stand, double, split, surrender, bet), game_state is now broadcast to all clients connected to the table's WebSocket path.
 
 ## Messaging
 

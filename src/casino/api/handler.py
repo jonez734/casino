@@ -384,11 +384,11 @@ class GameServiceHandler(BaseService):
         msg_type = message.get("type")
         
         if msg_type in ("hit", "stand", "double", "split", "surrender"):
-            return await self._handle_game_action(id(websocket), msg_type, message)
+            return await self._handle_game_action(id(websocket), msg_type, message, server)
         
         return None
     
-    async def _handle_game_action(self, session_id: int, action: str, message: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
+    async def _handle_game_action(self, session_id: int, action: str, message: Optional[Dict[str, Any]] = None, server: Optional[Any] = None) -> Optional[Dict[str, Any]]:
         moniker = self.sessions.get_moniker(session_id)
         if not moniker:
             return {"type": "error", "code": "not_authenticated"}
@@ -398,12 +398,7 @@ class GameServiceHandler(BaseService):
         if not table_moniker:
             return {"type": "error", "code": "not_at_table"}
         
-        # Get message from server's pending message store if needed
-        # For now, just handle the action
-        
         if action == "bet":
-            # Need amount - this would come from a separate message
-            # For now, return error asking for amount
             return {"type": "error", "code": "invalid_request", "message": "Use bet message with amount"}
         
         result = None
@@ -411,12 +406,10 @@ class GameServiceHandler(BaseService):
             result = self.game_service.hit(table_moniker, moniker)
         elif action == "stand":
             result = self.game_service.stand(table_moniker, moniker)
-            # Settle game after stand
             self.game_service.settle_game(table_moniker)
         elif action == "double":
             hand_id = message.get("hand_id") if message else None
             result = self.game_service.double(table_moniker, moniker, hand_id)
-            # Double ends turn, settle game
             self.game_service.settle_game(table_moniker)
         elif action == "split":
             hand_id = message.get("hand_id") if message else None
@@ -432,6 +425,13 @@ class GameServiceHandler(BaseService):
         # Return game state directly to player
         game_state = self.game_service.get_game_state(table_moniker, moniker)
         game_state["type"] = "game_state"
+        
+        # Broadcast game_state to all at the table (including spectators)
+        if server and table_moniker:
+            broadcast_state = self.game_service.get_game_state(table_moniker, "")
+            broadcast_state["type"] = "game_state"
+            await server.broadcast(broadcast_state, table_moniker)
+        
         return game_state
 
 
@@ -450,11 +450,11 @@ class BetServiceHandler(BaseService):
         msg_type = message.get("type")
         
         if msg_type == "bet":
-            return await self._handle_bet(id(websocket), message)
+            return await self._handle_bet(id(websocket), message, server)
         
         return None
     
-    async def _handle_bet(self, session_id: int, message: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    async def _handle_bet(self, session_id: int, message: Dict[str, Any], server: Optional[Any] = None) -> Optional[Dict[str, Any]]:
         moniker = self.sessions.get_moniker(session_id)
         if not moniker:
             return {"type": "error", "code": "not_authenticated"}
@@ -476,14 +476,19 @@ class BetServiceHandler(BaseService):
         
         io.echo(f"_handle_bet: {moniker} betting {amount} at {table_moniker}", level="info")
         
-        # TODO: Support passing notes for disciplinary tracking, etc.
         result = self.game_service.place_bet(table_moniker, moniker, amount)
         
         if result.get("success"):
-            # Return game state directly to the player
             game_state = self.game_service.get_game_state(table_moniker, moniker)
             game_state["type"] = "game_state"
             io.echo(f"_handle_bet: SUCCESS: {moniker} bet {amount} at {table_moniker}", level="info")
+            
+            # Broadcast game_state to all at the table (including spectators)
+            if server and table_moniker:
+                broadcast_state = self.game_service.get_game_state(table_moniker, "")
+                broadcast_state["type"] = "game_state"
+                await server.broadcast(broadcast_state, table_moniker)
+            
             return game_state
         else:
             error_msg = result.get("message", "")
