@@ -9,6 +9,7 @@
 - [ ] 5. **Statistics tracking** - Persistent win/loss/bust/blackjack stats per player
 - [ ] 6. **Table access control** - Role-based access for who can play at which tables
 - [ ] 7. **Card image resizing** - PIL-based PNG resizing for Tkinter card display
+- [ ] 14. **AI bot players** - Allow table owner/sysop to fill empty seats with AI-controlled players
 
 ## Integration Test Issues
 
