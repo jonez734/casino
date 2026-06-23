@@ -84,6 +84,8 @@ See `bbsengine6/TODO.md` for full specification with phases:
 
 6. Update `startup.py` to include new SQL files
 
+7. (After Phase 1B) Message system replaces notify - client notification polling uses message tables instead of notify
+
 7. Convert chat commands to use message system:
    - `chat_table` → publish to `casino:table:{moniker}` channel
    - `chat_global` → publish to `system:shout` channel
