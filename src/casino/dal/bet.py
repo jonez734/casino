@@ -150,6 +150,57 @@ def settle_bet(
                 )
 
 
+def set_insurance(args: Any, bet_id: int, amount: int) -> None:
+    """Set insurance bet amount for a bet."""
+    with database.connect(args) as conn:
+        with database.cursor(conn) as cur:
+            cur.execute(
+                database.query(
+                    "UPDATE $casino.__betlog SET attrs = jsonb_set(coalesce(attrs, '{}'::jsonb), '{insurance}', to_jsonb(:amount)) WHERE id = :bet_id",
+                    amount=amount, bet_id=bet_id
+                )
+            )
+
+
+def get_insurance(args: Any, bet_id: int) -> int:
+    """Get insurance bet amount for a bet."""
+    with database.connect(args) as conn:
+        with database.cursor(conn) as cur:
+            cur.execute(
+                database.query(
+                    "SELECT attrs->'insurance' as insurance FROM $casino.__betlog WHERE id = :bet_id",
+                    bet_id=bet_id
+                )
+            )
+            row = cur.fetchone()
+            if row and row["insurance"]:
+                return int(row["insurance"])
+            return 0
+
+
+def settle_insurance(args: Any, bet_id: int, won: bool, payout: int) -> None:
+    """Settle insurance bet - add payout to player balance."""
+    if not won or payout <= 0:
+        return
+    
+    with database.connect(args) as conn:
+        with database.cursor(conn) as cur:
+            cur.execute(
+                database.query(
+                    "SELECT playermoniker FROM $casino.__betlog WHERE id = :bet_id",
+                    bet_id=bet_id
+                )
+            )
+            row = cur.fetchone()
+            if row:
+                cur.execute(
+                    database.query(
+                        "UPDATE $engine.__member SET credits = credits + :payout WHERE moniker = :player_moniker",
+                        payout=payout, player_moniker=row["playermoniker"]
+                    )
+                )
+
+
 def update_bet_notes(args: Any, bet_id: int, notes: str) -> None:
     """Update the notes for a bet."""
     with database.connect(args) as conn:
@@ -177,6 +228,31 @@ def update_bet_currenthand(args: Any, bet_id: int, currenthand: str) -> None:
                         currenthand=currenthand, bet_id=bet_id
                     )
                 )
+
+
+def get_player_bet_for_game(args: Any, game_id: int, player_moniker: str) -> Optional[Dict[str, Any]]:
+    """Get a player's bet for a specific game."""
+    with database.connect(args) as conn:
+        with database.cursor(conn) as cur:
+            cur.execute(
+                database.query(
+                    "SELECT id, membermoniker, cardtablemoniker, gameid, playermoniker, amount, status, dateposted FROM $casino.__betlog WHERE gameid = :game_id AND playermoniker = :player_moniker AND status = 'pending' ORDER BY dateposted DESC LIMIT 1",
+                    game_id=game_id, player_moniker=player_moniker
+                )
+            )
+            row = cur.fetchone()
+            if not row:
+                return None
+            return {
+                "id": row["id"],
+                "membermoniker": row["membermoniker"],
+                "cardtablemoniker": row["cardtablemoniker"],
+                "gameid": row["gameid"],
+                "playermoniker": row["playermoniker"],
+                "amount": row["amount"],
+                "status": row["status"],
+                "dateposted": row["dateposted"],
+            }
 
 
 def get_player_bets(args: Any, player_moniker: str, limit: int = 10) -> List[Dict[str, Any]]:

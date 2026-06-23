@@ -160,6 +160,9 @@ class GameService:
         cards = [self._draw_card(table_moniker), self._draw_card(table_moniker)]
         dal_game.update_hand_cards(self.args, hand["id"], cards)
 
+        currenthand = ", ".join(cards)
+        dal_bet.update_bet_currenthand(self.args, bet["id"], currenthand)
+
         return {
             "success": True,
             "bet_id": bet["id"],
@@ -232,6 +235,8 @@ class GameService:
                 "phase": "waiting",
                 "hands": [],
                 "dealer_hand": [],
+                "insurance_available": False,
+                "insurance_taken": 0,
             }
 
         hand = dal_game.get_player_hand(self.args, game["id"], player_moniker)
@@ -251,6 +256,15 @@ class GameService:
         if hand and hand.get("attrs"):
             player_status = hand["attrs"].get("status")
 
+        insurance_available = False
+        insurance_taken = 0
+        if hand and len(hand.get("cards", [])) == 2:
+            insurance_available = self._is_dealer_showing_ace(table_moniker)
+            if insurance_available:
+                bet = dal_bet.get_player_bet_for_game(self.args, game["id"], player_moniker)
+                if bet:
+                    insurance_taken = dal_bet.get_insurance(self.args, bet["id"])
+
         return {
             "table_moniker": table_moniker,
             "game_id": int(game["id"]),
@@ -260,11 +274,81 @@ class GameService:
             "player_status": player_status,
             "dealer_hand": dealer_cards,
             "dealer_total": dealer_total,
+            "insurance_available": insurance_available,
+            "insurance_taken": insurance_taken,
         }
 
     def _is_blackjack(self, cards: list) -> bool:
         """Check for natural blackjack (21 with exactly 2 cards)."""
         return len(cards) == 2 and self._hand_value(cards) == 21
+
+    def _is_dealer_showing_ace(self, table_moniker: str) -> bool:
+        """Check if dealer's upcard is an Ace."""
+        table = dal_table.get_table(self.args, table_moniker)
+        if not table:
+            return False
+        game = dal_game.get_current_game(self.args, table_moniker)
+        if not game:
+            return False
+        dealer_hand = dal_game.get_dealer_hand(self.args, game["id"])
+        if not dealer_hand or not dealer_hand.get("cards"):
+            return False
+        dealer_cards = list(dealer_hand["cards"])
+        if len(dealer_cards) == 0:
+            return False
+        upcard = dealer_cards[0]
+        return upcard.startswith("A")
+
+    def can_take_insurance(self, table_moniker: str, player_moniker: str) -> Dict[str, Any]:
+        """Check if player can take insurance."""
+        if not self._is_dealer_showing_ace(table_moniker):
+            return {"success": False, "message": "Insurance not available"}
+
+        game = dal_game.get_active_game(self.args, table_moniker)
+        if not game:
+            return {"success": False, "message": "No active game"}
+
+        bet = dal_bet.get_player_bet_for_game(self.args, game["id"], player_moniker)
+        if not bet:
+            return {"success": False, "message": "No bet found"}
+
+        existing_insurance = dal_bet.get_insurance(self.args, bet["id"])
+        if existing_insurance > 0:
+            return {"success": False, "message": "Insurance already taken"}
+
+        return {
+            "success": True,
+            "max_insurance": int(bet["amount"]) // 2,
+            "message": "Insurance available",
+        }
+
+    def take_insurance(self, table_moniker: str, player_moniker: str, amount: int) -> Dict[str, Any]:
+        """Place an insurance bet."""
+        can_insure = self.can_take_insurance(table_moniker, player_moniker)
+        if not can_insure["success"]:
+            return can_insure
+
+        max_insurance = can_insure["max_insurance"]
+        if amount < 1:
+            return {"success": False, "message": "Insurance must be at least 1"}
+        if amount > max_insurance:
+            return {"success": False, "message": f"Insurance cannot exceed {max_insurance}"}
+
+        game = dal_game.get_active_game(self.args, table_moniker)
+        if not game:
+            return {"success": False, "message": "No active game"}
+
+        bet = dal_bet.get_player_bet_for_game(self.args, game["id"], player_moniker)
+        if not bet:
+            return {"success": False, "message": "No bet found"}
+
+        dal_bet.set_insurance(self.args, bet["id"], amount)
+
+        return {
+            "success": True,
+            "amount": amount,
+            "message": f"Insurance bet of {amount} placed",
+        }
 
     def _run_dealer_turn(self, game_id: int, table_moniker: str) -> list:
         """Run dealer turn - hit until 17 or more."""
@@ -306,6 +390,8 @@ class GameService:
             if not player_hand:
                 continue
 
+            insurance_amount = dal_bet.get_insurance(self.args, bet["id"])
+
             player_cards = list(player_hand["cards"])
             player_total = self._hand_value(player_cards)
             player_blackjack = self._is_blackjack(player_cards)
@@ -326,6 +412,13 @@ class GameService:
                 dal_bet.settle_bet(self.args, bet["id"], False, 0)
             else:
                 dal_bet.settle_bet(self.args, bet["id"], True, bet["amount"])
+
+            if insurance_amount > 0:
+                if dealer_blackjack:
+                    payout = insurance_amount * 2
+                    dal_bet.settle_insurance(self.args, bet["id"], True, payout)
+                else:
+                    dal_bet.settle_insurance(self.args, bet["id"], False, 0)
 
         dal_game.update_game_status(self.args, game["id"], "settled")
 
