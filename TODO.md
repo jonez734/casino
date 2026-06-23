@@ -26,7 +26,7 @@
 - [X] **Database schema** - Tables for hands, bets, pots, seats, stats
 - [X] **Commands** - Full CLI for poker actions
 - [X] **Tests** - Unit tests (52) and integration tests (37)
-- [ ] Fix broadcast system for watching tables - spectators should receive game state updates
+- [ ] Fix WebSocket broadcast for spectators - spectators watching tables should receive game_state updates via `server.broadcast()` in `api/handler.py`
 
 ## Messaging
 
