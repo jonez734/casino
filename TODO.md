@@ -83,16 +83,18 @@ Note: The message system is the base layer. The notify system builds on it (for 
 
 7. Convert chat commands to use message system:
    - `chat_table` → publish to `casino:table:{moniker}` channel
-   - `chat_global` → publish to `system:announcements` channel
+   - `chat_global` → publish to `system:shout` channel
    - `emote` → publish to table or global channel (same as chat)
 
 **Channel mapping:**
 | Command | Channel |
 |---------|---------|
 | chat_table | casino:table:{table_moniker} |
-| chat_global | system:announcements |
+| chat_global | system:shout |
 | emote (at table) | casino:table:{table_moniker} |
-| emote (global) | system:announcements |
+| emote (global) | system:shout |
+
+Note: `system:announcements` is reserved for sysop broadcasts only.
 
 ---
 
