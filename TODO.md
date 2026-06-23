@@ -52,6 +52,10 @@
 ## Notes
 
 - All core blackjack features (hit, stand, split, double, insurance, push, blackjack 3:2 payout) ARE implemented and tested.
+
+## Known Issues
+
+- **psycopg-pool 3.3.0 incompatibility**: The async database layer (`casino/dal/aiosql/`) is broken due to API changes in psycopg-pool 3.3.0. The `watch_table` feature fails with "object _AsyncGeneratorContextManager can't be used in 'await' expression". **Fix**: Downgrade to psycopg-pool 3.1.0 with `pip install psycopg-pool==3.1.0`
 - WebSocket server (bed.py), table management, betting, banking, chat, and player/observer modes are working.
 
 ## Extended Statistics (Future)
