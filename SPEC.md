@@ -1,5 +1,7 @@
 # Specification: `casino/src/casino/bed.py`
 
+> **Note**: See [TODO.md](./TODO.md) for a list of unimplemented features and future work.
+
 ## Overview
 
 **bed.py** implements the **BBS Engine Daemon (BED)** - a WebSocket server that provides real-time casino game services to BBS clients using the bbsengine6.net service registry.
@@ -59,8 +61,9 @@ The MessageRouter registers these services with the WebSocket server:
 | **BetServiceHandler** | `bet` |
 | **ChatServiceHandler** | `chat_table`, `chat_global`, `emote` |
 | **BankServiceHandler** | `bank_balance`, `bank_add`, `bank_remove`, `bank_transfer_request`, `bank_transfer_approve`, `bank_transfer_reject`, `bank_pending`, `bank_history`, `bank_list_all` |
+| **PokerServiceHandler** | `poker_create_table`, `poker_join_table`, `poker_leave_table`, `poker_start_hand`, `poker_action`, `poker_fold`, `poker_check`, `poker_call`, `poker_bet`, `poker_raise`, `poker_all_in`, `poker_get_state`, `poker_list_tables` |
 
-Total: 6 services handling 25 message types.
+Total: 7 services handling 38+ message types.
 
 ### 5. Signal Handling
 
@@ -101,6 +104,100 @@ bed.py does NOT handle gameplay directly. It only sets up the WebSocket server a
 
 These services delegate to `casino/services/game.py` for game logic.
 
+## Poker Implementation
+
+### Overview
+
+The poker implementation provides a complete poker game system with multiple variants, betting structures, and hand evaluation.
+
+### Package Structure
+
+```
+casino/src/casino/poker/
+├── __init__.py           # BBS module entry points
+├── lib.py                # Core utilities (PokerDeck, PokerCard, HandRank, BettingStructure, BetLimits)
+├── dealer.py             # PokerDealer class - manages deck operations
+├── player.py             # PokerPlayer class - player state and actions
+├── variant/              # Poker variant implementations
+│   ├── __init__.py       # Variant registry
+│   ├── base.py           # BaseVariant abstract class
+│   ├── evaluator.py      # Hand evaluation (all rankings + tie-breakers)
+│   ├── texas_hold_em.py  # Texas Hold'em
+│   ├── omaha.py          # Omaha + Omaha Hi-Lo
+│   └── seven_card_stud.py
+├── services/
+│   └── poker.py          # PokerService - game state machine, betting, showdown
+```
+
+### Supported Variants
+
+| Variant | Hole Cards | Community Cards | Betting Structures |
+|---------|-------------|-----------------|-------------------|
+| Texas Hold'em | 2 | 5 (flop/turn/river) | No-Limit, Pot-Limit, Fixed-Limit |
+| Omaha | 4 (must use 2) | 5 | Pot-Limit, Fixed-Limit |
+| 7-Card Stud | 7 (no community) | 0 | Fixed-Limit |
+
+### Betting Streets
+
+- **Texas Hold'em / Omaha**: preflop → flop → turn → river
+- **7-Card Stud**: third_street → fourth_street → fifth_street → sixth_street → seventh_street
+
+### Hand Rankings
+
+All poker hands are evaluated from Royal Flush (highest) to High Card (lowest):
+- Royal Flush, Straight Flush, Four of a Kind, Full House, Flush, Straight, Three of a Kind, Two Pair, Pair, High Card
+
+### Key Classes
+
+**PokerDealer** (`poker/dealer.py`):
+- `shuffle_deck(times)` - Shuffle the deck
+- `deal_hole_cards(players, count)` - Deal hole cards to players
+- `deal_community_cards(count)` - Deal community cards (burns first)
+- `reset()` - Reset for new hand
+
+**PokerPlayer** (`poker/player.py`):
+- `receive_card(card_str)` - Add card to hand
+- `post_bet(amount)` - Place a bet (handles all-in)
+- `can_act()`, `can_check()`, `can_call()` - Action validation
+- `collect_winnings(amount)` - Add winnings
+
+**PokerService** (`poker/services/poker.py`):
+- `create_table()` - Create a new poker table
+- `join_table()` - Player joins table
+- `start_hand()` - Start a new hand
+- `player_action()` - Process bet/call/check/raise/fold/all-in
+- `get_table_state()` - Get current game state
+
+### Database Schema
+
+Poker tables are defined in `scripts/poker.sql`:
+- `casino.__poker_table` - Table configuration
+- `casino.__poker_hand` - Hand history
+- `casino.__poker_player_hand` - Player hands at showdown
+- `casino.__poker_bet` - Betting history per street
+- `casino.__poker_pot` - Pot/side pot tracking
+- `casino.__poker_seat` - Player seats at tables
+- `casino.__poker_stats` - Player statistics
+
+### Commands
+
+Poker commands are in `casino/commands/poker/`:
+- `poker check` - Check (call if no bet)
+- `poker call` - Call the current bet
+- `poker bet` - Place a bet
+- `poker raise` - Raise the bet
+- `poker fold` - Fold your hand
+- `poker allin` - Go all-in
+- `poker show` - Show hand at showdown
+- `poker muck` - Muck hand
+- `poker hand` - Show your current hand
+- `poker table` - Show table state
+- `poker create` - Create a new table
+- `poker join` - Join a table
+- `poker leave` - Leave the table
+- `poker list` - List available tables
+- `poker start` - Start a new hand
+
 ## Coding Conventions
 
 ### PEP 8: Keyword Arguments
@@ -118,3 +215,7 @@ def foo(arg1, **kw):
 ```
 
 Exception: BBS module entry points (`init`, `access`, `buildargs`, `main`) may use `**kw` for consistency with the bbsengine module loader interface.
+
+---
+
+For unimplemented features and future work, see [TODO.md](./TODO.md).

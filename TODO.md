@@ -15,6 +15,20 @@
 
 - [X] Hole card: not hiding properly in integration tests (needs debug)
 
+## Poker
+
+- [ ] Fix broadcast system for watching tables - spectators should receive game state updates
+
+## Messaging
+
+- [ ] **Say command with targeting** - Add `say` command for quick messaging:
+  - `say @everyone <message>` → sends to global chat (all connected users)
+  - `say @all <message>` → sends to global chat (all connected users)
+  - `say @table <message>` → sends to current table only
+  - `say @currenttable <message>` → sends to current table only
+  - Examples: `say @everyone I'm the king of the world!` or `say @table I am psyching you out!`
+  - Implementation: Add `say` subcommand in commands/chat/, parse target, route to global or table chat
+
 ## Other Games (Not Implemented)
 
 - [ ] 8. Roulette

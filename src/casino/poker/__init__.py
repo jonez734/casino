@@ -1,7 +1,7 @@
 from bbsengine6 import io, register_module
 
 
-__version__ = "202210010112"
+__version__ = "202406010000"
 
 
 def init(args, **kw: dict) -> bool:
@@ -11,7 +11,7 @@ def init(args, **kw: dict) -> bool:
         version=__version__,
         apis={},
     )
-    return True  # type: ignore[return-value]
+    return True
 
 
 def access(args, op: str, **kw: dict) -> bool:
@@ -23,5 +23,6 @@ def buildargs(args, **kw):
 
 
 def main(args, **kw):
-    io.echo("poker module not yet implemented")
+    io.echo("poker module")
+    io.echo("Use 'poker holdem', 'poker omaha', or 'poker stud' to play")
     return True
