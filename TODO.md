@@ -81,6 +81,19 @@ Note: The message system is the base layer. The notify system builds on it (for 
 
 6. Update `startup.py` to include new SQL files
 
+7. Convert chat commands to use message system:
+   - `chat_table` → publish to `casino:table:{moniker}` channel
+   - `chat_global` → publish to `system:announcements` channel
+   - `emote` → publish to table or global channel (same as chat)
+
+**Channel mapping:**
+| Command | Channel |
+|---------|---------|
+| chat_table | casino:table:{table_moniker} |
+| chat_global | system:announcements |
+| emote (at table) | casino:table:{table_moniker} |
+| emote (global) | system:announcements |
+
 ---
 
 ## Chat Persistence (Future)
@@ -219,6 +232,9 @@ Add tests for all casino message system features:
 - `test_chat_persistence` - chat messages stored in DB
 - `test_chat_history_retrieval` - chat_history message type works
 - `test_channel_acl_enforcement` - private/invite channels enforce ACL
+- `test_chat_table_via_channel` - chat_table publishes to casino:table channel
+- `test_chat_global_via_channel` - chat_global publishes to system:announcements
+- `test_emote_via_channel` - emote publishes to appropriate channel
 
 ---
 
