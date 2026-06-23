@@ -17,6 +17,15 @@
 
 ## Poker
 
+- [X] **Texas Hold'em** - Implemented with No-Limit, Pot-Limit, Fixed-Limit
+- [X] **Omaha** - Implemented with Pot-Limit (must use 2 hole cards)
+- [X] **7-Card Stud** - Implemented with Fixed-Limit
+- [X] **Hand evaluation** - All rankings from Royal Flush to High Card with tie-breakers
+- [X] **Betting actions** - Fold, check, call, bet, raise, all-in
+- [X] **PokerService** - Game state machine, showdown, pot calculation
+- [X] **Database schema** - Tables for hands, bets, pots, seats, stats
+- [X] **Commands** - Full CLI for poker actions
+- [X] **Tests** - Unit tests (52) and integration tests (37)
 - [ ] Fix broadcast system for watching tables - spectators should receive game state updates
 
 ## Messaging
