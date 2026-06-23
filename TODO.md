@@ -13,7 +13,7 @@
 
 ## Integration Test Issues
 
-- [ ] Hole card: not hiding properly in integration tests (needs debug)
+- [X] Hole card: not hiding properly in integration tests (needs debug)
 
 ## Other Games (Not Implemented)
 

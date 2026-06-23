@@ -8,6 +8,7 @@ from bbsengine6 import io
 from casino.dal import table as dal_table
 from casino.dal import game as dal_game
 from decimal import Decimal
+from casino.blackjack import Hand
 
 from casino.dal import bet as dal_bet
 
@@ -86,6 +87,8 @@ class GameService:
 
     def _card_value(self, card: str) -> int:
         """Get value of a card."""
+        if card == "hidden":
+            return 0
         pips = card[:-1]
         if pips in ("J", "Q", "K"):
             return 10
@@ -189,9 +192,17 @@ class GameService:
         dal_game.update_hand_cards(self.args, hand["id"], cards)
 
         total = self._hand_value(cards)
+
+        table = dal_table.get_table(self.args, table_moniker)
+        attrs = table.get("attrs", {}) or {} if table else {}
+        charlie_enabled = attrs.get("charlie", False)
+
         status = "bust" if total > 21 else "playing"
 
-        if status == "bust":
+        if status != "bust" and charlie_enabled and len(cards) >= 5:
+            status = "charlie"
+            dal_game.update_hand_status(self.args, hand["id"], "charlie")
+        elif status == "bust":
             dal_game.update_hand_status(self.args, hand["id"], "bust")
 
         return {
@@ -199,7 +210,7 @@ class GameService:
             "cards": cards,
             "total": total,
             "status": status,
-            "message": "Hit" if status != "bust" else "Bust!",
+            "message": "5-card Charlie!" if status == "charlie" else ("Hit" if status != "bust" else "Bust!"),
         }
 
     def stand(self, table_moniker: str, player_moniker: str) -> Dict[str, Any]:
@@ -222,6 +233,89 @@ class GameService:
             "status": "standing",
             "message": f"Stood at {total}",
         }
+
+    def surrender(self, table_moniker: str, player_moniker: str) -> Dict[str, Any]:
+        """Player surrenders - forfeit 50% of bet."""
+        from casino.dal import bet as dal_bet
+
+        game = dal_game.get_active_game(self.args, table_moniker)
+        if not game:
+            return {"success": False, "message": "No active game"}
+
+        table = dal_table.get_table(self.args, table_moniker)
+        if not table:
+            return {"success": False, "message": "Table not found"}
+
+        attrs = table.get("attrs", {}) or {}
+        surrender_rule = attrs.get("surrender", "early")
+
+        if not surrender_rule:
+            return {"success": False, "message": "Surrender not allowed at this table"}
+
+        hand = dal_game.get_player_hand(self.args, game["id"], player_moniker)
+        if not hand:
+            return {"success": False, "message": "No hand found"}
+
+        cards = list(hand["cards"]) if hand["cards"] else []
+        if len(cards) != 2:
+            return {"success": False, "message": "Can only surrender with exactly 2 cards"}
+
+        attrs = hand.get("attrs") or {}
+        status = attrs.get("status")
+        if status in ("hit", "bust", "standing", "done"):
+            return {"success": False, "message": "Cannot surrender after hitting"}
+
+        hand_id = hand.get("id")
+        if not hand_id:
+            return {"success": False, "message": "Hand not found"}
+
+        bet = dal_bet.get_bet_for_hand(self.args, hand_id)
+        if not bet:
+            return {"success": False, "message": "No bet found"}
+
+        surrender_amount = bet["amount"] // 2
+        dal_bet.settle_bet(self.args, bet["id"], True, surrender_amount)
+
+        dal_game.update_hand_attrs(self.args, hand_id, {"status": "surrendered"})
+
+        return {
+            "success": True,
+            "surrendered": True,
+            "forfeited": int(bet["amount"] - surrender_amount),
+            "returned": int(surrender_amount),
+            "message": f"Surrendered, returned {surrender_amount}",
+        }
+
+    def can_surrender(self, table_moniker: str, player_moniker: str) -> Dict[str, Any]:
+        """Check if player can surrender."""
+        game = dal_game.get_active_game(self.args, table_moniker)
+        if not game:
+            return {"success": False, "can_surrender": False}
+
+        table = dal_table.get_table(self.args, table_moniker)
+        if not table:
+            return {"success": False, "can_surrender": False}
+
+        attrs = table.get("attrs", {}) or {}
+        surrender_rule = attrs.get("surrender", "early")
+
+        if not surrender_rule:
+            return {"success": True, "can_surrender": False}
+
+        hand = dal_game.get_player_hand(self.args, game["id"], player_moniker)
+        if not hand:
+            return {"success": True, "can_surrender": False}
+
+        cards = list(hand["cards"]) if hand["cards"] else []
+        if len(cards) != 2:
+            return {"success": True, "can_surrender": False}
+
+        hand_attrs = hand.get("attrs") or {}
+        status = hand_attrs.get("status")
+        if status in ("hit", "bust", "standing", "done", "surrendered"):
+            return {"success": True, "can_surrender": False}
+
+        return {"success": True, "can_surrender": True}
 
     def can_split(self, table_moniker: str, player_moniker: str, hand_id: Optional[int] = None) -> Dict[str, Any]:
         """Check if player can split their hand."""
@@ -554,8 +648,12 @@ class GameService:
         )
 
         if hands and not dealer_cards:
+            if not dealer_hand:
+                dal_game.create_dealer_hand(self.args, game["id"])
             dealer_cards = [self._draw_card(table_moniker), self._draw_card(table_moniker)]
             dal_game.update_dealer_hand_cards(self.args, game["id"], dealer_cards)
+            if len(dealer_cards) >= 2:
+                dal_game.set_dealer_hole_card(self.args, game["id"], dealer_cards[1])
 
         dealer_total = self._hand_value(dealer_cards) if dealer_cards else 0
 
@@ -574,19 +672,24 @@ class GameService:
 
             can_split = len(cards) == 2 and split_count < 3
             can_double = len(cards) == 2
-            can_hit = status not in ("bust", "standing", "split_1", "split_2", "done")
-            can_stand = status not in ("bust", "standing", "split_1", "split_2", "done")
+            can_hit = status not in ("bust", "standing", "split_1", "split_2", "done", "surrendered")
+            can_stand = status not in ("bust", "standing", "split_1", "split_2", "done", "surrendered")
+            can_surrender = (
+                len(cards) == 2 and
+                status not in ("bust", "standing", "split_1", "split_2", "done", "surrendered", "hit")
+            )
 
             player_hands.append({
                 "hand_id": hand_id,
                 "cards": cards,
                 "total": self._hand_value(cards),
                 "status": status,
-                "bet": hand_bet["amount"] if hand_bet else 0,
+                "bet": int(hand_bet["amount"]) if hand_bet else 0,
                 "can_split": can_split,
                 "can_double": can_double,
                 "can_hit": can_hit,
                 "can_stand": can_stand,
+                "can_surrender": can_surrender,
             })
 
             if len(cards) == 2:
@@ -595,13 +698,15 @@ class GameService:
                     if hand_bet:
                         insurance_taken = dal_bet.get_insurance(self.args, hand_bet["id"])
 
+        dealer_hand_for_client = self._hide_hole_card(dealer_cards, game["id"])
+
         return {
             "table_moniker": table_moniker,
             "game_id": int(game["id"]),
             "phase": game["status"],
             "hands": player_hands,
-            "dealer_hand": dealer_cards,
-            "dealer_total": dealer_total,
+            "dealer_hand": dealer_hand_for_client,
+            "dealer_total": self._hand_value(dealer_hand_for_client) if dealer_hand_for_client else 0,
             "insurance_available": insurance_available,
             "insurance_taken": insurance_taken,
         }
@@ -609,6 +714,17 @@ class GameService:
     def _is_blackjack(self, cards: list) -> bool:
         """Check for natural blackjack (21 with exactly 2 cards)."""
         return len(cards) == 2 and self._hand_value(cards) == 21
+
+    def _hide_hole_card(self, dealer_cards: list, game_id: int) -> list:
+        """Hide dealer's hole card from client view."""
+        if not dealer_cards or len(dealer_cards) < 2:
+            return dealer_cards
+
+        hole_card = dal_game.get_dealer_hole_card(self.args, game_id)
+        if hole_card and hole_card in dealer_cards:
+            visible_cards = [dealer_cards[0], "hidden"]
+            return visible_cards
+        return dealer_cards
 
     def _is_dealer_showing_ace(self, table_moniker: str) -> bool:
         """Check if dealer's upcard is an Ace."""
@@ -687,11 +803,31 @@ class GameService:
             dealer_cards = [self._draw_card(table_moniker), self._draw_card(table_moniker)]
             dal_game.update_dealer_hand_cards(self.args, game_id, dealer_cards)
 
+        table = dal_table.get_table(self.args, table_moniker)
+        attrs = table.get("attrs", {}) or {} if table else {}
+        soft_17_rule = attrs.get("soft_17", "hit")
+
+        dal_game.reveal_dealer_hole_card(self.args, game_id)
+        dealer_hand = dal_game.get_dealer_hand(self.args, game_id)
+        dealer_cards = list(dealer_hand["cards"]) if dealer_hand["cards"] else []
+
         dealer_total = self._hand_value(dealer_cards)
-        while dealer_total < 17:
-            dealer_cards.append(self._draw_card(table_moniker))
-            dal_game.update_dealer_hand_cards(self.args, game_id, dealer_cards)
-            dealer_total = self._hand_value(dealer_cards)
+        hand = Hand.from_strings(dealer_cards)
+
+        while True:
+            if dealer_total >= 17:
+                if dealer_total == 17 and soft_17_rule == "hit" and hand.is_soft():
+                    dealer_cards.append(self._draw_card(table_moniker))
+                    dal_game.update_dealer_hand_cards(self.args, game_id, dealer_cards)
+                    dealer_total = self._hand_value(dealer_cards)
+                    hand = Hand.from_strings(dealer_cards)
+                else:
+                    break
+            else:
+                dealer_cards.append(self._draw_card(table_moniker))
+                dal_game.update_dealer_hand_cards(self.args, game_id, dealer_cards)
+                dealer_total = self._hand_value(dealer_cards)
+                hand = Hand.from_strings(dealer_cards)
 
         return dealer_cards
 
@@ -716,6 +852,12 @@ class GameService:
             if not bet or bet["status"] != "pending":
                 continue
 
+            hand_attrs = hand.get("attrs") or {}
+            hand_status = hand_attrs.get("status")
+
+            if hand_status == "surrendered":
+                continue
+
             insurance_amount = dal_bet.get_insurance(self.args, bet["id"])
 
             player_cards = list(hand["cards"])
@@ -730,6 +872,8 @@ class GameService:
                 dal_bet.settle_bet(self.args, bet["id"], False, 0)
             elif player_total > 21:
                 dal_bet.settle_bet(self.args, bet["id"], False, 0)
+            elif hand_status == "charlie":
+                dal_bet.settle_bet(self.args, bet["id"], True, bet["amount"] * 2)
             elif dealer_total > 21:
                 dal_bet.settle_bet(self.args, bet["id"], True, bet["amount"] * 2)
             elif player_total > dealer_total:
