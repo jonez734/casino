@@ -28,7 +28,7 @@
 - [X] **Tests** - Unit tests (52) and integration tests (37)
 - [X] Fix WebSocket broadcast for spectators - spectators watching tables should receive game_state updates after player actions
 
-  **DONE**: Added `server.broadcast()` calls in `_handle_game_action` and `_handle_bet` in `api/handler.py`. After each player action (hit, stand, double, split, surrender, bet), game_state is now broadcast to all clients connected to the table's WebSocket path.
+  **DONE**: Added `server.publish()` calls to `casino:table:{moniker}` channel in `_handle_game_action` and `_handle_bet` in `api/handler.py`. After each player action (hit, stand, double, split, surrender, bet), game_state is now published to all clients subscribed to the table channel.
 
 ## Messaging
 
@@ -58,7 +58,7 @@ See `bbsengine6/TODO.md` for full specification with phases:
 - Phase 1B: Persistence ✓
 - Phase 1C: Groups, Blocking, Rate Limiting ✓
 - Phase 1D: Multi-Channel Delivery ✓
-- Phase 1E: Templating ✓
+- Phase 1E: Templating ✓ - Create new test file `test_message_templating.py` (~52 tests)
 
 ### Casino-Specific Integration
 
@@ -361,3 +361,95 @@ To add more game-specific stats, use the format `game_type.stat_name`:
 - `poker.wins`, `slots.hands_played`, etc.
 
 No database migration needed - just add the stat name to ALLOWED_STATS in dal/player.py
+
+---
+
+## Phase 1F: Notify → message_delivery Rename
+
+Update casino to use message_delivery instead of notify.
+
+**Changes:**
+- `casino/src/casino/api/handler.py`: Update imports from `bbsengine6.notify` → `bbsengine6.message_delivery`
+- `casino/src/casino/services/bank.py`: Update imports
+- Test files: Update any notify imports
+- Verify backward compat alias works during transition
+
+**Tests needed:**
+- Verify backward compat: `from bbsengine6 import notify` still works
+- Verify new import: `from bbsengine6 import message_delivery` works
+- Verify both point to same implementation
+- All existing notify tests continue to pass
+
+---
+
+## Phase 1G: Postoffice Service (IMAP Polling)
+
+Add postoffice service to BED (via casino) that polls IMAP servers for new email and notifies users.
+
+**bed.json** (add to casino package data):
+```json
+{
+  "postoffice": {
+    "enabled": true,
+    "poll_interval": 30,
+    "mailboxes": [
+      {"user": "alice", "host": "mail.example.com", "port": 993},
+      {"user": "bob", "host": "imap.gmail.com", "port": 993}
+    ]
+  }
+}
+```
+
+**Config loading order (priority):**
+1. Command line / environment variables (highest)
+2. Service reads from config file
+3. BED loads defaults from bed.json (lowest)
+
+**Implementation:**
+- Add `postoffice.py` module in casino (or create separate package)
+- Service class with `handle_message()` method
+- Mode A: Background asyncio task polls IMAP on interval (if `enabled: true`)
+- Mode B: Handles `check_mail` message type for manual requests
+
+**Message routing:**
+- Channel: `postoffice:check_mail`
+- Notification: Uses `message.send()` with sender, subject, ~500 char preview
+
+**Integration with BED:**
+- Add postoffice service to casino's MessageRouter
+- Register message types: `check_mail`, etc.
+- Start background polling task on router init
+
+**Tests needed:**
+
+| Test File | What it tests |
+|-----------|---------------|
+| `test_postoffice_service.py` | Service class, handle_message() |
+| `test_postoffice_imap_polling.py` | IMAP connection, polling, new email detection |
+| `test_postoffice_background_task.py` | Background polling task starts/stops |
+| `test_postoffice_manual_check.py` | Manual check via message type |
+| `test_postoffice_notification.py` | Notification sent with correct content |
+| `test_postoffice_config.py` | Config loading (3 priority levels) |
+| `test_postoffice_channel.py` | Sends to `postoffice:check_mail` channel |
+
+**Key test scenarios:**
+
+1. **Background polling (Mode A):**
+   - Service starts, creates asyncio task
+   - Polls IMAP on interval
+   - Detects new email, sends notification
+   - Service stops, task cancels
+
+2. **Manual check (Mode B):**
+   - Client sends `check_mail` message
+   - Service polls IMAP
+   - Returns results to client
+
+3. **Config priority:**
+   - Env var overrides bed.json
+   - Config file overrides bed.json defaults
+
+4. **Notification content:**
+   - Sender extracted correctly
+   - Subject extracted correctly
+   - Body preview (~500 chars)
