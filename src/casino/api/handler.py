@@ -349,7 +349,12 @@ class TableServiceHandler(BaseService):
         if not table_moniker:
             return {"type": "error", "code": "invalid_request", "message": "moniker required"}
         
-        table = await async_dal_table.get_table(self.args, table_moniker)
+        try:
+            table = await async_dal_table.get_table(self.args, table_moniker)
+        except Exception as e:
+            io.echo(f"_handle_watch_table error: {e}", level="error")
+            return {"type": "error", "code": "service_error", "message": str(e)}
+        
         if not table:
             return {"type": "error", "code": "invalid_request", "message": "Table not found"}
         
