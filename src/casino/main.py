@@ -10,6 +10,21 @@ from . import _version
 from . import connect
 
 
+def parse_module_path(path: str) -> tuple[str, str | None]:
+    """Parse 'module.subcommand' or 'module' into separate parts.
+
+    Args:
+        path: Module path like 'table.list' or 'connect'
+
+    Returns:
+        Tuple of (module, subcommand) where subcommand may be None
+    """
+    if "." in path:
+        module, subcommand = path.rsplit(".", 1)
+        return module, subcommand
+    return path, None
+
+
 def init(args: Namespace, **kwargs) -> bool:
     return True
 
@@ -46,12 +61,26 @@ def main(args: Namespace, **kwargs) -> bool:
 
     io.echo(f"casino.main.100: {kwargs.get('pool')=}", level="debug")
 
+    remote_client = None
+
     options = (
         ("B", "Blackjack", "blackjack.play"),
         ("P", "Poker", "poker.play"),
         ("S", "Slots", "slots.play"),
         ("Y", "Yahtzee", "yahtzee.play"),
         ("C", "Connect", "connect"),
+        ("L", "List tables", "table.list"),
+        ("J", "Join table", "table.join"),
+        ("V", "View table", "table.view"),
+        ("W", "Watch table", "admin.watch"),
+        ("U", "Unwatch table", "admin.unwatch"),
+        ("A", "Bet", "game.bet"),
+        ("H", "Hit", "game.hit"),
+        ("T", "Stand", "game.stand"),
+        ("P", "Play", "game.play"),
+        ("G", "Global msg", "chat.global"),
+        ("K", "Bank", "bank"),
+        ("X", "Disconnect", "connect.disconnect"),
         ("M", "Maintenance", "maint.main"),
     )
 
@@ -61,12 +90,14 @@ def main(args: Namespace, **kwargs) -> bool:
             t = o[1]
             _callback = o[2]
             io.echo(
-                f"{{/all}}{{optioncolor}}[{opt}]{{/all}} {{valuecolor}} {t }{{/all}}"
+                f"{{/all}}{{optioncolor}}[{opt}]{{/all}} {{valuecolor}} {t}{{/all}}"
             )
         io.echo("{F6}{optioncolor}[Q]{/all}{valuecolor} Quit :door:{/all}")
 
     io.echo(f"casino.main.400: {args=} {kwargs=}")
     util.heading("casino")
+
+    connect.init_remote_client_screen()
 
     io.echo(
         f"database: {args.databasename} host: {args.databasehost}:{args.databaseport}",
@@ -96,7 +127,9 @@ def main(args: Namespace, **kwargs) -> bool:
                 io.echo("casino.main.200: you do not exist! go away!", level="error")
                 return False
 
-            currentplayer = lib.CasinoPlayer(args, membermoniker=currentmembermoniker, pool=pool)
+            currentplayer = lib.CasinoPlayer(
+                args, membermoniker=currentmembermoniker, pool=pool
+            )
             if currentplayer is None:
                 io.echo("casino.main.220: no player selected", level="info")
                 return True
@@ -121,7 +154,7 @@ def main(args: Namespace, **kwargs) -> bool:
 
                 try:
                     ch = io.inputchoice(
-                        f"{{promptcolor}}Your command, {currentplayer.moniker}? {{inputcolor}}",
+                        f"{{var:promptcolor}}Your command, {currentplayer.moniker}? {{var:inputcolor}}",
                         choices,
                         "",
                         help=mainmenuhelp,
@@ -129,6 +162,9 @@ def main(args: Namespace, **kwargs) -> bool:
                     )
 
                     if ch == "Q" or ch == "X":
+                        if remote_client is not None:
+                            connect.disconnect(args, client=remote_client)
+                            connect.cleanup_remote_client_screen()
                         io.echo(":door: {optioncolor}Q{labelcolor} -- quit game{/all}")
                         done = True
                         break
@@ -138,20 +174,26 @@ def main(args: Namespace, **kwargs) -> bool:
                                 continue
                             option = o[0]
                             title = o[1]
-                            submodule = o[2]
+                            module_path = o[2]
+                            module, subcommand = parse_module_path(module_path)
                             io.echo(
                                 f"{{optioncolor}}{option}{{normalcolor}} -- {title}{{/all}}"
                             )
-                            res = lib.runmodule(
-                                args,
-                                submodule,
-                                player=currentplayer,
-                                pool=pool,
-                                **kwargs,
-                            )
-                            if res is not True:
+
+                            run_kwargs = dict(kwargs)
+                            run_kwargs["player"] = currentplayer
+                            run_kwargs["pool"] = pool
+                            run_kwargs["client"] = remote_client
+                            if subcommand is not None:
+                                run_kwargs["subcommand"] = subcommand
+
+                            res = lib.runmodule(args, module, **run_kwargs)
+
+                            if module == "connect" and subcommand is None:
+                                remote_client = res
+                            elif res is not True:
                                 io.echo(
-                                    f"error running submodule {submodule}, returned {res=}",
+                                    f"error running submodule {module_path}, returned {res=}",
                                     level="error",
                                 )
                             io.echo()

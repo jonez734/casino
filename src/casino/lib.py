@@ -225,7 +225,7 @@ class tkHand(Hand):
         #    for x in range(0, 5):
         #      card = self.cards[x]
         ##      card = Card(shortname="4S", blank=False, facedown=False)
-        #      ttyio.echo(f"lib.tkHand.100: {card!r}", level="debug")
+        # ttyio.echo(f"lib.tkHand.100: {card!r}", level="debug")
         #      art = card.getart()
         #      label = tk.Label(self.frame, bd=2, relief="solid", padx=20, pady=10)#, image=card.getart())
         #      label.configure(image=art)
@@ -424,8 +424,8 @@ class Casino(object):
     def __edit(self, rec: dict | None = None) -> dict:
         if rec is None:
             rec = {}
-        rec["location"] = io.inputstring("location: ", self.location if self.location else "")
-        rec["bank"] = io.inputinteger("bank: ", self.bank if self.bank else 0)
+        rec["location"] = io.inputstring("{var:promptcolor}location: {var:inputcolor}", self.location if self.location else "")
+        rec["bank"] = io.inputinteger("{var:promptcolor}bank: {var:inputcolor}", self.bank if self.bank else 0)
         return rec
 
     def add(self):
@@ -552,5 +552,6 @@ def buildargs(args: Namespace | None = None, **kwargs: Any) -> argparse.Argument
 
 
 def runmodule(args: Namespace | None, modulename: str, **kwargs: Any) -> Any:
-    io.echo(f"{args=} {modulename=}", level="debug")
-    return module.runmodule(args, f"casino.{modulename}", **kwargs)
+##    io.echo(f"{args=} {modulename=}", level="debug")
+    prefix = kwargs.get("prefix", "casino")
+    return module.runmodule(args, f"{prefix}.{modulename}", **kwargs)
