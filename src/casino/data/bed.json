@@ -1,0 +1,8 @@
+{
+  "postoffice": {
+    "enabled": false,
+    "poll_interval": 30,
+    "mailboxes": []
+  },
+  "debug": false
+}
