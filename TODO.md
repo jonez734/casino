@@ -204,6 +204,22 @@ Update `casino/startup.py`:
 
 After Phase 1, expand message system to include notify features (persistence, groups, rate limiting, blocking, etc.). See bbsengine6/TODO.md for details.
 
+### Tests
+
+Add tests for all casino message system features:
+
+- `test_join_table_auto_subscribe` - player auto-subscribes to table channel
+- `test_watch_table_auto_subscribe` - watcher subscribes to table channel
+- `test_leave_table_unsubscribe` - player leaves, unsubscribes from table
+- `test_stop_watching_unsubscribe` - watcher stops watching
+- `test_game_state_via_channel` - game_state published via channel system
+- `test_chat_via_channel` - chat messages published via channel
+- `test_auth_auto_subscribe_member_channel` - auth subscribes to member:{moniker}
+- `test_direct_message_via_member_channel` - member-to-member messaging works
+- `test_chat_persistence` - chat messages stored in DB
+- `test_chat_history_retrieval` - chat_history message type works
+- `test_channel_acl_enforcement` - private/invite channels enforce ACL
+
 ---
 
 ## Notes
