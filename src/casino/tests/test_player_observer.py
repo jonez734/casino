@@ -194,8 +194,14 @@ class TestPlayerAndObserver(unittest.IsolatedAsyncioTestCase):
 
     async def asyncSetUp(self):
         """Set up test server and database."""
+        import asyncio
         from bbsengine6.net import WebSocketServer
         from bbsengine6 import database
+
+        try:
+            await database.reset_async_pool_cache()
+        except Exception:
+            pass
 
         parser = lib.buildargs()
         self.args = parser.parse_args(["--databasename", "zoid6test"])
@@ -223,7 +229,7 @@ class TestPlayerAndObserver(unittest.IsolatedAsyncioTestCase):
                     "ON CONFLICT (moniker) DO UPDATE SET balance = 100000"
                 )
 
-        self.server = WebSocketServer(host="127.0.0.1", port=8766)
+        self.server = WebSocketServer(host="127.0.0.1", port=8765)
         self.router = MessageRouter(self.args)
         self.router.register_all(self.server)
         await self.server.start()
@@ -234,6 +240,7 @@ class TestPlayerAndObserver(unittest.IsolatedAsyncioTestCase):
 
     async def asyncTearDown(self):
         """Clean up after test."""
+        import asyncio
         from bbsengine6 import database
 
         if self.player_client:
@@ -263,6 +270,11 @@ class TestPlayerAndObserver(unittest.IsolatedAsyncioTestCase):
         if hasattr(self, "pool") and self.pool is not None:
             self.pool.close()
             self.pool = None
+
+        try:
+            await database.reset_async_pool_cache()
+        except Exception:
+            pass
 
     async def test_player_and_observer(self):
         """Test blackjack player and observer watching the table simultaneously."""

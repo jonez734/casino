@@ -701,11 +701,16 @@ class GameService:
 
         dealer_hand_for_client = self._hide_hole_card(dealer_cards, game["id"])
 
+        player_hand_cards = player_hands[0]["cards"] if player_hands else []
+        player_total = player_hands[0]["total"] if player_hands else 0
+
         return {
             "table_moniker": table_moniker,
             "game_id": int(game["id"]),
             "phase": game["status"],
             "hands": player_hands,
+            "player_hand": player_hand_cards,
+            "player_total": player_total,
             "dealer_hand": dealer_hand_for_client,
             "dealer_total": self._hand_value(dealer_hand_for_client) if dealer_hand_for_client else 0,
             "insurance_available": insurance_available,

@@ -62,7 +62,7 @@
 
 ### Workstream 2: Make test_player_observer.py Pass
 
-**Status:** Pending
+**Status:** COMPLETED
 
 **Steps:**
 1. Fix port mismatch in `src/casino/tests/test_player_observer.py:226`
@@ -81,9 +81,44 @@
 - Observer receives `game_state` broadcasts after bet, hit, stand actions
 - All assertions pass
 
+**Additional fixes required:**
+- Fixed `bbsengine6/database.py`: Added `@asynccontextmanager` decorator to `async_connect()` to properly support async context manager protocol
+- Fixed `bbsengine6/database.py`: Fixed `get_async_pool()` to not pass `dbname=None` to `make_dsn()` (caused missing database name in DSN)
+- Fixed `bbsengine6/database.py`: Fixed `AsyncCursor.fetchone()` and `fetchall()` to properly await async psycopg cursor methods
+- Fixed `bbsengine6/database.py`: Fixed `AsyncCursor.__aexit__()` to call `self._cur.close()` instead of non-existent `_curclose()`
+- Fixed `bbsengine6/database.py`: Fixed `async_query()` to use `database.query()` for processing SQL templates with `$schema.table` placeholders
+- Fixed `casino/services/game.py`: Added `player_hand` and `player_total` fields to `get_game_state()` return value for backward compatibility with tests and connect.py
+- Fixed `casino/tests/test_player_observer.py`: Added async pool cache reset in `asyncSetUp()` and `asyncTearDown()` to ensure clean state between tests
+
 ---
 
-### Workstream 3: Update bbsengine6 Database Spec
+### Workstream 3: Rename dbname to database for Clarity
+
+**Status:** COMPLETED
+
+**Problem:** Function parameters like `dbname=` are unclear - `database=` is more explicit.
+
+**Solution:** Support both `dbname` and `database` parameters for backward compatibility, but update casino to use the clearer `database=` style.
+
+**Steps:**
+
+1. **Update bbsengine6/database.py** - Accept both parameters:
+   - `get_async_pool(args, database=None, dbname=None)` - use whichever is provided
+   - `async_connect(..., database=None, dbname=None)` - same
+   - `async_query(..., database=None, dbname=None)` - same
+   - `getpool(args, **kwargs)` - handle both in kwargs, normalize before `make_dsn()`
+   - `make_dsn(args, **kwargs)` - handle both in kwargs
+
+2. **Update casino code to use `database=`**:
+   - `casino/main.py`: `database=args.databasename`
+   - `casino/__main__.py`: `database=args.databasename`
+   - `casino/startup.py`: `database=args.databasename` (2 places)
+
+3. **Backward compatibility preserved**: All existing code using `dbname=` continues to work
+
+---
+
+### Workstream 4: Update bbsengine6 Database Spec
 
 **Status:** Pending
 
