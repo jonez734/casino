@@ -55,8 +55,58 @@
 
 ## Known Issues
 
-- **psycopg-pool 3.3.0 incompatibility**: The async database layer (`casino/dal/aiosql/`) is broken due to API changes in psycopg-pool 3.3.0. The `watch_table` feature fails with "object _AsyncGeneratorContextManager can't be used in 'await' expression". **Fix**: Downgrade to psycopg-pool 3.1.0 with `pip install psycopg-pool==3.1.0`
+- ~~**psycopg-pool 3.3.0 incompatibility**: The async database layer (`casino/dal/aiosql/`) is broken due to API changes in psycopg-pool 3.3.0. The `watch_table` feature fails with "object _AsyncGeneratorContextManager can't be used in 'await' expression". **Fix**: Downgrade to psycopg-pool 3.1.0 with `pip install psycopg-pool==3.1.0`~~ - RESOLVED (bbsengine6 now handles both 3.1.x and 3.3.0+ automatically)
 - WebSocket server (bed.py), table management, betting, banking, chat, and player/observer modes are working.
+
+## Pending Workstreams
+
+### Workstream 2: Make test_player_observer.py Pass
+
+**Status:** Pending
+
+**Steps:**
+1. Fix port mismatch in `src/casino/tests/test_player_observer.py:226`
+   - Change: `WebSocketServer(host="127.0.0.1", port=8766)` 
+   - To: `WebSocketServer(host="127.0.0.1", port=8765)`
+   - Rationale: Test connects to port 8765 but starts server on 8766
+
+2. Run test to verify:
+   ```bash
+   cd /home/opencode/data/work/casino/src && python casino/tests/test_player_observer.py
+   ```
+
+**Expected behavior:**
+- Player connects and plays blackjack
+- Observer connects and watches table
+- Observer receives `game_state` broadcasts after bet, hit, stand actions
+- All assertions pass
+
+---
+
+### Workstream 3: Update bbsengine6 Database Spec
+
+**Status:** Pending
+
+**File:** `bbsengine6/handbook/specs/database.md`
+
+**Steps:**
+1. Add psycopg-pool compatibility note to Overview section (after line 5):
+   ```markdown
+   **psycopg-pool Compatibility:**
+   - Sync API: Works with psycopg-pool 3.x (all versions)
+   - Async API: Works with both psycopg-pool 3.1.x and 3.3.0+ (auto-detects API changes)
+   ```
+
+2. Add new "Async Database Support" section (~110 lines) covering:
+   - `get_async_pool()` - Get/create async connection pool
+   - `reset_async_pool_cache()` - Reset pool cache for tests
+   - `async_connect()` - Async context manager for connections
+   - `async_query()` - Async query helper returning list[dict]
+   - `AsyncDBConnection` - Async wrapper class
+   - `AsyncCursor` - Async cursor wrapper class
+   - psycopg-pool version compatibility table
+
+3. Update "Known Issues" to remove incorrect entries (version compat is a feature, not an issue)
 
 ## Extended Statistics (Future)
 
