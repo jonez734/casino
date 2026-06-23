@@ -6,7 +6,7 @@
 - [X] 2. **5-card Charlie** - Automatic win with 5 cards without busting
 - [X] 3. **Dealer soft 17 rule** - Configurable table rule: dealer hits or stands on soft 17 (A+6)
 - [X] 4. **Face-down dealer card** - Standard blackjack: show 1 card face-up, 1 face-down
-- [ ] 5. **Statistics tracking** - Persistent win/loss/bust/blackjack stats per player
+- [X] 5. **Statistics tracking** - Persistent win/loss/push/blackjack/net stats per player (JSONB column, extensible)
 - [ ] 6. **Table access control** - Role-based access for who can play at which tables
 - [ ] 7. **Card image resizing** - PIL-based PNG resizing for Tkinter card display
 - [ ] 14. **AI bot players** - Allow table owner/sysop to fill empty seats with AI-controlled players
@@ -28,3 +28,18 @@
 
 - All core blackjack features (hit, stand, split, double, insurance, push, blackjack 3:2 payout) ARE implemented and tested.
 - WebSocket server (bed.py), table management, betting, banking, chat, and player/observer modes are working.
+
+## Extended Statistics (Future)
+
+The stats system uses a JSONB column for extensibility. Currently tracked:
+
+**Generic (aggregate across all games):**
+- wins, losses, pushes, net
+
+**Game-specific (prefixed with game type):**
+- blackjack.blackjacks, blackjack.busts, blackjack.surrenders, blackjack.hands_played
+
+To add more game-specific stats, use the format `game_type.stat_name`:
+- `poker.wins`, `slots.hands_played`, etc.
+
+No database migration needed - just add the stat name to ALLOWED_STATS in dal/player.py

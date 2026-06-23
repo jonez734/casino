@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional
 from bbsengine6 import io
 from casino.dal import table as dal_table
 from casino.dal import game as dal_game
+from casino.dal import player as dal_player
 from decimal import Decimal
 from casino.blackjack import Hand
 
@@ -837,6 +838,8 @@ class GameService:
         if not game:
             return {"success": False, "message": "No active game"}
 
+        game_type = game.get("kind", "blackjack")
+
         hands = dal_game.get_game_hands(self.args, game["id"])
 
         dealer_cards = self._run_dealer_turn(game["id"], table_moniker)
@@ -852,10 +855,16 @@ class GameService:
             if not bet or bet["status"] != "pending":
                 continue
 
+            player_moniker = hand.get("playermoniker")
+            if not player_moniker:
+                continue
+
             hand_attrs = hand.get("attrs") or {}
             hand_status = hand_attrs.get("status")
 
             if hand_status == "surrendered":
+                dal_player.increment_stat(self.args, player_moniker, f"{game_type}.surrenders", 1)
+                dal_player.increment_stat(self.args, player_moniker, f"{game_type}.hands_played", 1)
                 continue
 
             insurance_amount = dal_bet.get_insurance(self.args, bet["id"])
@@ -864,24 +873,67 @@ class GameService:
             player_total = self._hand_value(player_cards)
             player_blackjack = self._is_blackjack(player_cards)
 
+            original_bet = int(bet["amount"])
+            net_change = 0
+            outcome = None
+
             if player_blackjack and dealer_blackjack:
                 dal_bet.settle_bet(self.args, bet["id"], True, bet["amount"])
+                outcome = "push"
             elif player_blackjack:
-                dal_bet.settle_bet(self.args, bet["id"], True, int(bet["amount"] * Decimal("2.5")))
+                payout = int(bet["amount"] * Decimal("2.5"))
+                dal_bet.settle_bet(self.args, bet["id"], True, payout)
+                net_change = payout - original_bet
+                outcome = "blackjack"
             elif dealer_blackjack:
                 dal_bet.settle_bet(self.args, bet["id"], False, 0)
+                net_change = -original_bet
+                outcome = "loss"
             elif player_total > 21:
                 dal_bet.settle_bet(self.args, bet["id"], False, 0)
+                net_change = -original_bet
+                outcome = "bust"
             elif hand_status == "charlie":
-                dal_bet.settle_bet(self.args, bet["id"], True, bet["amount"] * 2)
+                payout = bet["amount"] * 2
+                dal_bet.settle_bet(self.args, bet["id"], True, payout)
+                net_change = int(payout) - original_bet
+                outcome = "win"
             elif dealer_total > 21:
-                dal_bet.settle_bet(self.args, bet["id"], True, bet["amount"] * 2)
+                payout = bet["amount"] * 2
+                dal_bet.settle_bet(self.args, bet["id"], True, payout)
+                net_change = int(payout) - original_bet
+                outcome = "win"
             elif player_total > dealer_total:
-                dal_bet.settle_bet(self.args, bet["id"], True, bet["amount"] * 2)
+                payout = bet["amount"] * 2
+                dal_bet.settle_bet(self.args, bet["id"], True, payout)
+                net_change = int(payout) - original_bet
+                outcome = "win"
             elif player_total < dealer_total:
                 dal_bet.settle_bet(self.args, bet["id"], False, 0)
+                net_change = -original_bet
+                outcome = "loss"
             else:
                 dal_bet.settle_bet(self.args, bet["id"], True, bet["amount"])
+                outcome = "push"
+
+            if outcome == "blackjack":
+                dal_player.increment_stat(self.args, player_moniker, f"{game_type}.blackjacks", 1)
+                dal_player.increment_stat(self.args, player_moniker, "wins", 1)
+            elif outcome == "win":
+                dal_player.increment_stat(self.args, player_moniker, "wins", 1)
+            elif outcome == "loss":
+                dal_player.increment_stat(self.args, player_moniker, "losses", 1)
+            elif outcome == "push":
+                dal_player.increment_stat(self.args, player_moniker, "pushes", 1)
+            elif outcome == "bust":
+                dal_player.increment_stat(self.args, player_moniker, f"{game_type}.busts", 1)
+                dal_player.increment_stat(self.args, player_moniker, "losses", 1)
+
+            if outcome in ("win", "loss", "push", "blackjack", "bust"):
+                dal_player.increment_stat(self.args, player_moniker, f"{game_type}.hands_played", 1)
+
+            if net_change != 0:
+                dal_player.increment_stat(self.args, player_moniker, "net", net_change)
 
             if insurance_amount > 0:
                 if dealer_blackjack:

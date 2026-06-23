@@ -7,6 +7,7 @@ from typing import Any, Dict, Optional
 from bbsengine6 import io, member
 from bbsengine6.notify import send as notify_send, NotificationUrgency
 from casino.dal import table as dal_table
+from casino.dal import player as dal_player
 from casino.dal.aiosql import table as async_dal_table
 from casino.dal.aiosql import game as async_dal_game
 from casino.dal.aiosql import bet as async_dal_bet
@@ -539,6 +540,8 @@ class BankServiceHandler(BaseService):
             return await self._handle_history(id(websocket), message)
         elif msg_type == "bank_list_all":
             return await self._handle_list_all(id(websocket), message)
+        elif msg_type == "stats":
+            return await self._handle_stats(id(websocket), message)
         
         return None
     
@@ -767,6 +770,24 @@ class BankServiceHandler(BaseService):
         return {
             "type": "bank_list_all",
             "tables": balances,
+        }
+    
+    async def _handle_stats(self, session_id: int, message: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle stats request - return player statistics."""
+        session = self.sessions.get_session(session_id)
+        if not session:
+            return {"type": "error", "code": "not_authenticated"}
+        
+        moniker = session.get("moniker")
+        if not moniker:
+            return {"type": "error", "code": "not_authenticated"}
+        
+        stats = dal_player.get_player_stats(self.args, moniker)
+        
+        return {
+            "type": "stats",
+            "success": True,
+            "stats": stats,
         }
     
     async def _handle_chat(
