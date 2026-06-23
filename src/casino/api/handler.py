@@ -481,7 +481,7 @@ class GameServiceHandler(BaseService):
         if server and table_moniker:
             broadcast_state = self.game_service.get_game_state(table_moniker, "")
             broadcast_state["type"] = "game_state"
-            await server.broadcast(broadcast_state, table_moniker)
+            await server.publish(f"casino:table:{table_moniker}", broadcast_state)
         
         return game_state
 
@@ -538,7 +538,7 @@ class BetServiceHandler(BaseService):
             if server and table_moniker:
                 broadcast_state = self.game_service.get_game_state(table_moniker, "")
                 broadcast_state["type"] = "game_state"
-                await server.broadcast(broadcast_state, table_moniker)
+                await server.publish(f"casino:table:{table_moniker}", broadcast_state)
             
             return game_state
         else:
@@ -1065,17 +1065,17 @@ class MessageRouter:
         
         if msg_type == "chat_message":
             scope = message.get("scope", "global")
-            table_id = message.get("table_id")
+            table_moniker = message.get("moniker")
             
-            if scope == "table" and table_id:
-                await server.broadcast(message, str(table_id))
+            if scope == "table" and table_moniker:
+                await server.publish(f"casino:table:{table_moniker}", message)
             else:
-                await server.broadcast(message)
+                await server.publish("casino:global", message)
         
         elif msg_type == "game_state":
-            table_id = message.get("table_id")
-            if table_id:
-                await server.broadcast(message, str(table_id))
+            table_moniker = message.get("moniker")
+            if table_moniker:
+                await server.publish(f"casino:table:{table_moniker}", message)
     
     def unregister_session(self, session_id: int) -> None:
         """Clean up session on disconnect."""
