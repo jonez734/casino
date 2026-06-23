@@ -154,7 +154,7 @@ async def get_table_bets(args: Any, game_id: int) -> List[Dict[str, Any]]:
     """Get all bets for a game."""
     rows = await database.async_query(
         args,
-        """SELECT id, membermoniker, cardtablemoniker, gameid, playermoniker, amount, status, dateposted, notes, currenthand 
+        """SELECT id, membermoniker, cardtablemoniker, gameid, playermoniker, amount, status, dateposted, notes, currenthand, hand_id 
            FROM $casino.__betlog 
            WHERE gameid = :game_id 
            ORDER BY dateposted""",
@@ -172,6 +172,41 @@ async def get_table_bets(args: Any, game_id: int) -> List[Dict[str, Any]]:
             "dateposted": row["dateposted"],
             "notes": row["notes"],
             "currenthand": row["currenthand"],
+            "hand_id": row.get("hand_id"),
         }
         for row in rows
     ]
+
+
+async def update_bet_hand_id(args: Any, bet_id: int, hand_id: int) -> None:
+    """Link a bet to a specific hand."""
+    await database.async_execute(
+        args,
+        "UPDATE $casino.__betlog SET hand_id = :hand_id WHERE id = :bet_id",
+        hand_id=hand_id, bet_id=bet_id
+    )
+
+
+async def get_bet_for_hand(args: Any, hand_id: int) -> Optional[Dict[str, Any]]:
+    """Get the bet associated with a specific hand."""
+    rows = await database.async_query(
+        args,
+        """SELECT id, membermoniker, cardtablemoniker, gameid, playermoniker, amount, status, dateposted, hand_id 
+           FROM $casino.__betlog 
+           WHERE hand_id = :hand_id AND status = 'pending'""",
+        hand_id=hand_id
+    )
+    if not rows:
+        return None
+    row = rows[0]
+    return {
+        "id": row["id"],
+        "membermoniker": row["membermoniker"],
+        "cardtablemoniker": row["cardtablemoniker"],
+        "gameid": row["gameid"],
+        "playermoniker": row["playermoniker"],
+        "amount": row["amount"],
+        "status": row["status"],
+        "dateposted": row["dateposted"],
+        "hand_id": row["hand_id"],
+    }

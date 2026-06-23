@@ -2,7 +2,7 @@
 # Game service - blackjack game logic
 
 import random
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from bbsengine6 import io
 from casino.dal import table as dal_table
@@ -160,6 +160,8 @@ class GameService:
         cards = [self._draw_card(table_moniker), self._draw_card(table_moniker)]
         dal_game.update_hand_cards(self.args, hand["id"], cards)
 
+        dal_bet.update_bet_hand_id(self.args, bet["id"], hand["id"])
+
         currenthand = ", ".join(cards)
         dal_bet.update_bet_currenthand(self.args, bet["id"], currenthand)
 
@@ -221,11 +223,47 @@ class GameService:
             "message": f"Stood at {total}",
         }
 
-    def can_split(self, table_moniker: str, player_moniker: str) -> Dict[str, Any]:
+    def can_split(self, table_moniker: str, player_moniker: str, hand_id: Optional[int] = None) -> Dict[str, Any]:
         """Check if player can split their hand."""
         game = dal_game.get_active_game(self.args, table_moniker)
         if not game:
             return {"success": False, "message": "No active game"}
+
+        from casino.dal import bet as dal_bet
+
+        if hand_id is not None:
+            hand = dal_game.get_hand(self.args, hand_id)
+            if not hand:
+                return {"success": False, "message": "Hand not found"}
+            
+            cards = list(hand["cards"]) if hand["cards"] else []
+            if len(cards) != 2:
+                return {"success": False, "message": "Can only split with exactly 2 cards"}
+            
+            card1_rank = cards[0][:-1]
+            card2_rank = cards[1][:-1]
+            if card1_rank != card2_rank:
+                return {"success": False, "message": "Cards must have same rank to split"}
+            
+            attrs = hand.get("attrs") or {}
+            split_count = attrs.get("split_count", 0)
+            if split_count >= 3:
+                return {"success": False, "message": "Maximum splits reached (4 hands max)"}
+            
+            player_bet = dal_bet.get_bet_for_hand(self.args, hand_id)
+            if not player_bet:
+                return {"success": False, "message": "No bet found"}
+            
+            balance = self._get_player_balance(player_moniker)
+            if balance < player_bet["amount"] * 2:
+                return {"success": False, "message": "Insufficient funds to split"}
+
+            return {
+                "success": True,
+                "message": "Can split",
+                "hand_id": hand_id,
+                "bet_amount": player_bet["amount"],
+            }
 
         hands = dal_game.get_player_hands(self.args, game["id"], player_moniker)
         if not hands:
@@ -243,36 +281,24 @@ class GameService:
         if card1_rank != card2_rank:
             return {"success": False, "message": "Cards must have same rank to split"}
 
-        from casino.dal import bet as dal_bet
         player_bet = dal_bet.get_player_bet_for_game(self.args, game["id"], player_moniker)
         if not player_bet:
             return {"success": False, "message": "No bet found"}
 
-        from bbsengine6 import database
-        with database.connect(self.args) as conn:
-            with database.cursor(conn) as cur:
-                cur.execute(
-                    database.query(
-                        "SELECT credits FROM $engine.__member WHERE moniker = :player_moniker",
-                        player_moniker=player_moniker
-                    )
-                )
-                row = cur.fetchone()
-                if not row:
-                    return {"success": False, "message": "Player not found"}
-                balance = int(row["credits"])
-                if balance < player_bet["amount"] * 2:
-                    return {"success": False, "message": "Insufficient funds to split"}
+        balance = self._get_player_balance(player_moniker)
+        if balance < player_bet["amount"] * 2:
+            return {"success": False, "message": "Insufficient funds to split"}
 
         return {
             "success": True,
             "message": "Can split",
+            "hand_id": hand["id"],
             "bet_amount": player_bet["amount"],
         }
 
-    def split(self, table_moniker: str, player_moniker: str) -> Dict[str, Any]:
+    def split(self, table_moniker: str, player_moniker: str, hand_id: Optional[int] = None) -> Dict[str, Any]:
         """Split player's hand into two hands."""
-        can_split = self.can_split(table_moniker, player_moniker)
+        can_split = self.can_split(table_moniker, player_moniker, hand_id)
         if not can_split["success"]:
             return can_split
 
@@ -280,18 +306,23 @@ class GameService:
         if not game:
             return {"success": False, "message": "No active game"}
 
-        hands = dal_game.get_player_hands(self.args, game["id"], player_moniker)
-        if not hands:
-            return {"success": False, "message": "No hand found"}
+        if hand_id is not None:
+            hand = dal_game.get_hand(self.args, hand_id)
+            if not hand:
+                return {"success": False, "message": "Hand not found"}
+            player_bet = dal_bet.get_bet_for_hand(self.args, hand_id)
+        else:
+            hands = dal_game.get_player_hands(self.args, game["id"], player_moniker)
+            if not hands:
+                return {"success": False, "message": "No hand found"}
+            hand = hands[0]
+            player_bet = dal_bet.get_player_bet_for_game(self.args, game["id"], player_moniker)
 
-        hand = hands[0]
         cards = list(hand["cards"]) if hand["cards"] else []
 
         if len(cards) != 2:
             return {"success": False, "message": "Can only split with exactly 2 cards"}
 
-        from casino.dal import bet as dal_bet
-        player_bet = dal_bet.get_player_bet_for_game(self.args, game["id"], player_moniker)
         bet_amount = player_bet["amount"]
 
         from bbsengine6 import database
@@ -304,9 +335,8 @@ class GameService:
                     )
                 )
 
-        split_bet = dal_bet.place_split_bet(
-            self.args, player_moniker, table_moniker, game["id"], bet_amount
-        )
+        attrs = hand.get("attrs") or {}
+        split_count = attrs.get("split_count", 0)
 
         card1 = cards[0]
         card2 = cards[1]
@@ -316,11 +346,23 @@ class GameService:
 
         dal_game.update_hand_cards(self.args, hand["id"], hand1_cards)
 
-        hand2 = dal_game.create_hand(self.args, game["id"], player_moniker + "_split_2")
+        new_attrs1 = {"split_count": split_count + 1}
+        dal_game.update_hand_attrs(self.args, hand["id"], new_attrs1)
+
+        hand2 = dal_game.create_hand(self.args, game["id"], player_moniker + f"_split_{split_count + 2}")
         dal_game.update_hand_cards(self.args, hand2["id"], hand2_cards)
 
-        dal_game.update_hand_status(self.args, hand["id"], "split_1")
-        dal_game.update_hand_status(self.args, hand2["id"], "split_2")
+        new_attrs2 = {"split_count": split_count + 1}
+        dal_game.update_hand_attrs(self.args, hand2["id"], new_attrs2)
+
+        dal_game.update_hand_status(self.args, hand["id"], f"split_{split_count + 1}")
+        dal_game.update_hand_status(self.args, hand2["id"], f"split_{split_count + 2}")
+
+        dal_bet.update_bet_hand_id(self.args, player_bet["id"], hand["id"])
+
+        split_bet = dal_bet.place_split_bet(
+            self.args, player_moniker, table_moniker, game["id"], bet_amount, hand_id=hand2["id"]
+        )
 
         currenthand1 = ", ".join(hand1_cards)
         currenthand2 = ", ".join(hand2_cards)
@@ -333,22 +375,48 @@ class GameService:
             "success": True,
             "message": "Hand split",
             "hand1": {
+                "hand_id": hand["id"],
                 "cards": hand1_cards,
                 "total": self._hand_value(hand1_cards),
                 "bet": bet_amount,
             },
             "hand2": {
+                "hand_id": hand2["id"],
                 "cards": hand2_cards,
                 "total": self._hand_value(hand2_cards),
                 "bet": bet_amount,
             },
         }
 
-    def can_double(self, table_moniker: str, player_moniker: str) -> Dict[str, Any]:
+    def can_double(self, table_moniker: str, player_moniker: str, hand_id: Optional[int] = None) -> Dict[str, Any]:
         """Check if player can double down."""
         game = dal_game.get_active_game(self.args, table_moniker)
         if not game:
             return {"success": False, "message": "No active game"}
+
+        if hand_id is not None:
+            player_bet = dal_bet.get_bet_for_hand(self.args, hand_id)
+            if not player_bet:
+                return {"success": False, "message": "No bet found for hand"}
+            
+            hand = dal_game.get_hand(self.args, hand_id)
+            if not hand:
+                return {"success": False, "message": "Hand not found"}
+            
+            cards = list(hand["cards"]) if hand["cards"] else []
+            if len(cards) != 2:
+                return {"success": False, "message": "Can only double with exactly 2 cards"}
+            
+            balance = self._get_player_balance(player_moniker)
+            if balance < player_bet["amount"]:
+                return {"success": False, "message": "Insufficient funds to double"}
+
+            return {
+                "success": True,
+                "message": "Can double",
+                "hand_id": hand_id,
+                "additional_cost": player_bet["amount"],
+            }
 
         hands = dal_game.get_player_hands(self.args, game["id"], player_moniker)
         if not hands:
@@ -360,11 +428,23 @@ class GameService:
         if len(cards) != 2:
             return {"success": False, "message": "Can only double with exactly 2 cards"}
 
-        from casino.dal import bet as dal_bet
         player_bet = dal_bet.get_player_bet_for_game(self.args, game["id"], player_moniker)
         if not player_bet:
             return {"success": False, "message": "No bet found"}
 
+        balance = self._get_player_balance(player_moniker)
+        if balance < player_bet["amount"]:
+            return {"success": False, "message": "Insufficient funds to double"}
+
+        return {
+            "success": True,
+            "message": "Can double",
+            "hand_id": hand["id"],
+            "additional_cost": player_bet["amount"],
+        }
+
+    def _get_player_balance(self, player_moniker: str) -> int:
+        """Get player's credit balance."""
         from bbsengine6 import database
         with database.connect(self.args) as conn:
             with database.cursor(conn) as cur:
@@ -376,20 +456,12 @@ class GameService:
                 )
                 row = cur.fetchone()
                 if not row:
-                    return {"success": False, "message": "Player not found"}
-                balance = int(row["credits"])
-                if balance < player_bet["amount"]:
-                    return {"success": False, "message": "Insufficient funds to double"}
+                    return 0
+                return int(row["credits"])
 
-        return {
-            "success": True,
-            "message": "Can double",
-            "additional_cost": player_bet["amount"],
-        }
-
-    def double(self, table_moniker: str, player_moniker: str) -> Dict[str, Any]:
+    def double(self, table_moniker: str, player_moniker: str, hand_id: Optional[int] = None) -> Dict[str, Any]:
         """Double down - double bet and get exactly one more card."""
-        can_double = self.can_double(table_moniker, player_moniker)
+        can_double = self.can_double(table_moniker, player_moniker, hand_id)
         if not can_double["success"]:
             return can_double
 
@@ -397,18 +469,26 @@ class GameService:
         if not game:
             return {"success": False, "message": "No active game"}
 
-        hands = dal_game.get_player_hands(self.args, game["id"], player_moniker)
-        if not hands:
-            return {"success": False, "message": "No hand found"}
+        if hand_id is not None:
+            player_bet = dal_bet.get_bet_for_hand(self.args, hand_id)
+            if not player_bet:
+                return {"success": False, "message": "No bet found for hand"}
+            
+            hand = dal_game.get_hand(self.args, hand_id)
+            if not hand:
+                return {"success": False, "message": "Hand not found"}
+        else:
+            hands = dal_game.get_player_hands(self.args, game["id"], player_moniker)
+            if not hands:
+                return {"success": False, "message": "No hand found"}
+            hand = hands[0]
+            player_bet = dal_bet.get_player_bet_for_game(self.args, game["id"], player_moniker)
 
-        hand = hands[0]
         cards = list(hand["cards"]) if hand["cards"] else []
 
         if len(cards) != 2:
             return {"success": False, "message": "Can only double with exactly 2 cards"}
 
-        from casino.dal import bet as dal_bet
-        player_bet = dal_bet.get_player_bet_for_game(self.args, game["id"], player_moniker)
         bet_amount = player_bet["amount"]
 
         from bbsengine6 import database
@@ -441,6 +521,7 @@ class GameService:
         return {
             "success": True,
             "message": f"Doubled - got {new_card}",
+            "hand_id": hand["id"],
             "cards": cards,
             "total": total,
             "status": status,
@@ -465,39 +546,60 @@ class GameService:
                 "insurance_taken": 0,
             }
 
-        hand = dal_game.get_player_hand(self.args, game["id"], player_moniker)
+        hands = dal_game.get_player_hands(self.args, game["id"], player_moniker)
 
         dealer_hand = dal_game.get_dealer_hand(self.args, game["id"])
         dealer_cards = (
             list(dealer_hand["cards"]) if dealer_hand and dealer_hand["cards"] else []
         )
 
-        if hand and not dealer_cards:
+        if hands and not dealer_cards:
             dealer_cards = [self._draw_card(table_moniker), self._draw_card(table_moniker)]
             dal_game.update_dealer_hand_cards(self.args, game["id"], dealer_cards)
 
         dealer_total = self._hand_value(dealer_cards) if dealer_cards else 0
 
-        player_status = None
-        if hand and hand.get("attrs"):
-            player_status = hand["attrs"].get("status")
-
+        player_hands = []
         insurance_available = False
         insurance_taken = 0
-        if hand and len(hand.get("cards", [])) == 2:
-            insurance_available = self._is_dealer_showing_ace(table_moniker)
-            if insurance_available:
-                bet = dal_bet.get_player_bet_for_game(self.args, game["id"], player_moniker)
-                if bet:
-                    insurance_taken = dal_bet.get_insurance(self.args, bet["id"])
+
+        for hand in hands:
+            hand_id = hand.get("id")
+            cards = list(hand["cards"]) if hand["cards"] else []
+            attrs = hand.get("attrs") or {}
+            status = attrs.get("status")
+            split_count = attrs.get("split_count", 0)
+
+            hand_bet = dal_bet.get_bet_for_hand(self.args, hand_id) if hand_id else None
+
+            can_split = len(cards) == 2 and split_count < 3
+            can_double = len(cards) == 2
+            can_hit = status not in ("bust", "standing", "split_1", "split_2", "done")
+            can_stand = status not in ("bust", "standing", "split_1", "split_2", "done")
+
+            player_hands.append({
+                "hand_id": hand_id,
+                "cards": cards,
+                "total": self._hand_value(cards),
+                "status": status,
+                "bet": hand_bet["amount"] if hand_bet else 0,
+                "can_split": can_split,
+                "can_double": can_double,
+                "can_hit": can_hit,
+                "can_stand": can_stand,
+            })
+
+            if len(cards) == 2:
+                if self._is_dealer_showing_ace(table_moniker):
+                    insurance_available = True
+                    if hand_bet:
+                        insurance_taken = dal_bet.get_insurance(self.args, hand_bet["id"])
 
         return {
             "table_moniker": table_moniker,
             "game_id": int(game["id"]),
             "phase": game["status"],
-            "player_hand": hand["cards"] if hand else [],
-            "player_total": self._hand_value(list(hand["cards"])) if hand else 0,
-            "player_status": player_status,
+            "hands": player_hands,
             "dealer_hand": dealer_cards,
             "dealer_total": dealer_total,
             "insurance_available": insurance_available,
@@ -599,26 +701,24 @@ class GameService:
         if not game:
             return {"success": False, "message": "No active game"}
 
-        bets = dal_bet.get_table_bets(self.args, game["id"])
         hands = dal_game.get_game_hands(self.args, game["id"])
 
         dealer_cards = self._run_dealer_turn(game["id"], table_moniker)
         dealer_total = self._hand_value(dealer_cards)
         dealer_blackjack = self._is_blackjack(dealer_cards)
 
-        for bet in bets:
-            if bet["status"] != "pending":
+        for hand in hands:
+            hand_id = hand.get("id")
+            if not hand_id:
                 continue
 
-            player_hand = next(
-                (h for h in hands if h["playermoniker"] == bet["playermoniker"]), None
-            )
-            if not player_hand:
+            bet = dal_bet.get_bet_for_hand(self.args, hand_id)
+            if not bet or bet["status"] != "pending":
                 continue
 
             insurance_amount = dal_bet.get_insurance(self.args, bet["id"])
 
-            player_cards = list(player_hand["cards"])
+            player_cards = list(hand["cards"])
             player_total = self._hand_value(player_cards)
             player_blackjack = self._is_blackjack(player_cards)
 

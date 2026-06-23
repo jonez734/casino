@@ -383,11 +383,11 @@ class GameServiceHandler(BaseService):
         msg_type = message.get("type")
         
         if msg_type in ("hit", "stand", "double", "split"):
-            return await self._handle_game_action(id(websocket), msg_type)
+            return await self._handle_game_action(id(websocket), msg_type, message)
         
         return None
     
-    async def _handle_game_action(self, session_id: int, action: str) -> Optional[Dict[str, Any]]:
+    async def _handle_game_action(self, session_id: int, action: str, message: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
         moniker = self.sessions.get_moniker(session_id)
         if not moniker:
             return {"type": "error", "code": "not_authenticated"}
@@ -413,11 +413,13 @@ class GameServiceHandler(BaseService):
             # Settle game after stand
             self.game_service.settle_game(table_moniker)
         elif action == "double":
-            result = self.game_service.double(table_moniker, moniker)
+            hand_id = message.get("hand_id") if message else None
+            result = self.game_service.double(table_moniker, moniker, hand_id)
             # Double ends turn, settle game
             self.game_service.settle_game(table_moniker)
         elif action == "split":
-            result = self.game_service.split(table_moniker, moniker)
+            hand_id = message.get("hand_id") if message else None
+            result = self.game_service.split(table_moniker, moniker, hand_id)
         
         if result and not result.get("success", True):
             return {"type": "error", "code": "action_failed", "message": result.get("message", "")}

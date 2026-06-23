@@ -315,14 +315,29 @@ def place_split_bet(
     table_moniker: str,
     game_id: int,
     amount: int,
+    hand_id: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Place a bet for a split hand."""
     with database.connect(args) as conn:
         with database.cursor(conn) as cur:
+            cols = ["membermoniker", "cardtablemoniker", "gameid", "playermoniker", "amount", "status", "dateposted"]
+            vals = [":player_moniker", ":table_moniker", ":game_id", ":player_moniker2", ":amount", "'pending'", "NOW()"]
+            params = {"player_moniker": player_moniker, "table_moniker": table_moniker, "game_id": game_id, "player_moniker2": player_moniker + "_split_2", "amount": amount}
+            
+            if hand_id is not None:
+                cols.append("hand_id")
+                vals.append(":hand_id")
+                params["hand_id"] = hand_id
+            
+            col_str = ", ".join(cols)
+            val_str = ", ".join(vals)
+            
+            returning_cols = ["id", "membermoniker", "cardtablemoniker", "gameid", "playermoniker", "amount", "status", "dateposted"]
+            
             cur.execute(
                 database.query(
-                    "INSERT INTO $casino.__betlog (membermoniker, cardtablemoniker, gameid, playermoniker, amount, status, dateposted) VALUES (:player_moniker, :table_moniker, :game_id, :player_moniker2, :amount, 'pending', NOW()) RETURNING id, membermoniker, cardtablemoniker, gameid, playermoniker, amount, status, dateposted",
-                    player_moniker=player_moniker, table_moniker=table_moniker, game_id=game_id, player_moniker2=player_moniker + "_split_2", amount=amount
+                    f"INSERT INTO $casino.__betlog ({col_str}) VALUES ({val_str}) RETURNING {', '.join(returning_cols)}",
+                    **params
                 )
             )
             row = cur.fetchone()
@@ -348,3 +363,69 @@ def double_bet(args: Any, bet_id: int, new_amount: int) -> None:
                     new_amount=new_amount, bet_id=bet_id
                 )
             )
+
+
+def update_bet_hand_id(args: Any, bet_id: int, hand_id: int) -> None:
+    """Link a bet to a specific hand."""
+    with database.connect(args) as conn:
+        with database.cursor(conn) as cur:
+            cur.execute(
+                database.query(
+                    "UPDATE $casino.__betlog SET hand_id = :hand_id WHERE id = :bet_id",
+                    hand_id=hand_id, bet_id=bet_id
+                )
+            )
+
+
+def get_bet_for_hand(args: Any, hand_id: int) -> Optional[Dict[str, Any]]:
+    """Get the bet associated with a specific hand."""
+    with database.connect(args) as conn:
+        with database.cursor(conn) as cur:
+            cur.execute(
+                database.query(
+                    "SELECT id, membermoniker, cardtablemoniker, gameid, playermoniker, amount, status, dateposted, hand_id FROM $casino.__betlog WHERE hand_id = :hand_id AND status = 'pending'",
+                    hand_id=hand_id
+                )
+            )
+            row = cur.fetchone()
+            if not row:
+                return None
+            return {
+                "id": row["id"],
+                "membermoniker": row["membermoniker"],
+                "cardtablemoniker": row["cardtablemoniker"],
+                "gameid": row["gameid"],
+                "playermoniker": row["playermoniker"],
+                "amount": row["amount"],
+                "status": row["status"],
+                "dateposted": row["dateposted"],
+                "hand_id": row["hand_id"],
+            }
+
+
+def get_hand_bets(args: Any, game_id: int) -> List[Dict[str, Any]]:
+    """Get all bets for a game with hand_id included."""
+    with database.connect(args) as conn:
+        with database.cursor(conn) as cur:
+            cur.execute(
+                database.query(
+                    "SELECT id, membermoniker, cardtablemoniker, gameid, playermoniker, amount, status, dateposted, notes, currenthand, hand_id FROM $casino.__betlog WHERE gameid = :game_id ORDER BY dateposted",
+                    game_id=game_id
+                )
+            )
+            bets = []
+            for row in cur:
+                bets.append({
+                    "id": row["id"],
+                    "membermoniker": row["membermoniker"],
+                    "cardtablemoniker": row["cardtablemoniker"],
+                    "gameid": row["gameid"],
+                    "playermoniker": row["playermoniker"],
+                    "amount": row["amount"],
+                    "status": row["status"],
+                    "dateposted": row["dateposted"],
+                    "notes": row["notes"],
+                    "currenthand": row["currenthand"],
+                    "hand_id": row.get("hand_id"),
+                })
+            return bets

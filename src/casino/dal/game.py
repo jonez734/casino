@@ -162,6 +162,18 @@ def update_hand_status(args: Any, hand_id: int, status: str) -> None:
             )
 
 
+def update_hand_attrs(args: Any, hand_id: int, attrs: Dict[str, Any]) -> None:
+    """Update hand attributes."""
+    with database.connect(args) as conn:
+        with database.cursor(conn) as cur:
+            cur.execute(
+                database.query(
+                    "UPDATE $casino.__hand SET attrs = :attrs WHERE id = :hand_id",
+                    attrs=Jsonb(attrs), hand_id=hand_id
+                )
+            )
+
+
 def get_hand(args: Any, hand_id: int) -> Optional[Dict[str, Any]]:
     """Get hand by ID."""
     with database.connect(args) as conn:
