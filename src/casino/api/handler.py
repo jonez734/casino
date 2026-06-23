@@ -382,7 +382,7 @@ class GameServiceHandler(BaseService):
     ) -> Optional[Dict[str, Any]]:
         msg_type = message.get("type")
         
-        if msg_type in ("hit", "stand", "double", "split"):
+        if msg_type in ("hit", "stand", "double", "split", "surrender"):
             return await self._handle_game_action(id(websocket), msg_type, message)
         
         return None
@@ -420,6 +420,10 @@ class GameServiceHandler(BaseService):
         elif action == "split":
             hand_id = message.get("hand_id") if message else None
             result = self.game_service.split(table_moniker, moniker, hand_id)
+        elif action == "surrender":
+            result = self.game_service.surrender(table_moniker, moniker)
+            if result and result.get("success"):
+                self.game_service.settle_game(table_moniker)
         
         if result and not result.get("success", True):
             return {"type": "error", "code": "action_failed", "message": result.get("message", "")}
@@ -836,7 +840,7 @@ class MessageRouter:
             "list_tables", "create_table", "update_table", "join_table", "leave_table",
             "watch_table", "stop_watching"
         ])
-        server.register_service(self.game_service, ["hit", "stand", "double", "split"])
+        server.register_service(self.game_service, ["hit", "stand", "double", "split", "surrender"])
         server.register_service(self.bet_service, ["bet"])
         server.register_service(self.chat_service, ["chat_table", "chat_global", "emote"])
         server.register_service(self.bank_service, [
