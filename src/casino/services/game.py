@@ -261,7 +261,7 @@ class GameService:
                 if not row:
                     return {"success": False, "message": "Player not found"}
                 balance = int(row["credits"])
-                if balance < player_bet["amount"]:
+                if balance < player_bet["amount"] * 2:
                     return {"success": False, "message": "Insufficient funds to split"}
 
         return {
