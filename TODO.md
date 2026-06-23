@@ -49,6 +49,163 @@
 - [ ] 12. Keno
 - [ ] 13. Bingo
 
+## Implement bbsengine6 Message System
+
+**Status:** Not started (depends on bbsengine6 message system being implemented first)
+
+See `bbsengine6/TODO.md` for full specification.
+
+Note: The message system is the base layer. The notify system builds on it (for real-time delivery), so bbsengine6 message system must be implemented first.
+
+### Casino-Specific Integration
+
+- **Channel naming:** `casino:table:{moniker}` for table game updates
+- **Personal channel:** `member:{moniker}` for direct member-to-member messages
+
+**Integration steps:**
+
+1. Add channel subscription message handlers in `api/handler.py`:
+   - `subscribe_channel` - subscribe session to a channel
+   - `unsubscribe_channel` - unsubscribe from a channel
+
+2. On `join_table`: auto-subscribe to `casino:table:{moniker}`
+
+3. On `watch_table`: also subscribe to `casino:table:{moniker}` (unifies player/watcher logic)
+
+4. Replace `server.broadcast(message, table_moniker)` with `server.publish(channel, message)` in:
+   - `api/handler.py:handle_broadcast()` for game_state and chat messages
+   - `_handle_game_action()` after each action
+   - `_handle_bet()` after bets
+
+5. On authentication (`auth` message): auto-subscribe to `member:{moniker}` for direct messages
+
+6. Update `startup.py` to include new SQL files
+
+---
+
+## Chat Persistence (Future)
+
+Store chat messages in database for audit and history.
+
+**SQL files in `casino/src/casino/sql/`:**
+```
+chat_message.sql              -- table: channel, sender_moniker, message, status, timestamp
+chat_channel.sql             -- table: channel metadata and ACL
+chat_message_view.sql        -- view with local timestamps
+```
+
+**Table: `casino.__chat_message`**
+```sql
+CREATE TABLE casino.__chat_message (
+    id SERIAL PRIMARY KEY,
+    channel VARCHAR(255) NOT NULL,
+    sender_moniker VARCHAR(255) NOT NULL,
+    message TEXT NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'sent',  -- sent, delivered, read, deleted
+    timestamp TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_chat_message_channel ON casino.__chat_message(channel);
+CREATE INDEX idx_chat_message_timestamp ON casino.__chat_message(timestamp);
+CREATE INDEX idx_chat_message_status ON casino.__chat_message(status);
+-- Grants in same file
+```
+
+**Table: `casino.__chat_channel`** (metadata and ACL)
+```sql
+CREATE TABLE casino.__chat_channel (
+    name VARCHAR(255) NOT NULL PRIMARY KEY,
+    acl JSONB DEFAULT '{"kind": "public"}'::jsonb,  -- access control
+    created_by VARCHAR(255),
+    created_at TIMESTAMPTZ DEFAULT now(),
+    attrs JSONB DEFAULT '{}'::jsonb  -- extra metadata
+);
+-- Grants in same file
+```
+
+**ACL JSONB structure:**
+```json
+{
+    "kind": "public|private|invite",
+    "allowed_roles": ["sysop", "moderator"],
+    "allowed_members": ["alice", "bob"],
+    "blocked_members": ["spammer"],
+    "moderators": ["alice", "bob"],
+    "max_history": 1000
+}
+```
+- `kind: public` - anyone can join/read/post
+- `kind: private` - only allowed_members can join
+- `kind: invite` - moderator invite only
+- `moderators` - JSONB array of member monikers who can manage the channel
+
+**View with local timestamps** (follows empyre.player pattern):
+```sql
+CREATE OR REPLACE VIEW casino.chat_message AS
+SELECT 
+    c.id,
+    c.channel,
+    c.sender_moniker,
+    c.message,
+    c.status,
+    timezone(currentmember.tz, c.timestamp) AS local_timestamp,
+    c.timestamp AS utc_timestamp
+FROM casino.__chat_message c
+LEFT OUTER JOIN engine.__member AS currentmember 
+    ON (currentmember.loginid = CURRENT_USER);
+-- Grants in same file
+```
+
+**DAL stubs in `casino/dal/chat.py`:**
+- `insert_message(channel, sender_moniker, message)` - store message
+- `get_messages(channel, limit=50, offset=0)` - retrieve history
+- `get_channel_acl(channel)` - get channel access rules
+- `set_channel_acl(channel, acl_json)` - update channel access
+
+**API in `api/handler.py`:**
+- `chat_history` message type: `{"type": "chat_history", "channel": "casino:table:blackjack-1", "limit": 50}`
+
+**Integration:**
+- In `handle_broadcast()`: before publishing chat to channel, also call `insert_message()`
+- Client can request history on channel join
+
+---
+
+### Database Startup Updates
+
+Each table, view, and index in its own SQL file with grants. Follow pattern in `bbsengine6/sql/notify.sql`:
+
+```sql
+-- file: chat_message.sql
+CREATE TABLE casino.__chat_message (
+    id SERIAL PRIMARY KEY,
+    channel VARCHAR(255) NOT NULL,
+    sender_moniker VARCHAR(255) NOT NULL,
+    message TEXT NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'sent',
+    timestamp TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_chat_message_channel ON casino.__chat_message(channel);
+CREATE INDEX idx_chat_message_timestamp ON casino.__chat_message(timestamp);
+CREATE INDEX idx_chat_message_status ON casino.__chat_message(status);
+
+GRANT SELECT ON casino.__chat_message TO web;
+GRANT ALL ON casino.__chat_message TO term, sysop;
+GRANT ALL ON casino.__chat_message_id_seq TO term, sysop;
+```
+
+Update `casino/startup.py`:
+- Add each class to `classlist` tuple in dependency order
+- Ensure proper import order (table before view)
+
+---
+
+## Phase 2: Expand Message System (Future)
+
+After Phase 1, expand message system to include notify features (persistence, groups, rate limiting, blocking, etc.). See bbsengine6/TODO.md for details.
+
+---
+
 ## Notes
 
 - All core blackjack features (hit, stand, split, double, insurance, push, blackjack 3:2 payout) ARE implemented and tested.
