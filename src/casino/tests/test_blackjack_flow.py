@@ -8,6 +8,8 @@ import sys
 import unittest
 from typing import Optional
 
+import pytest
+
 sys.path.insert(0, "/home/opencode/data/work/casino/src")
 
 import websockets
@@ -193,6 +195,7 @@ class WebSocketTestClient:
             return self._running and hasattr(self.ws, "open") and self.ws.open
 
 
+@pytest.mark.integration
 class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
     """Test complete blackjack flow: connect -> auth -> list tables -> create -> join -> bet -> game_state"""
 

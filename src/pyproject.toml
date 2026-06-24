@@ -57,3 +57,8 @@ casino = ["sql/*.sql", "data/*.json"]
 
 [tool.setuptools.dynamic]
 version = { attr = "casino._version.__version__" }
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: marks tests as integration tests (require BED server running)",
+]
