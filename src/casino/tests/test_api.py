@@ -82,8 +82,8 @@ class TestMessageHandler(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(sm.get_moniker(1), "testuser")
 
         # Set table
-        sm.set_table_id(1, 5)
-        self.assertEqual(sm.get_table_id(1), 5)
+        sm.set_table_moniker(1, "table5")
+        self.assertEqual(sm.get_table_moniker(1), "table5")
 
         # Add spectator
         sm.add_spectator(5, 1)
@@ -243,6 +243,8 @@ class TestDAL(unittest.IsolatedAsyncioTestCase):
             "get_table_players",
             "add_player_to_table",
             "remove_player_from_table",
+            "update_table",
+            "reset_shoe",
         ]
         for method in required:
             self.assertTrue(hasattr(table, method))

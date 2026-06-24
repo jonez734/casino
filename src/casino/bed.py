@@ -8,14 +8,12 @@ import asyncio
 import signal
 import sys
 
-# Add src to path for imports
-sys.path.insert(0, "/home/opencode/data/work/casino/src")
-
 from bbsengine6 import io
 from bbsengine6.net import WebSocketServer
 from bbsengine6.util import getcurrentloginid
 from bbsengine6.database import buildargs as databasebuildargs
 from casino.api.handler import MessageRouter
+from casino import config
 
 
 class BED:
@@ -117,35 +115,127 @@ def parse_args() -> argparse.Namespace:
         "--pidfile",
         help="Path to PID file",
     )
+    parser.add_argument(
+        "--autorestart",
+        action="store_true",
+        default=None,
+        help="Enable auto-restart on crash (default: from bed.json, or True)",
+    )
+    parser.add_argument(
+        "--no-autorestart",
+        action="store_true",
+        default=False,
+        help="Disable auto-restart on crash",
+    )
+    parser.add_argument(
+        "--restart-delay",
+        type=int,
+        default=None,
+        help="Seconds to wait before restarting (default: from bed.json, or 5)",
+    )
+    parser.add_argument(
+        "--max-restarts",
+        type=int,
+        default=None,
+        help="Max consecutive restarts before giving up (default: from bed.json, or 10)",
+    )
     return parser.parse_args()
+
+
+def get_autorestart_config(args: argparse.Namespace) -> tuple[bool, int, int]:
+    """Get autorestart config from args or bed.json defaults."""
+    bed_config = config.load_config().get("bed", {})
+
+    # Determine autorestart enabled
+    if args.no_autorestart:
+        autorestart = False
+    elif args.autorestart is not None:
+        autorestart = args.autorestart
+    else:
+        autorestart = bed_config.get("autorestart", True)
+
+    # Determine restart delay
+    restart_delay = args.restart_delay if args.restart_delay is not None else bed_config.get("restart_delay", 5)
+
+    # Determine max restarts
+    max_restarts = args.max_restarts if args.max_restarts is not None else bed_config.get("max_restarts", 10)
+
+    return autorestart, restart_delay, max_restarts
 
 
 async def main() -> None:
     """Main entry point."""
     args = parse_args()
 
-    bed = BED(args)
+    # Get autorestart config
+    autorestart, restart_delay, max_restarts = get_autorestart_config(args)
+
+    # Track restart count for autorestart
+    restart_count = 0
 
     # Set up signal handlers
     loop = asyncio.get_event_loop()
 
+    # Store bed instance for signal handlers
+    bed = None
+    config_reloaded = False
+
     def signal_handler():
         io.echo("Received shutdown signal", level="info")
-        asyncio.create_task(bed.stop())
+        if bed:
+            asyncio.create_task(bed.stop())
+
+    def sighup_handler():
+        nonlocal config_reloaded
+        io.echo("Received SIGHUP, reloading config", level="info")
+        new_config = config.reload_config()
+        io.echo(f"Config reloaded: {new_config}", level="info")
+        config_reloaded = True
 
     for sig in (signal.SIGTERM, signal.SIGINT):
         try:
             loop.add_signal_handler(sig, signal_handler)
         except NotImplementedError:
-            # Windows doesn't support add_signal_handler
             pass
 
     try:
-        await bed.start()
-    except Exception as e:
-        io.echo_traceback(f"BED error: {e}")
-        await bed.stop()
-        raise
+        loop.add_signal_handler(signal.SIGHUP, sighup_handler)
+    except (NotImplementedError, OSError):
+        pass
+
+    while True:
+        bed = BED(args)
+
+        try:
+            await bed.start()
+            # If we get here without exception, reset restart count on successful start
+            restart_count = 0
+
+            # If we reached here via SIGHUP handler waiting in the main loop,
+            # the main loop would have been broken - but we don't exit on SIGHUP
+            # The loop continues running
+
+        except Exception as e:
+            io.echo_traceback(f"BED error: {e}")
+
+            if autorestart:
+                restart_count += 1
+                if restart_count > max_restarts:
+                    io.echo(f"Max restarts ({max_restarts}) reached, giving up", level="error")
+                    await bed.stop()
+                    break
+
+                io.echo(f"Auto-restarting in {restart_delay}s (attempt {restart_count}/{max_restarts})", level="warning")
+                await bed.stop()
+                await asyncio.sleep(restart_delay)
+                continue
+            else:
+                await bed.stop()
+                raise
+
+        # If autorestart is disabled and we exit start(), break the loop
+        if not autorestart:
+            break
 
 
 if __name__ == "__main__":

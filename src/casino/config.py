@@ -102,3 +102,8 @@ def get_postoffice_config(config: Optional[Dict[str, Any]] = None) -> Dict[str, 
     if config is None:
         config = load_config()
     return config.get("postoffice", {})
+
+
+def reload_config() -> Dict[str, Any]:
+    """Reload configuration from bed.json, ignoring any overrides."""
+    return load_bed_defaults()

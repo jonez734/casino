@@ -449,7 +449,33 @@ Add postoffice service to BED (via casino) that polls IMAP servers for new email
    - Env var overrides bed.json
    - Config file overrides bed.json defaults
 
-4. **Notification content:**
-   - Sender extracted correctly
-   - Subject extracted correctly
-   - Body preview (~500 chars)
+ 4. **Notification content:**
+    - Sender extracted correctly
+    - Subject extracted correctly
+    - Body preview (~500 chars)
+
+---
+
+## BED (BBS Engine Daemon) Improvements
+
+**File:** `casino/src/casino/bed.py`
+
+### Missing Features
+
+- [ ] 1. Daemonization - `--foreground` flag exists but daemonization is never implemented
+- [ ] 2. PID file management - `--pidfile` arg exists but is never used
+- [X] 3. Configuration file support - Already implemented via bed.json and config.py
+- [ ] 4. SIGHUP reload - No way to reload config without full restart
+- [ ] 5. Health check endpoint - No /health or /status route
+- [ ] 6. TLS/SSL - No WSS (WebSocket Secure) support
+- [ ] 7. Connection limits - No max clients or rate limiting
+- [X] 8. Authentication - Already implemented via SessionService/PlayerService
+- [ ] 9. Auto-restart - No watchdog/retry on crash
+- [ ] 10. Graceful shutdown timeout - Doesn't wait for connections to close
+- [ ] 11. Configurable router - Hardcoded to `MessageRouter` class (bbsengine6 has `--router` flag)
+- [X] 12. Overall robustness improvements - Make bed more robust
+  - [X] SO_REUSEADDR/SO_REUSEPORT socket flag so port is freed immediately on exit
+- [ ] 13. SIGHUP reload - Reload config without full restart
+- [ ] 14. Auto-restart - Watchdog/retry on crash (--autorestart, --restart-delay, --max-restarts)
+  - CLI: --autorestart/--no-autorestart, --restart-delay, --max-restarts
+  - bed.json: bed.autorestart, bed.restart_delay, bed.max_restarts
