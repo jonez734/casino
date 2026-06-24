@@ -456,6 +456,99 @@ Add postoffice service to BED (via casino) that polls IMAP servers for new email
 
 ---
 
+## TUI: Replace inputchoice() with inputstring()
+
+**Status:** Planned
+
+Replace all `inputchoice()` calls in the TUI client with `inputstring()` to support typing full action names (e.g., "bet" instead of just "b").
+
+### Part 1: Simplify ActionInputHandler
+
+**File:** `casino/src/casino/connect.py`
+
+Remove hotkey concept - shortest-unique-prefix matching already works via prefix matching on action names.
+
+**`resolve_action()` (lines 65-97):** Remove hotkey exact match, keep only prefix matching:
+```python
+def resolve_action(input_str: str, actions: list[dict]) -> str | None:
+    if not input_str:
+        return None
+    input_lower = input_str.lower()
+    matches = [a for a in actions if a["action"].lower().startswith(input_lower)]
+    if len(matches) == 0:
+        return None
+    if len(matches) == 1:
+        return matches[0]["action"]
+    options = ", ".join([a["action"] for a in matches])
+    raise ValueError(f"Which actions? {options}")
+```
+
+**`ActionInputHandler.__init__()` (lines 103-109):** Remove hotkey from action_map:
+```python
+def __init__(self, actions: list[dict]):
+    super().__init__()
+    self.actions = actions
+    self.action_map = {}
+    for a in actions:
+        self.action_map[a["action"].lower()] = a["action"]
+```
+
+**`ActionInputHandler.get_matches()` (lines 115-132):** Remove hotkey check:
+```python
+def get_matches(self, prefix: str, **kwargs) -> list[str]:
+    if not prefix:
+        return [a["action"] for a in self.actions]
+    prefix_lower = prefix.lower()
+    return sorted(set(a["action"] for a in self.actions 
+                      if a["action"].lower().startswith(prefix_lower)))
+```
+
+### Part 2: Update Menu Locations
+
+Replace each `inputchoice()` call with `inputstring()` + `ActionInputHandler`:
+
+| File | Line | Actions |
+|------|------|---------|
+| `main.py` | 156 | Dynamic (from options list) |
+| `connect.py` | 372 | blackjack, poker, slots, yahtzee |
+| `connect.py` | 497 | house, player |
+| `connect.py` | 611 | balance, add, withdraw, transfer, pending, history, list, quit |
+| `connect.py` | 651 | tables, create, update, join, leave, bet, hit, stand, msg, kick, quit |
+| `commands/game/lib.py` | 120 | bet, hit, stand, double, play, split, quit |
+| `commands/poker/lib.py` | 254 | check, all, bet, raise, fold, hand, table, list, quit |
+| `commands/table/lib.py` | 94 | tables, create, join, leave, update, view, quit |
+| `blackjack/play.py` | 96 | hit, stand |
+| `commands/chat/lib.py` | 48 | global, table, quit |
+| `commands/bank/lib.py` | 122 | balance, add, withdraw, transfer, pending, history, list, quit |
+| `commands/admin/lib.py` | 114 | watch, unwatch, kick, quit |
+
+### Example Pattern
+
+```python
+from casino.connect import ActionInputHandler
+
+handler = ActionInputHandler([
+    {"action": "bet", "hotkey": "", "label": "Bet"},
+    {"action": "hit", "hotkey": "", "label": "Hit"},
+    {"action": "stand", "hotkey": "", "label": "Stand"},
+    {"action": "quit", "hotkey": "", "label": "Quit"},
+])
+cmd = io.inputstring(
+    "{var:promptcolor}Command (bet/hit/stand/quit): {var:inputcolor}",
+    completer=handler.get_completer()
+)
+resolved = handler.resolve(cmd)
+```
+
+### Behavior
+
+- User can type full name: "bet", "hit", "stand"
+- User can type shortest unique prefix: "b" → "bet", "h" → "hit", "s" → "stand"
+- Tab completion shows available options
+- Ambiguous input (e.g., "b" when both "bet" and "balance" exist) raises error with options
+
+---
+
 ## BED (BBS Engine Daemon) Improvements
 
 **File:** `casino/src/casino/bed.py`
