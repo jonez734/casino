@@ -513,7 +513,8 @@ Replace each `inputchoice()` call with `inputstring()` + `ActionInputHandler`:
 | `connect.py` | 372 | blackjack, poker, slots, yahtzee |
 | `connect.py` | 497 | house, player |
 | `connect.py` | 611 | balance, add, withdraw, transfer, pending, history, list, quit |
-| `connect.py` | 651 | tables, create, update, join, leave, bet, hit, stand, msg, kick, quit |
+| `connect.py` | 651 | tables, create, update, join, leave, bet, hit, stand, msg, bank, quit |
+| | | **Also label [K] as [B]ank in main menu prompt** |
 | `commands/game/lib.py` | 120 | bet, hit, stand, double, play, split, quit |
 | `commands/poker/lib.py` | 254 | check, all, bet, raise, fold, hand, table, list, quit |
 | `commands/table/lib.py` | 94 | tables, create, join, leave, update, view, quit |
