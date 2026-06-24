@@ -549,6 +549,64 @@ resolved = handler.resolve(cmd)
 
 ---
 
+## Sanitize create_table Inputs for Game Type
+
+**Status:** Planned
+
+### Problem
+- `TableService.create_table()` accepts `game_type` as raw string with no validation
+- API handler passes `game_type` directly from message without validation
+- Invalid game types could cause errors or unexpected behavior
+
+### Current State
+- `GameType` enum in `games/base.py` defines: `blackjack`, `poker`, `slots`, `yahtzee`
+- But this is hardcoded - adding new types requires modifying core code
+- Poker variants already use a plugin registry pattern with `entry_points`
+
+### Desired Solution
+Make game types pluggable (like poker variants), so third-party packages can add new game types without modifying core code.
+
+### Implementation Steps
+
+#### 1. Create GameTypeRegistry in games/base.py
+- Mirror the `VariantRegistry` pattern from poker
+- Methods:
+  - `register(name, game_class)` - register a game type
+  - `get(name)` - validate and return game type (raises ValueError if unknown)
+  - `list()` - list all registered types
+  - `_register_builtins()` - register blackjack, poker, slots, yahtzee
+  - `_discover_from_entry_points()` - discover from entry point group `casino.game_types`
+
+#### 2. Keep GameType enum for backwards compatibility
+- Existing code like `GameType.BLACKJACK` still works
+- Registry internally uses the same values
+
+#### 3. Update TableService.create_table()
+- Call `GameTypeRegistry.get(game_type)` to validate
+- Return error dict if validation fails (consistent with PokerService)
+- Normalize input (lowercase, strip whitespace)
+
+#### 4. Add helper functions
+- `list_game_types()` → returns list of all registered types
+- `get_game_type(name)` → returns validated name or raises
+
+#### 5. Add tests
+- Valid game types accepted
+- Invalid game types rejected with clear error message
+- Case insensitivity handling
+
+### Example: Adding a New Game Type
+
+Third-party package would add to their `pyproject.toml`:
+```toml
+[project.entry-points."casino.game_types"]
+mygame = "mypackage.game:MyGame"
+```
+
+No core code changes needed - just install the package.
+
+---
+
 ## BED (BBS Engine Daemon) Improvements
 
 **File:** `casino/src/casino/bed.py`
