@@ -94,7 +94,7 @@ def main(args, **kw):
 
     while True:
         choice = io.inputchoice(
-            "{promptcolor}Action: {optioncolor}[H]it [S]tand{promptcolor}: {inputcolor}",
+            "{var:promptcolor}Action: {var:optioncolor}[HS]{var:promptcolor}: {var:inputcolor}",
             "hs",
             "h",
         )

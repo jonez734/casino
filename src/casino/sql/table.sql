@@ -13,7 +13,9 @@ create table if not exists casino.__table (
     "attrs" jsonb,
     "shoe_cards" text[] default null,
     "shoe_uses" integer default 0,
-    "status" text default 'open'
+    "status" text default 'open',
+    "dealermodule" text,
+    "playermodule" text
 );
 
 grant select on casino.__table to web;

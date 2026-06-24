@@ -41,7 +41,7 @@ def main(args, **kw):
         # play(args, shoe, dealer.hand, player.hand)
         if (
             io.inputboolean(
-                "{f6}{promptcolor}another hand? {optioncolor}[Yn]{promptcolor}: {inputcolor}",
+                "{var:promptcolor}another hand? {var:optioncolor}[Yn]{var:promptcolor}: {var:inputcolor}",
                 "Y",
             )
             is False

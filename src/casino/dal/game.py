@@ -303,6 +303,53 @@ def update_dealer_hand_cards(args: Any, game_id: int, cards: List[str]) -> None:
             )
 
 
+def get_dealer_hole_card(args: Any, game_id: int) -> Optional[str]:
+    """Get dealer's hole card (face-down card)."""
+    dealer_hand = get_dealer_hand(args, game_id)
+    if not dealer_hand:
+        return None
+    attrs = dealer_hand.get("attrs") or {}
+    return attrs.get("hole_card")
+
+
+def set_dealer_hole_card(args: Any, game_id: int, card: str) -> None:
+    """Set dealer's hole card."""
+    with database.connect(args) as conn:
+        with database.cursor(conn) as cur:
+            cur.execute(
+                database.query(
+                    "UPDATE $casino.__hand SET attrs = jsonb_set(coalesce(attrs, '{}'::jsonb), '{hole_card}', to_jsonb(:card::text)) WHERE gameid = :game_id AND playermoniker = :dealer_moniker",
+                    card=card, game_id=game_id, dealer_moniker=DEALER_MONIKER
+                )
+            )
+
+
+def reveal_dealer_hole_card(args: Any, game_id: int) -> Optional[str]:
+    """Reveal dealer's hole card (move to visible cards)."""
+    hole_card = get_dealer_hole_card(args, game_id)
+    if not hole_card:
+        return None
+
+    dealer_hand = get_dealer_hand(args, game_id)
+    if not dealer_hand:
+        return None
+
+    cards = list(dealer_hand["cards"]) if dealer_hand["cards"] else []
+    if hole_card not in cards:
+        cards.append(hole_card)
+
+    with database.connect(args) as conn:
+        with database.cursor(conn) as cur:
+            cur.execute(
+                database.query(
+                    "UPDATE $casino.__hand SET cards = :cards, attrs = attrs - 'hole_card' WHERE gameid = :game_id AND playermoniker = :dealer_moniker",
+                    cards=Jsonb(cards), game_id=game_id, dealer_moniker=DEALER_MONIKER
+                )
+            )
+
+    return hole_card
+
+
 def get_or_create_dealer_hand(args: Any, game_id: int) -> Dict[str, Any]:
     """Get existing dealer hand or create new one."""
     hand = get_dealer_hand(args, game_id)

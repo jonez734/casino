@@ -1,7 +1,7 @@
 create table if not exists casino.__log (
     "id" bigserial,
     "membermoniker" citext constraint fk_casino_log_membermoniker references engine.__member(moniker) on update cascade on delete cascade,
-    "cardtableid" bigint constraint fk_casino_log_cardtableid references casino.__table(id) on update cascade on delete cascade,
+    "cardtablemoniker" citext constraint fk_casino_log_cardtablemoniker references casino.__table(moniker) on update cascade on delete cascade,
     "gameid" bigint constraint fk_casino_log_gameid references casino.__game(id) on update cascade on delete cascade,
     "accountid" bigint constraint fk_casino_log_accountid references casino.__account(id) on update cascade on delete cascade,
     "datestamp" timestamptz,

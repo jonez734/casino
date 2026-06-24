@@ -37,6 +37,31 @@ class Hand:
     def can_double_down(self) -> bool:
         return len(self.cards) == 2
 
+    def can_surrender(self) -> bool:
+        if len(self.cards) != 2:
+            return False
+        if self.is_bust():
+            return False
+        return True
+
+    def is_soft(self) -> bool:
+        if len(self.cards) < 2:
+            return False
+        aces = sum(1 for c in self.cards if c.pips == "A")
+        if aces == 0:
+            return False
+        raw_total = sum(c.value for c in self.cards)
+        soft_total = raw_total
+        aces_count = aces
+        while soft_total > 21 and aces_count > 0:
+            soft_total -= 10
+            aces_count -= 1
+        hard_total = raw_total - 10
+        return soft_total == 17 and hard_total < 17
+
+    def is_five_card_charlie(self) -> bool:
+        return len(self.cards) == 5 and not self.is_bust()
+
     @classmethod
     def from_strings(cls, card_strings: List[str], is_split: bool = False) -> "Hand":
         cards = [Card.from_string(s) for s in card_strings]

@@ -53,7 +53,7 @@ def main(args=None, **kw):
         while not done:
             io.echo("{f6:4}{cursorup:4}")
             show(dice)
-            ch = io.inputchar("re-roll [1-5,Q]: ", "12345Q", "")
+            ch = io.inputchar("{var:promptcolor}re-roll {var:optioncolor}[1-5,Q]{var:promptcolor}: {var:inputcolor}", "12345Q", "")
             if ch == "Q":
                 done = True
                 io.echo("End Round")
@@ -63,7 +63,7 @@ def main(args=None, **kw):
                 del selected[h]
             else:
                 selected[h] = True
-        if io.inputboolean("continue? [Yn]: ", "Y") is False:
+        if io.inputboolean("{var:promptcolor}continue? {var:optioncolor}[Yn]{var:promptcolor}: {var:inputcolor}", "Y") is False:
             return
         for reroll in selected:
             dice[reroll] = util.diceroll(6, 1)

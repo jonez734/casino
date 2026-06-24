@@ -33,7 +33,7 @@ def main(args, **kw):
     done = False
     while not done:
         ch = io.inputchar(
-            "{promptcolor}casino {optioncolor}[BXQ]{promptcolor}: {inputcolor}",
+            "{var:promptcolor}casino {var:optioncolor}[BXQ]{var:promptcolor}: {var:inputcolor}",
             "BX",
             "X",
         )

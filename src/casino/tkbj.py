@@ -134,9 +134,26 @@ class App(tk.Tk):
         )  # grid(column=1, row=row, sticky=tk.NSEW)
         self.standbutton.configure(font=self.labelfont)
 
+        self.surrenderbutton = tk.Button(self.actionframe, text="surrender", command=self.surrender)
+        self.surrenderbutton.pack(
+            side=tk.TOP, fill=tk.BOTH
+        )
+        self.surrenderbutton.configure(font=self.labelfont)
+
     def stand(self):
         io.echo("stand")
         self.hitbutton.configure(state=tk.DISABLED)
+        self.surrenderbutton.configure(state=tk.DISABLED)
+        self.dealerhand.cards[1].facedown = False
+        self.dealerhand.refresh()
+        return
+
+    def surrender(self):
+        io.echo("surrender")
+        self.hitbutton.configure(state=tk.DISABLED)
+        self.standbutton.configure(state=tk.DISABLED)
+        self.surrenderbutton.configure(state=tk.DISABLED)
+        self.playerhand.status_override = "surrendered"
         self.dealerhand.cards[1].facedown = False
         self.dealerhand.refresh()
         return

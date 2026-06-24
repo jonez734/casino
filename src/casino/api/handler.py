@@ -14,7 +14,7 @@ from bbsengine6.net import (
     channel_get_session_channels,
     channel_publish,
 )
-from bbsengine6.notify import send as notify_send, NotificationUrgency
+from bbsengine6.message_delivery import send as notify_send, NotificationUrgency
 from casino.dal import table as dal_table
 from casino.dal import player as dal_player
 from casino.dal.aiosql import table as async_dal_table
@@ -117,8 +117,6 @@ class AuthService(BaseService):
         moniker = message.get("moniker", "")
         password = message.get("password", "")
         
-        # Note: Allowing empty passwords for now - some members may have empty passwords
-        # TODO: Require password after members set one via BBS
         if not moniker:
             return {"type": "error", "code": "invalid_credentials", "message": "Moniker and password required"}
         
@@ -164,6 +162,88 @@ class AuthService(BaseService):
                 "balance": 0,
                 "message": result["message"],
             }
+
+class MemberServiceHandler(BaseService):
+    """Handle member profile, tier, and referral messages."""
+
+    from bbsengine6.services.member import MemberService
+
+    def __init__(self, args: Any, session_manager: SessionManager):
+        super().__init__(args, session_manager)
+        self.member_service = self.MemberService(args)
+
+    async def handle_message(
+        self, server: Any, websocket: Any, path: str, message: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        msg_type = message.get("type")
+
+        if msg_type == "member_profile":
+            return await self._handle_profile(message)
+        elif msg_type == "member_update":
+            return await self._handle_update(message)
+        elif msg_type == "member_tier":
+            return await self._handle_tier(message)
+        elif msg_type == "member_referral_code":
+            return await self._handle_referral_code(message)
+        elif msg_type == "member_referrals":
+            return await self._handle_referrals(message)
+
+        return None
+
+    async def _handle_profile(self, message: Dict[str, Any]) -> Dict[str, Any]:
+        moniker = message.get("moniker", "")
+        if not moniker:
+            return {"type": "error", "code": "invalid_request", "message": "Moniker required"}
+
+        profile = self.member_service.get_profile(moniker)
+        if profile:
+            return {"type": "member_profile_result", "success": True, "profile": profile}
+        return {"type": "member_profile_result", "success": False, "message": "Member not found"}
+
+    async def _handle_update(self, message: Dict[str, Any]) -> Dict[str, Any]:
+        moniker = message.get("moniker", "")
+        attrs = message.get("attrs", {})
+
+        if not moniker:
+            return {"type": "error", "code": "invalid_request", "message": "Moniker required"}
+
+        result = self.member_service.update_profile(moniker, attrs)
+        return {"type": "member_update_result", **result}
+
+    async def _handle_tier(self, message: Dict[str, Any]) -> Dict[str, Any]:
+        action = message.get("action", "get")
+        moniker = message.get("moniker", "")
+
+        if action == "get":
+            if not moniker:
+                return {"type": "error", "code": "invalid_request", "message": "Moniker required"}
+            tier = self.member_service.get_tier(moniker)
+            return {"type": "member_tier_result", "success": True, "moniker": moniker, "tier": tier}
+        elif action == "set":
+            tier = message.get("tier", "")
+            if not moniker or not tier:
+                return {"type": "error", "code": "invalid_request", "message": "Moniker and tier required"}
+            success = self.member_service.set_tier(moniker, tier)
+            return {"type": "member_tier_result", "success": success, "moniker": moniker, "tier": tier if success else None}
+
+        return {"type": "error", "code": "invalid_action", "message": "Invalid action"}
+
+    async def _handle_referral_code(self, message: Dict[str, Any]) -> Dict[str, Any]:
+        moniker = message.get("moniker", "")
+        if not moniker:
+            return {"type": "error", "code": "invalid_request", "message": "Moniker required"}
+
+        refcode = self.member_service.get_referral_code(moniker)
+        return {"type": "member_referral_code_result", "success": True, "moniker": moniker, "refcode": refcode}
+
+    async def _handle_referrals(self, message: Dict[str, Any]) -> Dict[str, Any]:
+        moniker = message.get("moniker", "")
+        if not moniker:
+            return {"type": "error", "code": "invalid_request", "message": "Moniker required"}
+
+        referrals = self.member_service.get_referrals(moniker)
+        return {"type": "member_referrals_result", "success": True, "moniker": moniker, "referrals": referrals}
+
 
 
 class TableServiceHandler(BaseService):
@@ -1009,6 +1089,41 @@ class ChannelServiceHandler(BaseService):
         }
 
 
+class PostofficeServiceHandler(BaseService):
+    """Handle postoffice check_mail messages."""
+    
+    def __init__(self, args: Any, session_manager: SessionManager):
+        super().__init__(args, session_manager)
+        from casino.services.postoffice import get_postoffice_service
+        self.postoffice_service = get_postoffice_service()
+    
+    async def handle_message(
+        self, server: Any, websocket: Any, path: str, message: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        msg_type = message.get("type")
+        
+        if msg_type == "check_mail":
+            return await self._handle_check_mail(id(websocket), message)
+        
+        return None
+    
+    async def _handle_check_mail(self, session_id: int, message: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle manual mail check request."""
+        moniker = self.sessions.get_moniker(session_id)
+        if not moniker:
+            return {"type": "error", "code": "not_authenticated"}
+        
+        result = await self.postoffice_service.handle_check_mail(moniker)
+        
+        return {
+            "type": "check_mail_result",
+            "success": result["success"],
+            "mailboxes_checked": result["mailboxes_checked"],
+            "total_unread": result["total_unread"],
+            "errors": result.get("errors", []),
+        }
+
+
 class MessageRouter:
     """
     Main message handler that coordinates all services.
@@ -1029,6 +1144,8 @@ class MessageRouter:
         self.bet_service = BetServiceHandler(args, self.sessions)
         self.chat_service = ChatServiceHandler(args, self.sessions)
         self.bank_service = BankServiceHandler(args, self.sessions)
+        self.postoffice_service = PostofficeServiceHandler(args, self.sessions)
+        self.member_service = MemberServiceHandler(args, self.sessions)
         
         # Channel service (created in register_all after server is available)
         self.channel_service: Optional[ChannelServiceHandler] = None
@@ -1055,6 +1172,15 @@ class MessageRouter:
         )
         server.register_service(self.channel_service, [
             "subscribe_channel", "unsubscribe_channel", "get_subscriptions"
+        ])
+        
+        # Register postoffice service for mail checking
+        server.register_service(self.postoffice_service, ["check_mail"])
+        
+        # Register member service for profile, tier, and referral operations
+        server.register_service(self.member_service, [
+            "member_profile", "member_update", "member_tier",
+            "member_referral_code", "member_referrals"
         ])
     
     async def handle_broadcast(
