@@ -1,0 +1,30 @@
+# Casino Project Todo
+
+## BED (bed.py) Features
+
+- [ ] PID file handling - implement `--pidfile` argument to write/read PID
+- [ ] Daemonization - implement actual daemonization for `--foreground` / `-f` flag
+- [ ] Graceful reload - add SIGHUP handler to reload configuration
+- [ ] Status command - add way to check if daemon is running
+- [ ] Configuration file support - add config file loading (e.g., `bed.conf`)
+- [ ] Logging to file - add file logging alongside stdout
+
+## Game Modules
+
+- [ ] Implement slots module (`casino/slots/__init__.py`)
+- [ ] Implement yahtzee module (`casino/yahtzee/__init__.py`)
+
+## Poker
+
+- [ ] Omaha low hand evaluation - implement "8 or better" (`poker/variant/omaha.py:84`)
+
+## Admin Commands
+
+- [ ] Implement `ban_player` (`commands/admin/lib.py`)
+- [ ] Implement `unban_player` (`commands/admin/lib.py`)
+- [ ] Implement `disconnect_player` (`commands/admin/lib.py`)
+- [ ] Implement `show_connections` (`commands/admin/lib.py`)
+
+## Security
+
+- [ ] Password authentication for BBS members (`api/handler.py:121`, `services/player.py:34`)
