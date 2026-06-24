@@ -9,6 +9,7 @@ import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 sys.path.insert(0, "/home/opencode/data/work/casino/src")
+sys.path.insert(0, "/home/opencode/data/work/mistermcfeely/src")
 
 
 @pytest.mark.integration
@@ -17,7 +18,7 @@ class TestIMAPConnection(unittest.TestCase):
 
     def test_check_mailbox_sync_with_ssl(self):
         """Test _check_mailbox_sync with SSL connection."""
-        from casino.services.postoffice import PostofficeService, MailboxConfig
+        from postoffice.service import PostofficeService, MailboxConfig
 
         mb = MailboxConfig(host="imap.test.com", username="user", password="pass", use_ssl=True)
         service = PostofficeService(config={"enabled": False, "poll_interval": 30, "mailboxes": []})
@@ -35,7 +36,7 @@ class TestIMAPConnection(unittest.TestCase):
 
     def test_check_mailbox_sync_without_ssl(self):
         """Test _check_mailbox_sync without SSL connection."""
-        from casino.services.postoffice import PostofficeService, MailboxConfig
+        from postoffice.service import PostofficeService, MailboxConfig
 
         mb = MailboxConfig(host="imap.test.com", username="user", password="pass", use_ssl=False, port=143)
         service = PostofficeService(config={"enabled": False, "poll_interval": 30, "mailboxes": []})
@@ -51,7 +52,7 @@ class TestIMAPConnection(unittest.TestCase):
 
     def test_check_mailbox_sync_handles_login_error(self):
         """Test _check_mailbox_sync handles login error."""
-        from casino.services.postoffice import PostofficeService, MailboxConfig
+        from postoffice.service import PostofficeService, MailboxConfig
 
         mb = MailboxConfig(host="imap.test.com", username="user", password="wrong")
         service = PostofficeService(config={"enabled": False, "poll_interval": 30, "mailboxes": []})
@@ -61,7 +62,7 @@ class TestIMAPConnection(unittest.TestCase):
 
     def test_check_mailbox_sync_handles_connection_error(self):
         """Test _check_mailbox_sync handles connection error."""
-        from casino.services.postoffice import PostofficeService, MailboxConfig
+        from postoffice.service import PostofficeService, MailboxConfig
 
         mb = MailboxConfig(host="imap.test.com", username="user", password="pass")
         service = PostofficeService(config={"enabled": False, "poll_interval": 30, "mailboxes": []})
@@ -76,13 +77,14 @@ class TestNewEmailDetection(unittest.TestCase):
 
     def test_notify_new_messages_fetches_envelopes(self):
         """Test _notify_new_messages fetches envelope for new messages."""
-        from casino.services.postoffice import PostofficeService, MailboxConfig
+        from postoffice.service import PostofficeService, MailboxConfig
 
         mb = MailboxConfig(host="imap.test.com", username="user", password="pass")
         service = PostofficeService(config={"enabled": False, "poll_interval": 30, "mailboxes": []})
 
         mock_conn = MagicMock()
         mock_conn.search.return_value = ("OK", [b"1 2 3 4 5"])
+        mock_conn.fetch.return_value = ("OK", [(b"1 (ENVELOPE (...)", b"ENVELOPE_DATA")])
 
         with patch.object(service, "_process_message_envelope") as mock_process:
             service._notify_new_messages(mock_conn, mb, 5)
@@ -90,13 +92,14 @@ class TestNewEmailDetection(unittest.TestCase):
 
     def test_notify_new_messages_limits_to_five(self):
         """Test _notify_new_messages limits to 5 messages."""
-        from casino.services.postoffice import PostofficeService, MailboxConfig
+        from postoffice.service import PostofficeService, MailboxConfig
 
         mb = MailboxConfig(host="imap.test.com", username="user", password="pass")
         service = PostofficeService(config={"enabled": False, "poll_interval": 30, "mailboxes": []})
 
         mock_conn = MagicMock()
         mock_conn.search.return_value = ("OK", [b"1 2 3 4 5 6 7 8 9 10"])
+        mock_conn.fetch.return_value = ("OK", [(b"1 (ENVELOPE (...)", b"ENVELOPE_DATA")])
 
         with patch.object(service, "_process_message_envelope") as mock_process:
             service._notify_new_messages(mock_conn, mb, 10)
@@ -104,7 +107,7 @@ class TestNewEmailDetection(unittest.TestCase):
 
     def test_notify_new_messages_handles_no_messages(self):
         """Test _notify_new_messages with no messages."""
-        from casino.services.postoffice import PostofficeService, MailboxConfig
+        from postoffice.service import PostofficeService, MailboxConfig
 
         mb = MailboxConfig(host="imap.test.com", username="user", password="pass")
         service = PostofficeService(config={"enabled": False, "poll_interval": 30, "mailboxes": []})
@@ -123,7 +126,7 @@ class TestMessageEnvelopeProcessing(unittest.TestCase):
 
     def test_process_message_envelope_basic(self):
         """Test basic envelope processing."""
-        from casino.services.postoffice import PostofficeService, MailboxConfig
+        from postoffice.service import PostofficeService, MailboxConfig
         from email.parser import BytesParser
         from email.policy import default
 
@@ -131,26 +134,27 @@ class TestMessageEnvelopeProcessing(unittest.TestCase):
         service = PostofficeService(config={"enabled": False, "poll_interval": 30, "mailboxes": []})
 
         parser = BytesParser(policy=default)
-        msg = parser.parsestr(
+        raw_msg = (
             "From: sender@example.com\r\n"
             "Subject: Test Subject\r\n"
             "\r\n"
             "This is the body."
-        )
+        ).encode()
+        msg = parser.parsebytes(raw_msg)
         envelope = msg.as_bytes()
 
-        with patch("bbsengine6.notify.send") as mock_send:
+        with patch("postoffice.service.message_send") as mock_send:
             service._process_message_envelope(envelope, mb)
             mock_send.assert_called_once()
             call_kwargs = mock_send.call_args.kwargs
             self.assertEqual(call_kwargs["sender_moniker"], "postoffice")
-            self.assertEqual(call_kwargs["recipient_monikers"], ["@everyone"])
-            self.assertIn("sender@example.com", call_kwargs["content"])
-            self.assertIn("Test Subject", call_kwargs["content"])
+            self.assertEqual(call_kwargs["recipients"], ["@everyone"])
+            self.assertIn("sender@example.com", call_kwargs["template"])
+            self.assertIn("Test Subject", call_kwargs["template"])
 
     def test_process_message_envelope_multipart(self):
         """Test envelope processing with multipart message."""
-        from casino.services.postoffice import PostofficeService, MailboxConfig
+        from postoffice.service import PostofficeService, MailboxConfig
         from email.parser import BytesParser
         from email.policy import default
 
@@ -158,7 +162,7 @@ class TestMessageEnvelopeProcessing(unittest.TestCase):
         service = PostofficeService(config={"enabled": False, "poll_interval": 30, "mailboxes": []})
 
         parser = BytesParser(policy=default)
-        msg = parser.parsestr(
+        raw_msg = (
             "From: sender@example.com\r\n"
             "Subject: Multipart Test\r\n"
             "MIME-Version: 1.0\r\n"
@@ -173,16 +177,17 @@ class TestMessageEnvelopeProcessing(unittest.TestCase):
             "\r\n"
             "<html>HTML body</html>"
             "\r\n--boundary--"
-        )
+        ).encode()
+        msg = parser.parsebytes(raw_msg)
         envelope = msg.as_bytes()
 
-        with patch("bbsengine6.notify.send") as mock_send:
+        with patch("postoffice.service.message_send") as mock_send:
             service._process_message_envelope(envelope, mb)
             mock_send.assert_called_once()
 
     def test_process_message_envelope_body_preview(self):
         """Test body preview is limited to 500 chars."""
-        from casino.services.postoffice import PostofficeService, MailboxConfig
+        from postoffice.service import PostofficeService, MailboxConfig
         from email.parser import BytesParser
         from email.policy import default
 
@@ -192,18 +197,19 @@ class TestMessageEnvelopeProcessing(unittest.TestCase):
         long_body = "A" * 1000
 
         parser = BytesParser(policy=default)
-        msg = parser.parsestr(
+        raw_msg = (
             "From: sender@example.com\r\n"
             "Subject: Long Body Test\r\n"
             "\r\n"
             + long_body
-        )
+        ).encode()
+        msg = parser.parsebytes(raw_msg)
         envelope = msg.as_bytes()
 
-        with patch("bbsengine6.notify.send") as mock_send:
+        with patch("postoffice.service.message_send") as mock_send:
             service._process_message_envelope(envelope, mb)
             call_kwargs = mock_send.call_args.kwargs
-            self.assertLessEqual(len(call_kwargs["content"]), 600)
+            self.assertLessEqual(len(call_kwargs["template"]), 600)
 
 
 def run_tests():
