@@ -1094,7 +1094,7 @@ class PostofficeServiceHandler(BaseService):
     
     def __init__(self, args: Any, session_manager: SessionManager):
         super().__init__(args, session_manager)
-        from casino.services.postoffice import get_postoffice_service
+        from postoffice.service import get_postoffice_service
         self.postoffice_service = get_postoffice_service()
     
     async def handle_message(
