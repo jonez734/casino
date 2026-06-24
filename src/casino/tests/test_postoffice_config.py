@@ -9,6 +9,8 @@ import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 sys.path.insert(0, "/home/opencode/data/work/casino/src")
 
 
@@ -166,6 +168,7 @@ class TestPostofficeConfig(unittest.TestCase):
         self.assertEqual(config["postoffice"]["poll_interval"], 300)
 
 
+@pytest.mark.skip(reason="Deprecated - postoffice service moved to mistermcfeely package")
 class TestPostofficeServiceConfig(unittest.TestCase):
     """Test that PostofficeService uses config correctly."""
 

@@ -7,9 +7,12 @@ import sys
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 sys.path.insert(0, "/home/opencode/data/work/casino/src")
 
 
+@pytest.mark.skip(reason="Deprecated - postoffice service moved to mistermcfeely package")
 class TestPostofficeBackgroundTask(unittest.IsolatedAsyncioTestCase):
     """Test background polling task functionality."""
 
@@ -106,6 +109,7 @@ class TestPostofficeBackgroundTask(unittest.IsolatedAsyncioTestCase):
             mock_loop.return_value.run_in_executor.assert_called_once()
 
 
+@pytest.mark.skip(reason="Deprecated - postoffice service moved to mistermcfeely package")
 class TestStartStopFunctions(unittest.IsolatedAsyncioTestCase):
     """Test start/stop module functions."""
 
@@ -146,6 +150,7 @@ class TestStartStopFunctions(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(postoffice_module._service_instance)
 
 
+@pytest.mark.skip(reason="Deprecated - postoffice service moved to mistermcfeely package")
 class TestServiceLifecycle(unittest.IsolatedAsyncioTestCase):
     """Test service lifecycle scenarios."""
 
