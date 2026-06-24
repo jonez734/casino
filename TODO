@@ -27,4 +27,10 @@
 
 ## Security
 
-- [ ] Password authentication for BBS members (`api/handler.py:121`, `services/player.py:34`)
+- [x] Password authentication for BBS members (`api/handler.py:121`, `services/player.py:34`)
+
+## Testing
+
+- [x] Add member services tests (`tests/test_member_services.py`)
+- [x] Add postoffice channel tests (`tests/test_postoffice_channel.py`)
+- [x] Fix async handler tests in postoffice channel
