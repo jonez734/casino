@@ -10,7 +10,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 from casino.poker.lib import PokerDeck, PokerCard, HandRank, BettingStructure, RANKS, SUITS
 from casino.poker.dealer import PokerDealer
 from casino.poker.player import PokerPlayer
-from casino.poker.variant import get_variant, TexasHoldEm, Omaha, SevenCardStud
+from casino.poker import get_variant
+from casino.poker.variant.texas_hold_em import TexasHoldEm
+from casino.poker.variant.omaha import Omaha
+from casino.poker.variant.seven_card_stud import SevenCardStud
 from casino.poker.variant import evaluator
 
 

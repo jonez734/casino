@@ -3,6 +3,20 @@ from bbsengine6 import io, register_module
 
 __version__ = "202406010000"
 
+from casino.poker.variant import get_variant, list_variants, VARIANTS, BaseVariant, VariantRegistry
+from casino.poker.lib import (
+    BettingStructure,
+    BettingStreet,
+    BetLimits,
+    HandRank,
+    PokerDeck,
+    PokerCard,
+    SUITS,
+    RANKS,
+)
+from casino.poker.dealer import PokerDealer
+from casino.poker.player import PokerPlayer
+
 
 def init(args, **kw: dict) -> bool:
     register_module(

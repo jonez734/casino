@@ -7,13 +7,14 @@ from bbsengine6 import io
 from casino.dal import table as dal_table
 from casino.dal import game as dal_game
 from casino.dal import player as dal_player
-from casino.poker.lib import (
+from casino.poker import (
     PokerDeck,
     SUITS,
     RANKS,
     BettingStructure,
+    get_variant,
+    BaseVariant,
 )
-from casino.poker.variant import get_variant, BaseVariant
 from casino.poker.variant import evaluator
 
 

@@ -4,7 +4,7 @@
 import asyncio
 
 from bbsengine6 import io
-from casino.poker.variant import list_variants
+from casino.poker import list_variants
 
 
 def get_client():

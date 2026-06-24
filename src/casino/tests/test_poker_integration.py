@@ -8,8 +8,9 @@ from unittest.mock import Mock, MagicMock, patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from casino.poker.services.poker import PokerService, PokerTableState, PlayerAction
-from casino.poker.variant import TexasHoldEm, Omaha
+from casino.services.poker import PokerService, PokerTableState, PlayerAction
+from casino.poker.variant.texas_hold_em import TexasHoldEm
+from casino.poker.variant.omaha import Omaha
 from casino.poker.lib import BettingStructure
 
 
