@@ -16,7 +16,7 @@ class TestNotificationContent(unittest.TestCase):
 
     def test_notification_includes_sender(self):
         """Test notification includes sender address."""
-        from casino.services.postoffice import PostofficeService, MailboxConfig
+        from postoffice.service import PostofficeService, MailboxConfig
         from email.parser import BytesParser
         from email.policy import default
 
@@ -29,7 +29,7 @@ class TestNotificationContent(unittest.TestCase):
         envelope = msg.as_bytes()
 
         with patch("bbsengine6.message_delivery.lib._validate_type_name", return_value=True):
-            with patch("bbsengine6.notify.send") as mock_send:
+            with patch("postoffice.service.message_send") as mock_send:
                 service._process_message_envelope(envelope, mb)
                 call_kwargs = mock_send.call_args.kwargs
                 self.assertIn("john@example.com", call_kwargs["template"])
@@ -37,7 +37,7 @@ class TestNotificationContent(unittest.TestCase):
 
     def test_notification_includes_subject(self):
         """Test notification includes subject."""
-        from casino.services.postoffice import PostofficeService, MailboxConfig
+        from postoffice.service import PostofficeService, MailboxConfig
         from email.parser import BytesParser
         from email.policy import default
 
@@ -50,14 +50,14 @@ class TestNotificationContent(unittest.TestCase):
         envelope = msg.as_bytes()
 
         with patch("bbsengine6.message_delivery.lib._validate_type_name", return_value=True):
-            with patch("bbsengine6.notify.send") as mock_send:
+            with patch("postoffice.service.message_send") as mock_send:
                 service._process_message_envelope(envelope, mb)
                 call_kwargs = mock_send.call_args.kwargs
                 self.assertIn("Important Message", call_kwargs["template"])
 
     def test_notification_includes_body_preview(self):
         """Test notification includes body preview."""
-        from casino.services.postoffice import PostofficeService, MailboxConfig
+        from postoffice.service import PostofficeService, MailboxConfig
         from email.parser import BytesParser
         from email.policy import default
 
@@ -70,14 +70,14 @@ class TestNotificationContent(unittest.TestCase):
         envelope = msg.as_bytes()
 
         with patch("bbsengine6.message_delivery.lib._validate_type_name", return_value=True):
-            with patch("bbsengine6.notify.send") as mock_send:
+            with patch("postoffice.service.message_send") as mock_send:
                 service._process_message_envelope(envelope, mb)
                 call_kwargs = mock_send.call_args.kwargs
                 self.assertIn("This is the preview text.", call_kwargs["template"])
 
     def test_notification_sender_moniker(self):
         """Test notification uses postoffice as sender moniker."""
-        from casino.services.postoffice import PostofficeService, MailboxConfig
+        from postoffice.service import PostofficeService, MailboxConfig
         from email.parser import BytesParser
         from email.policy import default
 
@@ -90,14 +90,14 @@ class TestNotificationContent(unittest.TestCase):
         envelope = msg.as_bytes()
 
         with patch("bbsengine6.message_delivery.lib._validate_type_name", return_value=True):
-            with patch("bbsengine6.notify.send") as mock_send:
+            with patch("postoffice.service.message_send") as mock_send:
                 service._process_message_envelope(envelope, mb)
                 call_kwargs = mock_send.call_args.kwargs
                 self.assertEqual(call_kwargs["sender_moniker"], "postoffice")
 
     def test_notification_recipient_is_everyone(self):
         """Test notification sends to @everyone."""
-        from casino.services.postoffice import PostofficeService, MailboxConfig
+        from postoffice.service import PostofficeService, MailboxConfig
         from email.parser import BytesParser
         from email.policy import default
 
@@ -110,14 +110,14 @@ class TestNotificationContent(unittest.TestCase):
         envelope = msg.as_bytes()
 
         with patch("bbsengine6.message_delivery.lib._validate_type_name", return_value=True):
-            with patch("bbsengine6.notify.send") as mock_send:
+            with patch("postoffice.service.message_send") as mock_send:
                 service._process_message_envelope(envelope, mb)
                 call_kwargs = mock_send.call_args.kwargs
                 self.assertEqual(call_kwargs["recipients"], ["@everyone"])
 
     def test_notification_message_type(self):
         """Test notification uses postoffice.email message type."""
-        from casino.services.postoffice import PostofficeService, MailboxConfig
+        from postoffice.service import PostofficeService, MailboxConfig
         from email.parser import BytesParser
         from email.policy import default
 
@@ -130,14 +130,14 @@ class TestNotificationContent(unittest.TestCase):
         envelope = msg.as_bytes()
 
         with patch("bbsengine6.message_delivery.lib._validate_type_name", return_value=True):
-            with patch("bbsengine6.notify.send") as mock_send:
+            with patch("postoffice.service.message_send") as mock_send:
                 service._process_message_envelope(envelope, mb)
                 call_kwargs = mock_send.call_args.kwargs
                 self.assertEqual(call_kwargs["notification_type"], "postoffice.email")
 
     def test_notification_format(self):
         """Test notification format includes all parts."""
-        from casino.services.postoffice import PostofficeService, MailboxConfig
+        from postoffice.service import PostofficeService, MailboxConfig
         from email.parser import BytesParser
         from email.policy import default
 
@@ -150,7 +150,7 @@ class TestNotificationContent(unittest.TestCase):
         envelope = msg.as_bytes()
 
         with patch("bbsengine6.message_delivery.lib._validate_type_name", return_value=True):
-            with patch("bbsengine6.notify.send") as mock_send:
+            with patch("postoffice.service.message_send") as mock_send:
                 service._process_message_envelope(envelope, mb)
                 call_kwargs = mock_send.call_args.kwargs
                 content = call_kwargs["template"]
@@ -165,7 +165,7 @@ class TestNotificationErrors(unittest.TestCase):
 
     def test_handles_missing_from_header(self):
         """Test handling of missing From header."""
-        from casino.services.postoffice import PostofficeService, MailboxConfig
+        from postoffice.service import PostofficeService, MailboxConfig
         from email.parser import BytesParser
         from email.policy import default
 
@@ -178,14 +178,14 @@ class TestNotificationErrors(unittest.TestCase):
         envelope = msg.as_bytes()
 
         with patch("bbsengine6.message_delivery.lib._validate_type_name", return_value=True):
-            with patch("bbsengine6.notify.send") as mock_send:
+            with patch("postoffice.service.message_send") as mock_send:
                 service._process_message_envelope(envelope, mb)
                 call_kwargs = mock_send.call_args.kwargs
                 self.assertIn("Unknown", call_kwargs["template"])
 
     def test_handles_missing_subject(self):
         """Test handling of missing Subject header."""
-        from casino.services.postoffice import PostofficeService, MailboxConfig
+        from postoffice.service import PostofficeService, MailboxConfig
         from email.parser import BytesParser
         from email.policy import default
 
@@ -198,7 +198,7 @@ class TestNotificationErrors(unittest.TestCase):
         envelope = msg.as_bytes()
 
         with patch("bbsengine6.message_delivery.lib._validate_type_name", return_value=True):
-            with patch("bbsengine6.notify.send") as mock_send:
+            with patch("postoffice.service.message_send") as mock_send:
                 service._process_message_envelope(envelope, mb)
                 call_kwargs = mock_send.call_args.kwargs
                 self.assertIn("No Subject", call_kwargs["template"])
