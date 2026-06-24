@@ -386,7 +386,7 @@ Update casino to use message_delivery instead of notify.
 
 Add postoffice service to BED (via casino) that polls IMAP servers for new email and notifies users.
 
-**bed.json** (add to casino package data):
+**bed.json** ✓ (casino package data):
 ```json
 {
   "postoffice": {
