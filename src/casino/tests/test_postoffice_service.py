@@ -7,6 +7,7 @@ import sys
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+sys.path.insert(0, "/home/opencode/data/work/mistermcfeely/src")
 sys.path.insert(0, "/home/opencode/data/work/casino/src")
 
 
@@ -15,7 +16,7 @@ class TestMailboxConfig(unittest.TestCase):
 
     def test_mailbox_config_defaults(self):
         """Test mailbox config default values."""
-        from casino.services.postoffice import MailboxConfig
+        from postoffice.service import MailboxConfig
 
         mb = MailboxConfig(host="imap.example.com", username="user", password="pass")
         self.assertEqual(mb.host, "imap.example.com")
@@ -27,7 +28,7 @@ class TestMailboxConfig(unittest.TestCase):
 
     def test_mailbox_config_custom_values(self):
         """Test mailbox config with custom values."""
-        from casino.services.postoffice import MailboxConfig
+        from postoffice.service import MailboxConfig
 
         mb = MailboxConfig(
             host="mail.test.com",
@@ -48,7 +49,7 @@ class TestPostofficeService(unittest.IsolatedAsyncioTestCase):
 
     def test_service_initialization_disabled(self):
         """Test service initializes correctly when disabled."""
-        from casino.services.postoffice import PostofficeService
+        from postoffice.service import PostofficeService
 
         service = PostofficeService(config={
             "enabled": False,
@@ -62,7 +63,7 @@ class TestPostofficeService(unittest.IsolatedAsyncioTestCase):
 
     def test_service_initialization_enabled(self):
         """Test service initializes correctly when enabled."""
-        from casino.services.postoffice import PostofficeService
+        from postoffice.service import PostofficeService
 
         service = PostofficeService(config={
             "enabled": True,
@@ -77,7 +78,7 @@ class TestPostofficeService(unittest.IsolatedAsyncioTestCase):
 
     def test_service_loads_mailboxes(self):
         """Test service loads mailbox configurations."""
-        from casino.services.postoffice import PostofficeService, MailboxConfig
+        from postoffice.service import PostofficeService, MailboxConfig
 
         mailboxes = [
             {"host": "imap.gmail.com", "username": "user", "password": "pass", "use_ssl": True},
@@ -95,7 +96,7 @@ class TestPostofficeService(unittest.IsolatedAsyncioTestCase):
 
     def test_service_handles_invalid_mailbox_config(self):
         """Test service handles invalid mailbox config gracefully."""
-        from casino.services.postoffice import PostofficeService
+        from postoffice.service import PostofficeService
 
         mailboxes = [
             {"host": "valid.com", "username": "user", "password": "pass"},
@@ -114,7 +115,7 @@ class TestPostofficeServiceStartStop(unittest.IsolatedAsyncioTestCase):
 
     async def test_start_disabled_service(self):
         """Test starting a disabled service does nothing."""
-        from casino.services.postoffice import PostofficeService
+        from postoffice.service import PostofficeService
 
         service = PostofficeService(config={
             "enabled": False,
@@ -127,7 +128,7 @@ class TestPostofficeServiceStartStop(unittest.IsolatedAsyncioTestCase):
 
     async def test_start_enabled_service(self):
         """Test starting an enabled service creates background task."""
-        from casino.services.postoffice import PostofficeService
+        from postoffice.service import PostofficeService
 
         service = PostofficeService(config={
             "enabled": True,
@@ -141,7 +142,7 @@ class TestPostofficeServiceStartStop(unittest.IsolatedAsyncioTestCase):
 
     async def test_start_already_running_service(self):
         """Test starting an already running service logs warning."""
-        from casino.services.postoffice import PostofficeService
+        from postoffice.service import PostofficeService
 
         service = PostofficeService(config={
             "enabled": True,
@@ -155,7 +156,7 @@ class TestPostofficeServiceStartStop(unittest.IsolatedAsyncioTestCase):
 
     async def test_stop_service(self):
         """Test stopping a running service."""
-        from casino.services.postoffice import PostofficeService
+        from postoffice.service import PostofficeService
 
         service = PostofficeService(config={
             "enabled": True,
@@ -170,7 +171,7 @@ class TestPostofficeServiceStartStop(unittest.IsolatedAsyncioTestCase):
 
     async def test_stop_not_running_service(self):
         """Test stopping a non-running service does nothing."""
-        from casino.services.postoffice import PostofficeService
+        from postoffice.service import PostofficeService
 
         service = PostofficeService(config={
             "enabled": False,
@@ -186,8 +187,8 @@ class TestPostofficeSingleton(unittest.IsolatedAsyncioTestCase):
 
     async def test_get_postoffice_service_singleton(self):
         """Test get_postoffice_service returns singleton."""
-        from casino.services.postoffice import get_postoffice_service, PostofficeService
-        import casino.services.postoffice as postoffice_module
+        from postoffice.service import get_postoffice_service, PostofficeService
+        import postoffice.service as postoffice_module
 
         postoffice_module._service_instance = None
 

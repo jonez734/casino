@@ -4,7 +4,7 @@
 
 import sys
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 sys.path.insert(0, "/home/opencode/data/work/casino/src")
 
@@ -14,7 +14,7 @@ class TestPostofficeChannel(unittest.TestCase):
 
     def test_postoffice_channel_constant(self):
         """Test POSTOFFICE_CHANNEL constant is correct."""
-        from casino.services.postoffice import POSTOFFICE_CHANNEL
+        from postoffice.service import POSTOFFICE_CHANNEL
 
         self.assertEqual(POSTOFFICE_CHANNEL, "postoffice:check_mail")
 
@@ -24,7 +24,7 @@ class TestPostofficeChannelIntegration(unittest.TestCase):
 
     def test_service_publishes_to_channel(self):
         """Test service can publish to postoffice channel."""
-        from casino.services.postoffice import POSTOFFICE_CHANNEL
+        from postoffice.service import POSTOFFICE_CHANNEL
 
         self.assertIn("postoffice", POSTOFFICE_CHANNEL)
         self.assertIn("check_mail", POSTOFFICE_CHANNEL)

@@ -432,6 +432,8 @@ Add postoffice service to BED (via casino) that polls IMAP servers for new email
 | `test_postoffice_config.py` | Config loading (3 priority levels) |
 | `test_postoffice_channel.py` | Sends to `postoffice:check_mail` channel |
 
+**TODO:** Remove these test files - postoffice service now lives in mistermcfeely package, not casino.
+
 **Key test scenarios:**
 
 1. **Background polling (Mode A):**
