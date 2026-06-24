@@ -2,12 +2,12 @@
 # casino/tests/test_postoffice_manual_check.py
 # Tests for manual mail check via message type
 
-import asyncio
 import pytest
 import sys
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+sys.path.insert(0, "/home/opencode/data/work/mistermcfeely/src")
 sys.path.insert(0, "/home/opencode/data/work/casino/src")
 
 
@@ -17,7 +17,7 @@ class TestHandleCheckMail(unittest.IsolatedAsyncioTestCase):
 
     async def test_handle_check_mail_no_mailboxes(self):
         """Test manual check with no mailboxes configured."""
-        from casino.services.postoffice import PostofficeService
+        from postoffice.service import PostofficeService
 
         service = PostofficeService(config={
             "enabled": False,
@@ -34,7 +34,7 @@ class TestHandleCheckMail(unittest.IsolatedAsyncioTestCase):
 
     async def test_handle_check_mail_with_mailboxes(self):
         """Test manual check with mailboxes configured."""
-        from casino.services.postoffice import PostofficeService, MailboxConfig
+        from postoffice.service import PostofficeService
 
         mailboxes = [
             {"host": "imap.test.com", "username": "user", "password": "pass"}
@@ -54,7 +54,7 @@ class TestHandleCheckMail(unittest.IsolatedAsyncioTestCase):
 
     async def test_handle_check_mail_multiple_mailboxes(self):
         """Test manual check with multiple mailboxes."""
-        from casino.services.postoffice import PostofficeService
+        from postoffice.service import PostofficeService
 
         mailboxes = [
             {"host": "imap1.test.com", "username": "u1", "password": "p1"},
@@ -75,7 +75,7 @@ class TestHandleCheckMail(unittest.IsolatedAsyncioTestCase):
 
     async def test_handle_check_mail_handles_errors(self):
         """Test manual check handles mailbox errors."""
-        from casino.services.postoffice import PostofficeService
+        from postoffice.service import PostofficeService
 
         mailboxes = [
             {"host": "imap1.test.com", "username": "u1", "password": "p1"},
@@ -102,7 +102,7 @@ class TestCheckMailboxCount(unittest.IsolatedAsyncioTestCase):
 
     async def test_check_mailbox_count_returns_zero_on_error(self):
         """Test _check_mailbox_count returns 0 on error."""
-        from casino.services.postoffice import PostofficeService, MailboxConfig
+        from postoffice.service import PostofficeService, MailboxConfig
 
         mb = MailboxConfig(host="invalid.test.com", username="user", password="pass")
         service = PostofficeService(config={"enabled": False, "poll_interval": 30, "mailboxes": []})
@@ -114,7 +114,7 @@ class TestCheckMailboxCount(unittest.IsolatedAsyncioTestCase):
 
     async def test_check_mailbox_count_parses_unseen(self):
         """Test _check_mailbox_count correctly counts unseen messages."""
-        from casino.services.postoffice import PostofficeService, MailboxConfig
+        from postoffice.service import PostofficeService, MailboxConfig
 
         mb = MailboxConfig(host="mail.test.com", username="user", password="pass")
         service = PostofficeService(config={"enabled": False, "poll_interval": 30, "mailboxes": []})
@@ -129,7 +129,7 @@ class TestCheckMailboxCount(unittest.IsolatedAsyncioTestCase):
 
     async def test_check_mailbox_count_no_unseen(self):
         """Test _check_mailbox_count with no unseen messages."""
-        from casino.services.postoffice import PostofficeService, MailboxConfig
+        from postoffice.service import PostofficeService, MailboxConfig
 
         mb = MailboxConfig(host="mail.test.com", username="user", password="pass")
         service = PostofficeService(config={"enabled": False, "poll_interval": 30, "mailboxes": []})
@@ -190,9 +190,10 @@ class TestPostofficeServiceHandler(unittest.IsolatedAsyncioTestCase):
         mock_server = MagicMock()
         mock_ws = MagicMock()
 
-        result = await handler.handle_message(
-            mock_server, mock_ws, "default", {"type": "check_mail"}
-        )
+        with patch("builtins.id", return_value=1):
+            result = await handler.handle_message(
+                mock_server, mock_ws, "default", {"type": "check_mail"}
+            )
 
         self.assertEqual(result["type"], "check_mail_result")
         self.assertTrue(result["success"])
