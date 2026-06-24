@@ -1,21 +1,11 @@
-import json
 import os
-from pathlib import Path
 from typing import Any, Dict, Optional
 
 
-def get_package_data_path(filename: str) -> Path:
+def get_package_data_path(filename: str) -> str:
     """Get path to a file in the casino package data directory."""
-    return Path(__file__).parent / "data" / filename
-
-
-def load_bed_defaults() -> Dict[str, Any]:
-    """Load default configuration from bed.json package data."""
-    bed_json_path = get_package_data_path("bed.json")
-    if bed_json_path.exists():
-        with open(bed_json_path) as f:
-            return json.load(f)
-    return {}
+    from pathlib import Path
+    return str(Path(__file__).parent / "data" / filename)
 
 
 def load_config(
@@ -27,14 +17,16 @@ def load_config(
     Load casino configuration with priority order:
     1. Command line / overrides (highest)
     2. Config file (if provided)
-    3. bed.json defaults (lowest)
+    3. Environment variables
+    4. Empty defaults (lowest)
     
     Environment variables override defaults.
     Variable format: CASINO_POSTOFFICE_ENABLED=true
     """
-    config = load_bed_defaults()
+    config: Dict[str, Any] = {}
     
     if config_file and os.path.exists(config_file):
+        import json
         with open(config_file) as f:
             file_config = json.load(f)
             config = _merge_config(config, file_config)
@@ -64,7 +56,7 @@ def _load_from_env(prefix: str) -> Dict[str, Any]:
     Variable format: CASINO_<SECTION>_<KEY>=value or CASINO_KEY=value
     Example: CASINO_POSTOFFICE_ENABLED=true, CASINO_DEBUG=true
     """
-    config = {}
+    config: Dict[str, Any] = {}
     for key, value in os.environ.items():
         if not key.startswith(prefix):
             continue
@@ -102,8 +94,3 @@ def get_postoffice_config(config: Optional[Dict[str, Any]] = None) -> Dict[str, 
     if config is None:
         config = load_config()
     return config.get("postoffice", {})
-
-
-def reload_config() -> Dict[str, Any]:
-    """Reload configuration from bed.json, ignoring any overrides."""
-    return load_bed_defaults()
