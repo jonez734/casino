@@ -4,6 +4,179 @@
 
 - [ ] See `bed/TODO.md` "Bearer token" — adopt `bed.api.auth.AuthService` for BED-mode authentication and reconnect. Replaces per-game `auth` implementations. Casino benefits strongly: lobby browsing, spectator mode, multi-table clients, bot accounts.
 
+## BED `menu` message type (casino is the primary driver)
+
+See `bed/TODO.md` "`menu` — single-pick option list, server-side hotkeys" for
+the full wire shape, semantics, and validation rules. The casino is the
+primary driver: every game menu in the casino today is an
+`bbsengine6.io.inputchoice` call with a hard-coded list of hotkeys. The
+`menu` message type replaces that with a single BED request/reply envelope
+that is consumable by any BED client (TUI, headless, web, bot).
+
+### Why casino drives this
+- Blackjack, Poker, Roulette, and the lobby each have multiple menus that
+  are flat option lists with one keystroke per option.
+- They do not need paging, cursors, or insert/edit — i.e. they do not
+  need the full `listbox` protocol.
+- They are user-facing and bot-facing simultaneously: the same `menu`
+  envelope must drive a human TUI and a programmatic bot without
+  divergence.
+
+### Per-game menu mapping
+
+#### Blackjack
+- [ ] Replace the existing hand-action menu in `src/casino/games/blackjack/main.py`
+      with a `menu` envelope. The current options:
+  - `[H]it` — `hotkey="H"`, `enabled=<can_hit>`
+  - `[S]tand` — `hotkey="S"`, `enabled=true`
+  - `[D]ouble down` — `hotkey="D"`, `enabled=<can_double>`, `hint` set
+        on disabled to "Not enough chips" or "Not available after hit"
+  - `[P]plit` — `hotkey="P"`, `enabled=<can_split>`, `hint` set on
+        disabled to "Not a pair" or "Not enough chips"
+  - `[Q]uit` — `hotkey="Q"`, `style="danger"`
+  - `default` = `"S"`, `timeout` = 60s.
+- [ ] Insurance menu (when dealer shows Ace) — separate `menu` envelope
+      with `[Y]es (insurance)` / `[N]o`.
+- [ ] Surrender menu — when the Surrender feature lands (see "Blackjack
+      Missing Features" below), a `[Su]rrender` option joins the hand-
+      action menu.
+
+#### Poker
+- [ ] Replace the betting-round menu in `src/casino/games/poker/main.py`
+      with a `menu` envelope. The current options vary by round
+      (pre-flop vs post-flop) and bet state:
+  - `[F]old` — `hotkey="F"`, `enabled=<can_fold>`
+  - `[Ch]eck` — `hotkey="C"`, `enabled=<can_check>`, `hint` on
+        disabled = "There's a bet to call"
+  - `[Ca]ll` — `hotkey="L"`, `enabled=<can_call>` (uses `L` to avoid
+        collision with `[Ch]eck`)
+  - `[R]aise` — `hotkey="R"`, `enabled=<can_raise>`
+  - `[A]ll-in` — `hotkey="A"`, `enabled=<can_allin>`, `style="warning"`
+  - `[Q]uit` — `hotkey="Q"`, `style="danger"`
+  - `default` = `"F"` (fold on timeout is the standard tournament
+        rule; confirm with game designer).
+- [ ] Raise-amount prompt — when `[R]aise` is picked, follow up with
+      `inputinteger{min:min_raise, max:max_raise, default:min_raise}`.
+      This is a separate message type, not part of the `menu` envelope.
+
+#### Roulette
+- [ ] Replace the bet-type menu in `src/casino/games/roulette/main.py`
+      with a `menu` envelope:
+  - `[I]nside bets` — `hotkey="I"`
+  - `[O]utside bets` — `hotkey="O"`
+  - `[Sp]ecial bets` — `hotkey="S"`
+  - `[Q]uit` — `hotkey="Q"`, `style="danger"`
+- [ ] Inside / Outside / Special sub-menus — each is its own `menu`
+      envelope with the specific bet options (single number, split,
+      street, corner, line for inside; red/black, odd/even, high/low,
+      dozens, columns for outside; neighbours, orphans, tiers for
+      special).
+- [ ] Bet-amount prompt — `inputinteger{min:table_min, max:table_max,
+      default:table_min}`.
+
+#### Lobby
+- [ ] Replace the lobby menu in `src/casino/lobby/main.py` with a `menu`
+      envelope:
+  - `[J]oin table` — `hotkey="J"`
+  - `[S]pectate table` — `hotkey="S"`
+  - `[C]reate table` — `hotkey="C"`, `enabled=<is_sysop>`
+  - `[L]eave lobby` — `hotkey="L"`, `style="danger"`
+- [ ] Table-list picker — for `[J]oin table` and `[S]pectate table`,
+      follow up with a `listbox` (not `menu`) so the player can scroll
+      through open tables. The `listbox` protocol is owned by empyre's
+      plan; casino reuses the same primitive.
+
+#### Account / bank
+- [ ] Replace the in-game account menu (chips balance, deposit,
+      withdraw, transfer, history) with a `menu` envelope:
+  - `[B]alance` — `hotkey="B"`
+  - `[D]eposit` — `hotkey="D"`
+  - `[W]ithdraw` — `hotkey="W"`
+  - `[T]ransfer` — `hotkey="T"`
+  - `[H]istory` — `hotkey="H"`
+  - `[Q]uit` — `hotkey="Q"`, `style="danger"`
+- [ ] All amount inputs are `inputinteger`; all recipient inputs for
+      transfer are `inputstring` (followed by an `inputinteger` for
+      amount).
+
+### Non-menu consumers (bots, lobby clients)
+- [ ] The casino `MessageRouter` (`src/casino/api/handler.py`) exposes a
+      `casino_menu` service for non-menu consumers (bots, lobby
+      clients) that wraps the same envelope. This lets a bot driver
+      send `{"type":"casino_menu", "table_id":"…", "action":"hit"}` and
+      receive the rendered menu envelope back, without going through
+      the TUI / thin-client IO path.
+- [ ] The `casino_menu` service is **read-only** for bots — a bot can
+      observe the current pending menu (and any in-flight reply) but
+      cannot inject a `menu_reply` on behalf of the human player.
+      Bot-driven play is handled by a separate `casino_bot_action`
+      service (already in the casino TODO backlog).
+
+### Migration plan
+- [ ] Add `src/casino/api/menu_adapter.py` that converts a casino
+      in-process `Menu` dataclass (the existing game-internal menu
+      representation) into a `menu` envelope and back. This adapter is
+      the single conversion point; the game modules do not need to
+      change their internal logic.
+- [ ] In `src/casino/api/handler.py`, register a `CasinoMenuService`
+      that owns the per-session pending `menu` future (mirrors
+      `bed.api.session`'s pending-request table) and dispatches the
+      `menu` / `menu_reply` / `menu_timeout` / `menu_cancel` envelopes.
+- [ ] For each game (Blackjack, Poker, Roulette, Lobby, Account),
+      replace the `bbsengine6.io.inputchoice(...)` call with a
+      `casino_menu_adapter.send(session, menu)` call. The adapter
+      blocks (or, in async, awaits) until the `menu_reply` arrives.
+- [ ] In `--thick` door mode, the adapter renders the same menu using
+      `bbsengine6.io.inputchoice` so the door-mode UX is unchanged.
+      This is the regression guard.
+
+### Tests
+- [ ] `tests/test_menu_blackjack.py` — full hand flow: deal → `menu`
+      with `[H]it` enabled → pick `H` → deal → `menu` with `[S]tand`
+      enabled and `[D]ouble down` disabled (after a hit) → pick `S`
+      → resolve. Asserts the `menu` envelope matches the wire shape
+      and the `menu_reply` round-trips.
+- [ ] `tests/test_menu_poker.py` — pre-flop vs post-flop menus
+      (`[Ch]eck` enabled vs disabled), `[A]ll-in` `style="warning"`.
+- [ ] `tests/test_menu_roulette.py` — top-level + sub-menus (inside,
+      outside, special), bet-amount `inputinteger` follow-up.
+- [ ] `tests/test_menu_lobby.py` — `[C]reate table` disabled for
+      non-sysop, table-list `listbox` follow-up.
+- [ ] `tests/test_menu_disabled_option.py` — disabled hotkey is
+      rejected by the client and the server never sees it; server-
+      side `enabled` flag is the source of truth.
+- [ ] `tests/test_menu_timeout.py` — server sets `timeout=2`,
+      `default="S"`; client never replies; server sends
+      `menu_timeout{default_hotkey:"S"}` and proceeds as if the
+      player picked `S`.
+- [ ] `tests/test_menu_cancel.py` — server sends `menu_cancel{
+      reason:"round_ended"}` mid-hand; client drops; late
+      `menu_reply` is a no-op on the server.
+- [ ] `tests/test_menu_duplicate_hotkey.py` — server tries to send
+      a menu with two `H` options; the `MenuService` raises
+      `DuplicateHotkeyError` and surfaces as
+      `error{code:"menu_duplicate_hotkey"}` to the client.
+- [ ] `tests/test_menu_esc_cancel.py` — `[Q]uit` is in the options;
+      `ESC` produces `menu_reply{cancelled:true}` with
+      `hotkey="Q"` (i.e. the cancel hotkey is reported as the pick).
+- [ ] `tests/test_menu_door_mode_regression.py` — `--thick` mode
+      still uses `bbsengine6.io.inputchoice`; the same blackjack
+      hand produces identical ANSI output as the pre-conversion
+      baseline.
+
+### Definition of done
+- [ ] All ten test files above pass.
+- [ ] The legacy door-mode casino pytest suite still passes with the
+      `MenuService` installed in thick mode.
+- [ ] A scripted `headless` casino bot can connect, `auth`, join
+      a blackjack table, receive a `menu` envelope, send
+      `menu_reply{hotkey:"H"}`, and observe the next `menu` (or the
+      hand resolution `echo`) — all without a real human in the
+      loop.
+- [ ] A `tui` casino client can connect, `auth`, render a blackjack
+      hand's `menu`, accept a keystroke (`H`), send `menu_reply{
+      hotkey:"H"}`, and render the next frame.
+
 ## Blackjack Missing Features
 
 - [X] 1. **Surrender** - Player can surrender mid-hand, forfeit 50% of bet
