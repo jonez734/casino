@@ -1,5 +1,9 @@
 # Casino - Not Implemented Features
 
+## BED bearer token
+
+- [ ] See `bed/TODO.md` "Bearer token" — adopt `bed.api.auth.AuthService` for BED-mode authentication and reconnect. Replaces per-game `auth` implementations. Casino benefits strongly: lobby browsing, spectator mode, multi-table clients, bot accounts.
+
 ## Blackjack Missing Features
 
 - [X] 1. **Surrender** - Player can surrender mid-hand, forfeit 50% of bet
