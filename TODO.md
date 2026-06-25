@@ -970,5 +970,198 @@ render themselves.
 10. `slots/__init__.py` (replace stub)
 11. Tests: unit → flow → integration
 12. `TODO.md` update + lint/typecheck
+
+---
+
+## Generic Per-Game Config
+
+A uniform way for every game (blackjack, poker, slots, yahtzee, future games)
+to carry its own typed configuration on a table. The `create_table` and
+`update_table` messages accept an optional `config` dict; each game type
+defines the schema for its own config via a `GameConfig` subclass registered
+in a central registry. The table layer passes the dict through unchanged
+and the game-specific service (or the table service at create time) validates
+it.
+
+### Wire Shape
+
+```json
+{ "type": "create_table",
+  "game_type": "slots",
+  "min_bet": 1, "max_bet": 100,
+  "config": { "target_rtp": 0.92, "reel_set": "default" } }
+```
+
+`config` is optional. If omitted, the table is created with the game type's
+default `GameConfig` instance.
+
+### Storage
+
+A new `config` JSONB column on `casino.__table`, added via an additive
+migration so existing deployments are unaffected:
+
+```sql
+alter table casino.__table add column if not exists "config" jsonb default '{}'::jsonb;
+create index if not exists idx_table_config_gin on casino.__table using gin (config);
+```
+
+The table's `config` column is **always fully populated** after any
+successful write — partial / sparse configs are normalized through the
+registry at write time, so downstream readers never need to handle missing
+keys.
+
+### Update Semantics
+
+`update_table` with `config: {…}` **replaces the whole dict**. Sending
+`config: {}` is equivalent to "reset to defaults": the registry parses the
+empty dict, fills in every field with the `GameConfig` default, and stores
+the fully-populated result. There is no partial-merge / patch API in v1.
+
+### Validation Timing
+
+Validation happens at `create_table` (and again at `update_table`). Bad
+config from a sysop surfaces immediately as an error reply, not silently on
+the first spin. The registry's `parse()` raises `ConfigError` on schema
+violation, which the API handler maps to a `error{code:"invalid_config"}`
+reply with the field-level messages.
+
+### Coexistence with `attrs`
+
+`config` and `attrs` are **parallel mechanisms**:
+
+- `config` — structured, validated, per-game-type schema. Owned by each
+  game's `GameConfig` subclass.
+- `attrs` — freeform JSONB for ad-hoc per-table flags and metadata. Untyped.
+  Existing callers continue to use it as today.
+
+`config` does not replace `attrs`. They serve different purposes.
+
+### Architecture
+
+**`casino/games/config.py`**
+- `GameConfig(ABC)` — `validate()`, `from_dict()`, `to_dict()`
+- `GameTypeConfigRegistry` — `register()`, `get()`, `parse()`. Mirrors the
+  `VariantRegistry` pattern from `casino/poker/variant/__init__.py`.
+- `ConfigError` — raised on schema violation; carries a list of
+  field-level error messages.
+
+**`casino/games/configs/`** — one `GameConfig` subclass per game type:
+- `blackjack.py` → `BlackjackConfig`
+- `poker.py` → `PokerConfig`
+- `slots.py` → `SlotsConfig`
+- `yahtzee.py` → `YahtzeeConfig`
+
+Built-in subclasses register themselves on import.
+
+### Per-Game Config Schemas
+
+#### `BlackjackConfig`
+| Field | Default | Notes |
+|---|---|---|
+| `num_decks` | 3 | currently `Shoe(decks=3)` in `blackjack/game.py:29` |
+| `dealer_hits_soft_17` | false | TODO.md line 233 — per-table rule, not yet wired through config |
+| `allow_surrender` | true | TODO.md line 231 — already in |
+| `blackjack_payout` | 1.5 | 3:2; hardcoded in payout logic today |
+| `five_card_charlie` | true | TODO.md line 232 — implemented |
+| `max_split_hands` | 4 | standard rule; currently unbounded |
+| `shoe_penetration` | 0.75 | standard reshuffle point; currently always reshuffles |
+
+`double_after_split` and `allow_insurance` are intentionally **out of v1**:
+both are already `true` everywhere, and adding the knob is pure churn. They
+land when the per-table override has a real reason to exist.
+
+#### `PokerConfig`
+| Field | Default | Notes |
+|---|---|---|
+| `variant` | `"texas_hold_em"` | hardcoded in `poker/services/poker.py` today |
+| `betting_structure` | `"no_limit"` | enum `BettingStructure.NO_LIMIT` |
+| `small_blind` | 1 | constructor default |
+| `big_blind` | 2 | constructor default |
+| `min_buy_in` | 20 | standard default |
+| `max_buy_in` | 200 | standard default |
+| `min_players` | 2 | per-table default |
+| `max_players` | 10 | per-table default |
+| `rake_percent` | 0.0 | currently unset; included for future-proofing |
+| `rake_cap` | 0 | currently unset; included for future-proofing |
+
+#### `SlotsConfig`
+| Field | Default | Notes |
+|---|---|---|
+| `target_rtp` | 0.92 | see "RTP Definition" above |
+| `reel_set` | `"default"` | key into a fixed set of layouts in `lib.py` |
+| `paytable_override` | `null` | optional `{symbol: multiplier, …}` dict; embedded (no separate `__slot_paytable` table in v1) |
+| `center_row_only` | true | v1 single-payline constraint; flips to `false` when multi-payline lands |
+
+`reels` and `rows` (the 5×3 layout) are **not** in `SlotsConfig` — they
+remain constants in `slots/lib.py` (`DEFAULT_REELS`, `DEFAULT_ROWS`).
+Changing dimensions at the table level would require revalidating every
+paytable entry. Different layouts are a v2+ feature keyed by `reel_set`
+(e.g. `"default"`, with `"cleopatra"` stubbed for v2).
+
+`min_bet` and `max_bet` continue to live on the `__table` row, not in
+`config`. They apply universally across all game types.
+
+#### `YahtzeeConfig`
+| Field | Default | Notes |
+|---|---|---|
+| `num_dice` | 5 | standard |
+| `num_rolls` | 3 | standard |
+
+Minimal in v1. The standard upper-section bonus (63 / 35) is **not** in
+config until the bonus is actually wired in `yahtzee/play.py`.
+
+### What Stays Out of Config
+
+- `cheat` and `cheatpercent` remain columns on `__table`. They're
+  well-understood, used by existing services, and moving them is a separate
+  refactor with unrelated risk. The new `config` column is additive, not a
+  replacement.
+- `reels` / `rows` in slots (see above).
+- Yahtzee bonus rules (until the bonus exists in code).
+
+### Files
+
+**New:**
+- `casino/src/casino/games/config.py` — `GameConfig` ABC, registry, `ConfigError`
+- `casino/src/casino/games/configs/__init__.py` — built-in registrations
+- `casino/src/casino/games/configs/blackjack.py`
+- `casino/src/casino/games/configs/poker.py`
+- `casino/src/casino/games/configs/slots.py`
+- `casino/src/casino/games/configs/yahtzee.py`
+- `casino/src/casino/sql/table_config_migration.sql` — additive column
+- `casino/src/casino/tests/test_game_config.py`
+
+**Edited:**
+- `casino/src/casino/dal/table.py` — `create_table` accepts `config`;
+  `get_table` / `list_tables` return it
+- `casino/src/casino/services/table.py` — `TableService.create_table` and
+  `update_table` accept `config`, validate via the registry
+- `casino/src/casino/api/handler.py` — `_handle_create_table` and
+  `_handle_update_table` pass `message["config"]` through
+- `casino/src/casino/startup.py` — register the migration SQL
+
+### Tests
+
+`tests/test_game_config.py`:
+- Round-trip: every `GameConfig` subclass serializes to dict and back
+- Defaults: empty input → fully-populated default instance
+- Validation: each field's bounds, types, and required-ness
+- Registry: unknown game type → `ConfigError`; missing subclass → registry
+  falls back to a `GenericConfig` no-op
+- `update_table` with `config: {}` → column is reset to defaults
+- Migration: existing tables without the column get backfilled to `'{}'`
+
+### Implementation Order (delta on slots)
+
+This work prepends to the slots implementation order:
+
+1. `games/config.py` (ABC + registry)
+2. `games/configs/{blackjack,poker,slots,yahtzee}.py`
+3. `sql/table_config_migration.sql` + `startup.py` edit
+4. `dal/table.py` edit (accept/return `config`)
+5. `services/table.py` edit (validate via registry)
+6. `api/handler.py` edit (pass `config` through)
+7. `tests/test_game_config.py`
+8. *Then* the original slots order (lib.py, dealer.py, …)
   - CLI: --autorestart/--no-autorestart, --restart-delay, --max-restarts
   - bed.json: bed.autorestart, bed.restart_delay, bed.max_restarts
