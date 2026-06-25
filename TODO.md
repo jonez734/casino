@@ -855,7 +855,120 @@ No core code changes needed - just install the package.
 - [ ] 11. Configurable router - Hardcoded to `MessageRouter` class (bbsengine6 has `--router` flag)
 - [X] 12. Overall robustness improvements - Make bed more robust
   - [X] SO_REUSEADDR/SO_REUSEPORT socket flag so port is freed immediately on exit
-- [X] 13. SIGHUP reload - Reload config without full restart
+- [X] 13. SIGHUP reload - Reload config without restart
 - [X] 14. Auto-restart - Watchdog/retry on crash (--autorestart, --restart-delay, --max-restarts)
+
+---
+
+## Slots (v1)
+
+Minimal, extensible slot machine game. Single payline (center row) in v1; multi-payline,
+bonus rounds, jackpots, and themes are explicit v2 extensions.
+
+### RTP Definition
+
+`RTP = E[payout] / bet` over infinite spins at a flat bet of 1, expressed as a
+percentage. Default target is 92%, configurable per-table via
+`casino.__table.attrs["slots.target_rtp"]`. A sanity bound of `[0.80, 0.99]` is
+enforced at table-creation time; the realized RTP is asserted within ±2% over
+10k spins in the integration test suite.
+
+### Bank Integration
+
+**Single atomic transaction per spin.** The bet debit, payout credit, spin
+audit row, and player-stat updates all commit together or roll back together.
+This diverges from blackjack's per-step model (debit on bet, credit on
+resolution) because slots has no inter-player settlement window — there is
+exactly one outcome per spin, so collapsing to one bank movement is both
+simpler and the right accounting model. Disconnect mid-spin is a non-event:
+the transaction either commits or doesn't happen, so there is no in-flight
+bet to recover.
+
+### Stats (minimal)
+
+Four entries added to `casino.dal.player.ALLOWED_STATS`:
+
+- `slots.spins` — total spins
+- `slots.wins` — spins where `payout > 0`
+- `slots.net` — `sum(payout) - sum(bet)`, signed integer (follows existing
+  `net` convention)
+- `slots.biggest_win` — max single-spin `payout`. Tracked via a new
+  `set_max_stat` DAL helper (not additive).
+
+### Rendering
+
+Door mode: 5 reels × 3 rows, box-drawing characters (`┌─┐`, `│`, `└─┘`).
+BED clients receive JSON `{reels: [[...], ...], center_row: [...]}` and
+render themselves.
+
+### Files to Create
+
+- `casino/src/casino/slots/lib.py` — `Symbol`, `Reel`, `Paytable`, `Win`,
+  `SpinResult`, `RNG`, defaults, `render_ascii`
+- `casino/src/casino/slots/dealer.py` — `SlotDealer`
+- `casino/src/casino/slots/player.py` — `SlotPlayer`
+- `casino/src/casino/slots/play.py` — door-mode loop
+- `casino/src/casino/slots/game.py` — top-level entry
+- `casino/src/casino/services/slots.py` — `SlotService` (atomic transaction)
+- `casino/src/casino/dal/slots.py` — spin history, paytable get/set
+- `casino/src/casino/sql/slots.sql` — `__slot_spin` table + view + grants
+- `casino/src/casino/tests/test_slots_unit.py`
+- `casino/src/casino/tests/test_slots_flow.py`
+- `casino/src/casino/tests/test_slots_integration.py`
+
+### Files to Edit
+
+- `casino/src/casino/slots/__init__.py` — replace stub, register module
+- `casino/src/casino/api/handler.py` — register `SlotServiceHandler`
+- `casino/src/casino/startup.py` — add `Slots` to `classlist`
+- `casino/src/casino/dal/player.py` — add 4 stat names to `ALLOWED_STATS`,
+  add `set_max_stat` helper
+- `casino/src/casino/TODO.md` — this section (done in v1 commit)
+
+### Test Coverage (blackjack-depth)
+
+- `test_slots_unit.py` — RNG distribution, paytable evaluation, theoretical
+  RTP math, ASCII rendering
+- `test_slots_flow.py` — WebSocket spin flow: bet validation, error codes,
+  broadcast to spectators, history, single-player enforcement, stats
+- `test_slots_integration.py` — door-mode end-to-end, RTP sanity over 10k
+  spins, custom paytable via attrs, atomic-transaction rollback on
+  simulated failure, bank balance reconciliation
+
+### Extensibility Hooks (designed in, not built)
+
+| Future feature | Hook already in place |
+|---|---|
+| Multiple paylines | `Paytable.evaluate(center_row)` — v2 adds `active_paylines=[0]` parameter |
+| Bonus rounds | `SpinResult.wins` is a list — v2 adds `bonus_state` field |
+| Progressive jackpot | `casino.__slot_spin` records every spin — v2 adds `__slot_jackpot_pool` table |
+| Provably-fair RNG | `lib.RNG` is a single helper class — swap implementation behind it |
+| Per-table paytable | Already in `casino.__table.attrs` JSONB, read by `dal/slots.get_paytable` |
+| Symbol themes | `Reel` and `Paytable` constructed from parameters, not hardcoded |
+
+### Out of Scope for v1
+
+- Multiple paylines (3/5/9)
+- Bonus rounds (free spins, pick-em)
+- Progressive jackpots
+- Provably-fair RNG (server seed + client seed + nonce commits)
+- Symbol themes beyond defaults
+- "Hold" reel feature
+- Nudges
+
+### Implementation Order
+
+1. `slots/lib.py`
+2. `slots/dealer.py`
+3. `sql/slots.sql` + edit `startup.py`
+4. `dal/slots.py`
+5. Edit `dal/player.py` (stats allowlist + `set_max_stat`)
+6. `slots/player.py`
+7. `services/slots.py` (with atomic transaction)
+8. Edit `api/handler.py` (register handler)
+9. `slots/play.py` + `slots/game.py`
+10. `slots/__init__.py` (replace stub)
+11. Tests: unit → flow → integration
+12. `TODO.md` update + lint/typecheck
   - CLI: --autorestart/--no-autorestart, --restart-delay, --max-restarts
   - bed.json: bed.autorestart, bed.restart_delay, bed.max_restarts
