@@ -1165,3 +1165,94 @@ This work prepends to the slots implementation order:
 8. *Then* the original slots order (lib.py, dealer.py, …)
   - CLI: --autorestart/--no-autorestart, --restart-delay, --max-restarts
   - bed.json: bed.autorestart, bed.restart_delay, bed.max_restarts
+
+---
+
+## Slots v1.1: Single-Seater + Bed Integration Tests
+
+Builds on the slots v1 commit (`e03e4b0`). Two changes:
+
+### Single-Seater Enforcement
+
+Slots v1 spec: a slots table has **at most one seated player**; spectators
+may subscribe via `watch_table` but cannot take a second seat.
+Multi-player (two players at the same slots table) is explicitly **v2**.
+
+The existing `TableService.join_table` has no occupied-seat check and
+blindly calls `add_player_to_table`, so the single-seater constraint is
+enforced in the BED handler layer instead.
+
+**Edit:** `casino/src/casino/api/handler.py` — `_handle_join_table`
+- Fetch the table row before delegating to the service.
+- If `table.type == "slots"`, count current seats via a direct
+  `SELECT COUNT(*) FROM casino.__bank_table WHERE table_moniker = :m`.
+- If count >= 1, return
+  `{"type": "error", "code": "join_failed", "message": "Slots tables
+  have a single seat; another player is already seated"}` *before*
+  the service is called. The error code `join_failed` matches the
+  existing convention for all join-failure cases.
+
+`watch_table` is independent of seat occupancy — spectators can
+subscribe to a slots table even when the seat is full.
+
+### Bed Integration Test Suite
+
+**Edit:** `casino/tests/test_slots_integration.py` — append a new class
+`TestSlotBedIntegration(unittest.IsolatedAsyncioTestCase)` mirroring the
+real-WebSocket pattern from `test_blackjack_flow.py`:
+- Real `WebSocketServer` + `MessageRouter` boots.
+- `WebSocketTestClient` is copied verbatim from
+  `test_blackjack_flow.py` (~150 LOC).
+- Test users: `jam-1` (player), `jam-2` (spectator), both with the
+  standard `crypt('test', gen_salt('md5'))` password, 100000 credits,
+  100000 bank balance.
+- Skipped when `CASINO_TEST_DB` env var is unset.
+
+**Coverage (20 test cases, every error path, both v1 seat scenarios):**
+
+| # | Test |
+|---|---|
+| 1 | full spin flow: auth → create → join → spin → `slot_result` |
+| 2 | `slot_paytable` returns the default paytable |
+| 3 | `slot_history` returns spins in reverse-chronological order |
+| 4 | spectator receives broadcast (alice plays, bob `watch_table`s, bob gets `slot_result` on the table channel) |
+| 5 | player also receives own broadcast (direct reply + channel broadcast) |
+| 6 | first `join_table` on a slots table succeeds |
+| 7 | second `join_table` returns `error{code:"join_failed"}` |
+| 8 | `watch_table` succeeds after the seat is full |
+| 9 | `slot_spin` without auth → `not_authenticated` |
+| 10 | `slot_spin` without `join_table` → `not_at_table` |
+| 11 | bet below table minbet → `bet_below_min` |
+| 12 | bet above table maxbet → `bet_above_max` |
+| 13 | bet > bank balance → `insufficient_funds` |
+| 14 | bet as a string → `invalid_bet` |
+| 15 | `slot_spin` on a blackjack table → `wrong_game_type` |
+| 16 | `slot_spin` on a missing table → `table_not_found` |
+| 17 | stats: 5 spins → `slots.spins=5`, `slots.wins` consistent, `slots.net = sum(payout)-sum(bet)`, `slots.biggest_win = max(payout)` |
+| 18 | `casino.__slot_spin` row count matches spin count |
+| 19 | bank balance reconciles over 10 spins |
+| 20 | re-auth after disconnect allows a fresh spin |
+
+### Door-Mode Status
+
+Door mode (currently `slots/play.py` + `slots/game.py`) is **retained**
+in v1 as a thin TTY wrapper. BED (thin client) is the primary client;
+the door mode remains available for direct terminal play. v2 may
+deprecate the door mode in favor of a single BED-only flow.
+
+### BED Wiring
+
+No `bed/` code changes required. `MessageRouter.register_all` (which
+the BED invokes at `bed/main.py:56` when given
+`casino.api.handler.MessageRouter` as `--router`) already includes
+`SlotServiceHandler` from the v1 commit. Slots registers automatically
+the moment BED runs with casino's router.
+
+### Files Touched
+
+- `casino/src/casino/api/handler.py` — single-seater check in
+  `_handle_join_table`
+- `casino/src/casino/tests/test_slots_integration.py` — append
+  `TestSlotBedIntegration` (20 cases + copied `WebSocketTestClient`)
+- `casino/TODO.md` — this section
+
