@@ -29,6 +29,7 @@ class Symbol:
     name: str
     weight: int
     glyph: str
+    color: str = ""
 
     def __post_init__(self) -> None:
         if self.weight <= 0:
@@ -38,14 +39,17 @@ class Symbol:
 # Default symbol set. Weights are tuned for the default paytable below.
 # Glyphs are single ASCII characters so the box-drawing renderer lines
 # up in any fixed-width terminal. Each symbol takes exactly one column.
+# Colors are bbsengine6.io.echo color names (e.g. ``red``, ``yellow``,
+# ``purple``) and are applied to the cell when rendered. The empty
+# string means "use the terminal's default foreground".
 DEFAULT_SYMBOLS: dict[str, Symbol] = {
-    "CHERRY": Symbol("CHERRY", 8, "C"),
-    "LEMON":  Symbol("LEMON",  7, "L"),
-    "PLUM":   Symbol("PLUM",   6, "P"),
-    "BELL":   Symbol("BELL",   5, "B"),
-    "BAR":    Symbol("BAR",    4, "="),
-    "SEVEN":  Symbol("SEVEN",  2, "7"),
-    "BLANK":  Symbol("BLANK",  1, "."),
+    "CHERRY": Symbol("CHERRY", 8, "C", "red"),
+    "LEMON":  Symbol("LEMON",  7, "L", "yellow"),
+    "PLUM":   Symbol("PLUM",   6, "P", "purple"),
+    "BELL":   Symbol("BELL",   5, "B", "cyan"),
+    "BAR":    Symbol("BAR",    4, "=", "white"),
+    "SEVEN":  Symbol("SEVEN",  2, "7", "lightred"),
+    "BLANK":  Symbol("BLANK",  1, ".", ""),
 }
 
 
@@ -386,19 +390,38 @@ def default_reels(symbols: dict[str, Symbol], rng: RNG) -> list[Reel]:
 
 def render_ascii(result: SpinResult) -> str:
     """Render a 5x3 grid with box-drawing characters. Center row is
-    marked with an extra ``*`` on each side so players can see what
-    was evaluated.
+    highlighted with ``{inverse}`` so the player can see what was
+    evaluated. Each cell is wrapped in its symbol's color (bbsengine6
+    echo color name) so cherries read as red, lemons yellow, etc.
+
+    The output is intended to be passed through ``bbsengine6.io.echo``
+    for color resolution. When echoed, ``{red}`` becomes an ANSI red
+    foreground and ``{/inverse}`` returns to normal video. If the
+    string is printed directly to a terminal that interprets
+    ``{name}``-style escapes, the same colors will display.
     """
     if not result.reels:
         return ""
     num_rows = max(len(col) for col in result.reels)
-    cell_w = max(3, max(len(s.glyph) for col in result.reels for s in col))
+    cell_w = max(1, max(len(s.glyph) for col in result.reels for s in col))
 
     def cell(sym: Symbol) -> str:
         text = sym.glyph
         if len(text) < cell_w:
             text = text + " " * (cell_w - len(text))
+        if sym.color:
+            return f"{{{sym.color}}}{text}{{/{sym.color}}}"
         return text
+
+    def inverse_cell(sym: Symbol) -> str:
+        text = sym.glyph
+        if len(text) < cell_w:
+            text = text + " " * (cell_w - len(text))
+        # Inverse video + the symbol's own color so it pops on the
+        # highlighted row.
+        if sym.color:
+            return f"{{inverse}}{{{sym.color}}}{text}{{/inverse}}{{/{sym.color}}}"
+        return f"{{inverse}}{text}{{/inverse}}"
 
     top = "┌" + "┬".join("─" * (cell_w + 2) for _ in result.reels) + "┐"
     mid = "├" + "┼".join("─" * (cell_w + 2) for _ in result.reels) + "┤"
@@ -408,10 +431,8 @@ def render_ascii(result: SpinResult) -> str:
     for r in range(num_rows):
         row_parts: list[str] = []
         for col in result.reels:
-            sym = col[r] if r < len(col) else Symbol("BLANK", 1, "·")
-            text = " " + cell(sym) + " "
-            if r == 1:
-                text = f"*{cell(sym)}*"
+            sym = col[r] if r < len(col) else Symbol("BLANK", 1, ".")
+            text = " " + (cell(sym) if r != 1 else inverse_cell(sym)) + " "
             row_parts.append(text)
         lines.append("│" + "│".join(row_parts) + "│")
         if r < num_rows - 1:

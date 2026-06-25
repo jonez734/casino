@@ -319,11 +319,42 @@ class TestRenderAscii(unittest.TestCase):
         self.assertIn("C", out)
         self.assertIn("L", out)
         self.assertIn("B", out)
-        # center row markers
-        self.assertIn("*", out)
+        # Center row is highlighted with {inverse} ... {/inverse}
+        self.assertIn("{inverse}", out)
+        self.assertIn("{/inverse}", out)
         # box characters
         self.assertIn("┌", out)
         self.assertIn("└", out)
+
+    def test_renders_with_color_wrappers(self):
+        """When a symbol has a color, its cell wraps the glyph in
+        {color}...{/color} so bbsengine6.io.echo can resolve it.
+        """
+        result = lib.SpinResult(
+            reels=[[lib.Symbol("CHERRY", 1, "C", "red")]],
+            center_row=[lib.Symbol("CHERRY", 1, "C", "red")],
+            wins=[],
+            bet=1,
+            payout=0,
+            net=-1,
+        )
+        out = lib.render_ascii(result)
+        self.assertIn("{red}", out)
+        self.assertIn("{/red}", out)
+
+    def test_renders_without_color_when_symbol_has_none(self):
+        """Empty color string means no color wrappers are emitted."""
+        result = lib.SpinResult(
+            reels=[[lib.Symbol("BLANK", 1, ".", "")]],
+            center_row=[lib.Symbol("BLANK", 1, ".", "")],
+            wins=[],
+            bet=1,
+            payout=0,
+            net=-1,
+        )
+        out = lib.render_ascii(result)
+        self.assertNotIn("{", out)
+        self.assertNotIn("}", out)
 
     def test_renders_empty(self):
         result = lib.SpinResult(
