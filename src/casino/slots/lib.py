@@ -36,14 +36,16 @@ class Symbol:
 
 
 # Default symbol set. Weights are tuned for the default paytable below.
+# Glyphs are single ASCII characters so the box-drawing renderer lines
+# up in any fixed-width terminal. Each symbol takes exactly one column.
 DEFAULT_SYMBOLS: dict[str, Symbol] = {
-    "CHERRY": Symbol("CHERRY", 8, "🍒"),
-    "LEMON":  Symbol("LEMON",  7, "🍋"),
-    "PLUM":   Symbol("PLUM",   6, "🟣"),
-    "BELL":   Symbol("BELL",   5, "🔔"),
-    "BAR":    Symbol("BAR",    4, "▮"),
+    "CHERRY": Symbol("CHERRY", 8, "C"),
+    "LEMON":  Symbol("LEMON",  7, "L"),
+    "PLUM":   Symbol("PLUM",   6, "P"),
+    "BELL":   Symbol("BELL",   5, "B"),
+    "BAR":    Symbol("BAR",    4, "="),
     "SEVEN":  Symbol("SEVEN",  2, "7"),
-    "BLANK":  Symbol("BLANK",  1, "·"),
+    "BLANK":  Symbol("BLANK",  1, "."),
 }
 
 
