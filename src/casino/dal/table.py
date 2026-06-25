@@ -29,10 +29,11 @@ def create_table(
     min_bet: int = 10,
     max_bet: int = 1000,
     moniker: Optional[str] = None,
+    hidden: bool = False,
 ) -> Dict[str, Any]:
     """
     Create a new casino table.
-    
+
     Args:
         args: Application args
         game_type: Type of game (blackjack, poker, etc.)
@@ -40,7 +41,8 @@ def create_table(
         min_bet: Minimum bet
         max_bet: Maximum bet
         moniker: Unique text identifier (auto-generated if not provided)
-        
+        hidden: If True, table is hidden from list_tables for non-sysops
+
     Returns:
         Table dict with moniker, game_type, owner, etc.
     """
@@ -92,8 +94,8 @@ def create_table(
 
             cur.execute(
                 database.query(
-                    "INSERT INTO $casino.__table (moniker, type, minimumbet, maximumbet, ownermoniker, ownersince, accountid, location, status) VALUES (:moniker, :game_type, :min_bet, :max_bet, :owner_moniker, NOW(), :account_id, :table_name, 'open') RETURNING moniker, type, minimumbet, maximumbet, ownermoniker, ownersince, accountid, cheat, cheatpercent, attrs, shoe_cards, shoe_uses, location, status",
-                    moniker=moniker, game_type=game_type, min_bet=min_bet, max_bet=max_bet, owner_moniker=owner_moniker, account_id=account_id, table_name=table_name
+                    "INSERT INTO $casino.__table (moniker, type, minimumbet, maximumbet, ownermoniker, ownersince, accountid, location, status, hidden) VALUES (:moniker, :game_type, :min_bet, :max_bet, :owner_moniker, NOW(), :account_id, :table_name, 'open', :hidden) RETURNING moniker, type, minimumbet, maximumbet, ownermoniker, ownersince, accountid, cheat, cheatpercent, attrs, shoe_cards, shoe_uses, location, status, hidden",
+                    moniker=moniker, game_type=game_type, min_bet=min_bet, max_bet=max_bet, owner_moniker=owner_moniker, account_id=account_id, table_name=table_name, hidden=hidden
                 )
             )
             row = cur.fetchone()
@@ -112,6 +114,7 @@ def create_table(
                 "shoe_uses": row["shoe_uses"] or 0,
                 "location": row["location"],
                 "status": row["status"],
+                "hidden": row.get("hidden", False),
             }
 
 
@@ -121,7 +124,7 @@ def get_table(args: Any, moniker: str) -> Optional[Dict[str, Any]]:
         with database.cursor(conn) as cur:
             cur.execute(
                 database.query(
-                    "SELECT moniker, type, minimumbet, maximumbet, ownermoniker, ownersince, accountid, cheat, cheatpercent, attrs, shoe_cards, shoe_uses, location, status FROM $casino.__table WHERE moniker = :moniker",
+                    "SELECT moniker, type, minimumbet, maximumbet, ownermoniker, ownersince, accountid, cheat, cheatpercent, attrs, shoe_cards, shoe_uses, location, status, hidden FROM $casino.__table WHERE moniker = :moniker",
                     moniker=moniker
                 )
             )
@@ -142,33 +145,42 @@ def get_table(args: Any, moniker: str) -> Optional[Dict[str, Any]]:
                     "shoe_uses": row["shoe_uses"] or 0,
                     "location": row["location"],
                     "status": row["status"],
+                    "hidden": row.get("hidden", False),
                 }
             return None
 
 
-def list_tables(args: Any, game_type: Optional[str] = None) -> List[Dict[str, Any]]:
+def list_tables(
+    args: Any,
+    game_type: Optional[str] = None,
+    include_hidden: bool = False,
+) -> List[Dict[str, Any]]:
     """
     List all tables, optionally filtered by game type.
-    
+
+    By default, hidden tables are excluded. Set ``include_hidden=True`` to
+    include them (e.g. for sysops who need to see every table).
+
     Returns:
         List of table dicts
     """
     with database.connect(args) as conn:
         with database.cursor(conn) as cur:
+            where_clauses = []
+            params: Dict[str, Any] = {}
             if game_type:
-                cur.execute(
-                    database.query(
-                        "SELECT moniker, type, minimumbet, maximumbet, ownermoniker, ownersince, accountid, cheat, cheatpercent, attrs, shoe_cards, shoe_uses, location, status FROM $casino.__table WHERE type = :game_type ORDER BY moniker",
-                        game_type=game_type
-                    )
-                )
-            else:
-                cur.execute(
-                    database.query(
-                        "SELECT moniker, type, minimumbet, maximumbet, ownermoniker, ownersince, accountid, cheat, cheatpercent, attrs, shoe_cards, shoe_uses, location, status FROM $casino.__table ORDER BY moniker"
-                    )
-                )
-            
+                where_clauses.append("type = :game_type")
+                params["game_type"] = game_type
+            if not include_hidden:
+                where_clauses.append("(hidden IS NULL OR hidden = false)")
+            where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
+
+            sql = (
+                "SELECT moniker, type, minimumbet, maximumbet, ownermoniker, ownersince, accountid, cheat, cheatpercent, attrs, shoe_cards, shoe_uses, location, status, hidden "
+                f"FROM $casino.__table {where_sql} ORDER BY moniker"
+            )
+            cur.execute(database.query(sql, **params) if params else database.query(sql))
+
             tables = []
             for row in cur:
                 tables.append({
@@ -186,6 +198,7 @@ def list_tables(args: Any, game_type: Optional[str] = None) -> List[Dict[str, An
                     "shoe_uses": row["shoe_uses"] or 0,
                     "location": row["location"],
                     "status": row["status"],
+                    "hidden": bool(row.get("hidden", False)),
                 })
             return tables
 
@@ -266,19 +279,19 @@ def update_shoe(args: Any, moniker: str, cards: List[str], uses: int) -> None:
 
 
 def update_table(args: Any, moniker: str, **updates) -> Optional[Dict[str, Any]]:
-    """Update table fields (moniker, minimumbet, maximumbet, status).
-    
+    """Update table fields (moniker, minimumbet, maximumbet, status, hidden).
+
     Args:
         args: Application args
         moniker: Current table moniker
-        **updates: Fields to update (new_moniker, minimumbet, maximumbet, status)
-    
+        **updates: Fields to update (new_moniker, minimumbet, maximumbet, status, hidden)
+
     Returns:
         Updated table dict or None if not found
     """
     set_clauses = []
     values = []
-    
+
     if "new_moniker" in updates:
         set_clauses.append("moniker = %s")
         values.append(updates["new_moniker"])
@@ -291,19 +304,22 @@ def update_table(args: Any, moniker: str, **updates) -> Optional[Dict[str, Any]]
     if "status" in updates:
         set_clauses.append("status = %s")
         values.append(updates["status"])
-    
+    if "hidden" in updates:
+        set_clauses.append("hidden = %s")
+        values.append(updates["hidden"])
+
     if not set_clauses:
         return get_table(args, moniker)
-    
+
     values.append(moniker)
-    
+
     with database.connect(args) as conn:
         with database.cursor(conn) as cur:
             sql = f"UPDATE casino.__table SET {', '.join(set_clauses)} WHERE moniker = %s RETURNING moniker"
             cur.execute(sql, values)
             if cur.rowcount == 0:
                 return None
-    
+
     new_moniker = updates.get("new_moniker", moniker)
     return get_table(args, new_moniker)
 

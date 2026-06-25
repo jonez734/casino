@@ -15,8 +15,11 @@ create table if not exists casino.__table (
     "shoe_uses" integer default 0,
     "status" text default 'open',
     "dealermodule" text,
-    "playermodule" text
+    "playermodule" text,
+    "hidden" boolean default false
 );
+
+create index if not exists idx_table_hidden on casino.__table(hidden);
 
 grant select on casino.__table to web;
 grant all on casino.__table to term, sysop;

@@ -29,8 +29,13 @@ async def create_table(
     min_bet: int = 10,
     max_bet: int = 1000,
     moniker: Optional[str] = None,
+    hidden: bool = False,
 ) -> Dict[str, Any]:
-    """Create a new casino table."""
+    """Create a new casino table.
+
+    Args:
+        hidden: If True, table is hidden from list_tables for non-sysop users.
+    """
     if not moniker:
         moniker = f"{game_type}-{owner_moniker.lower()}"
 
@@ -80,11 +85,11 @@ async def create_table(
 
     rows = await database.async_query(
         args,
-        """INSERT INTO $casino.__table (moniker, type, minimumbet, maximumbet, ownermoniker, ownersince, accountid, location, status) 
-           VALUES (:moniker, :game_type, :min_bet, :max_bet, :owner_moniker, NOW(), :account_id, :table_name, 'open') 
-           RETURNING moniker, type, minimumbet, maximumbet, ownermoniker, ownersince, accountid, cheat, cheatpercent, attrs, shoe_cards, shoe_uses, location, status, dealermodule, playermodule""",
-        moniker=moniker, game_type=game_type, min_bet=min_bet, max_bet=max_bet, 
-        owner_moniker=owner_moniker, account_id=account_id, table_name=table_name
+        """INSERT INTO $casino.__table (moniker, type, minimumbet, maximumbet, ownermoniker, ownersince, accountid, location, status, hidden) 
+           VALUES (:moniker, :game_type, :min_bet, :max_bet, :owner_moniker, NOW(), :account_id, :table_name, 'open', :hidden) 
+           RETURNING moniker, type, minimumbet, maximumbet, ownermoniker, ownersince, accountid, cheat, cheatpercent, attrs, shoe_cards, shoe_uses, location, status, hidden, dealermodule, playermodule""",
+        moniker=moniker, game_type=game_type, min_bet=min_bet, max_bet=max_bet,
+        owner_moniker=owner_moniker, account_id=account_id, table_name=table_name, hidden=hidden
     )
     row = rows[0]
     return {
@@ -102,6 +107,7 @@ async def create_table(
         "shoe_uses": row["shoe_uses"] or 0,
         "location": row["location"],
         "status": row["status"],
+        "hidden": bool(row.get("hidden", False)),
         "dealermodule": row.get("dealermodule"),
         "playermodule": row.get("playermodule"),
     }
@@ -111,7 +117,7 @@ async def get_table(args: Any, moniker: str) -> Optional[Dict[str, Any]]:
     """Get table by moniker."""
     rows = await database.async_query(
         args,
-        """SELECT moniker, type, minimumbet, maximumbet, ownermoniker, ownersince, accountid, cheat, cheatpercent, attrs, shoe_cards, shoe_uses, location, status, dealermodule, playermodule 
+        """SELECT moniker, type, minimumbet, maximumbet, ownermoniker, ownersince, accountid, cheat, cheatpercent, attrs, shoe_cards, shoe_uses, location, status, hidden, dealermodule, playermodule 
            FROM $casino.__table WHERE moniker = :moniker""",
         moniker=moniker
     )
@@ -132,28 +138,38 @@ async def get_table(args: Any, moniker: str) -> Optional[Dict[str, Any]]:
             "shoe_uses": row["shoe_uses"] or 0,
             "location": row["location"],
             "status": row["status"],
+            "hidden": bool(row.get("hidden", False)),
             "dealermodule": row.get("dealermodule"),
             "playermodule": row.get("playermodule"),
         }
     return None
 
 
-async def list_tables(args: Any, game_type: Optional[str] = None) -> List[Dict[str, Any]]:
-    """List all tables, optionally filtered by game type."""
+async def list_tables(
+    args: Any,
+    game_type: Optional[str] = None,
+    include_hidden: bool = False,
+) -> List[Dict[str, Any]]:
+    """List all tables, optionally filtered by game type.
+
+    By default, hidden tables are excluded. Set ``include_hidden=True`` to
+    include them (e.g. for sysops who need to see every table).
+    """
+    where_clauses = []
+    params: Dict[str, Any] = {}
     if game_type:
-        rows = await database.async_query(
-            args,
-            """SELECT moniker, type, minimumbet, maximumbet, ownermoniker, ownersince, accountid, cheat, cheatpercent, attrs, shoe_cards, shoe_uses, location, status, dealermodule, playermodule 
-               FROM $casino.__table WHERE type = :game_type ORDER BY moniker""",
-            game_type=game_type
-        )
-    else:
-        rows = await database.async_query(
-            args,
-            """SELECT moniker, type, minimumbet, maximumbet, ownermoniker, ownersince, accountid, cheat, cheatpercent, attrs, shoe_cards, shoe_uses, location, status, dealermodule, playermodule 
-               FROM $casino.__table ORDER BY moniker"""
-        )
-    
+        where_clauses.append("type = :game_type")
+        params["game_type"] = game_type
+    if not include_hidden:
+        where_clauses.append("(hidden IS NULL OR hidden = false)")
+    where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
+
+    sql = (
+        "SELECT moniker, type, minimumbet, maximumbet, ownermoniker, ownersince, accountid, cheat, cheatpercent, attrs, shoe_cards, shoe_uses, location, status, hidden, dealermodule, playermodule "
+        f"FROM $casino.__table {where_sql} ORDER BY moniker"
+    )
+    rows = await database.async_query(args, sql, **params)
+
     return [
         {
             "moniker": row["moniker"],
@@ -170,6 +186,7 @@ async def list_tables(args: Any, game_type: Optional[str] = None) -> List[Dict[s
             "shoe_uses": row["shoe_uses"] or 0,
             "location": row["location"],
             "status": row["status"],
+            "hidden": bool(row.get("hidden", False)),
             "dealermodule": row.get("dealermodule"),
             "playermodule": row.get("playermodule"),
         }

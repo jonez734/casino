@@ -77,6 +77,13 @@ class SessionManager:
     def get_table_observers(self, table_moniker: str) -> set:
         return self._spectators.get(table_moniker, set())
 
+    def get_table_player_count(self, table_moniker: str) -> int:
+        return sum(
+            1
+            for s in self._sessions.values()
+            if s.get("table_moniker") == table_moniker
+        )
+
 
 class BaseService:
     """Base class for message handlers."""
@@ -262,7 +269,7 @@ class TableServiceHandler(BaseService):
         msg_type = message.get("type")
         
         if msg_type == "list_tables":
-            return await self._handle_list_tables(message)
+            return await self._handle_list_tables(id(websocket), message)
         elif msg_type == "create_table":
             return await self._handle_create_table(id(websocket), message)
         elif msg_type == "join_table":
@@ -280,44 +287,49 @@ class TableServiceHandler(BaseService):
         
         return None
     
-    async def _handle_list_tables(self, message: Dict[str, Any]) -> Dict[str, Any]:
+    async def _handle_list_tables(self, session_id: int, message: Dict[str, Any]) -> Dict[str, Any]:
         game_type = message.get("game_type")
-        tables = self.table_service.list_tables(game_type)
+        is_sysop = self.sessions.get_is_sysop(session_id)
+        tables = self.table_service.list_tables(game_type, is_sysop=is_sysop)
         return {"type": "table_list", "tables": tables}
-    
+
     async def _handle_create_table(self, session_id: int, message: Dict[str, Any]) -> Dict[str, Any]:
         session_moniker = self.sessions.get_moniker(session_id)
         if not session_moniker:
             return {"type": "error", "code": "not_authenticated"}
-        
+
         game_type = message.get("game_type", "blackjack")
         min_bet = message.get("min_bet", 10)
         max_bet = message.get("max_bet", 1000)
         table_moniker = message.get("moniker") or None
-        
-        result = self.table_service.create_table(game_type, session_moniker, min_bet, max_bet, table_moniker)
-        
+        hidden = bool(message.get("hidden", False))
+
+        result = self.table_service.create_table(
+            game_type, session_moniker, min_bet, max_bet, table_moniker, hidden=hidden
+        )
+
         if result["success"]:
             return {
                 "type": "table_created",
                 "moniker": result["table"]["moniker"],
                 "location": result["table"]["location"],
+                "hidden": result["table"].get("hidden", False),
                 "message": result["message"],
             }
         else:
             return {"type": "error", "code": "create_failed", "message": result["message"]}
-    
+
     async def _handle_update_table(self, session_id: int, message: Dict[str, Any]) -> Dict[str, Any]:
         session_moniker = self.sessions.get_moniker(session_id)
         if not session_moniker:
             return {"type": "error", "code": "not_authenticated"}
-        
+
         is_sysop = self.sessions.get_is_sysop(session_id)
-        
+
         table_moniker = message.get("moniker")
         if not table_moniker:
             return {"type": "error", "code": "invalid_request", "message": "moniker required"}
-        
+
         updates = {}
         if "new_moniker" in message:
             updates["new_moniker"] = message["new_moniker"]
@@ -327,45 +339,51 @@ class TableServiceHandler(BaseService):
             updates["maximumbet"] = message["max_bet"]
         if "status" in message:
             updates["status"] = message["status"]
-        
+        if "hidden" in message:
+            updates["hidden"] = bool(message["hidden"])
+
         if not updates:
             return {"type": "error", "code": "invalid_request", "message": "No fields to update"}
-        
+
         result = self.table_service.update_table(
             table_moniker, session_moniker, is_sysop=is_sysop, **updates
         )
-        
+
         if result["success"]:
             return {
                 "type": "table_updated",
                 "moniker": result["table"]["moniker"],
+                "hidden": result["table"].get("hidden", False),
                 "message": result["message"],
             }
         else:
             return {"type": "error", "code": "update_failed", "message": result["message"]}
-    
+
     async def _handle_join_table(self, session_id: int, message: Dict[str, Any]) -> Dict[str, Any]:
         session_moniker = self.sessions.get_moniker(session_id)
         if not session_moniker:
             return {"type": "error", "code": "not_authenticated"}
-        
+
         table_moniker = message.get("moniker")
-        
+
         if not table_moniker:
             return {"type": "error", "code": "invalid_request", "message": "moniker required"}
-        
+
+        is_sysop = self.sessions.get_is_sysop(session_id)
+
         result = self.table_service.join_table(
             moniker=table_moniker,
             player_moniker=session_moniker,
+            is_sysop=is_sysop,
         )
-        
+
         if result["success"]:
             self.sessions.set_table_moniker(session_id, table_moniker)
-            
+
             # Auto-subscribe to table channel for real-time updates
             if self.channel_state:
                 channel_subscribe(self.channel_state, session_id, f"casino:table:{table_moniker}")
-            
+
             return {
                 "type": "joined_table",
                 "moniker": result["moniker"],
@@ -561,8 +579,16 @@ class GameServiceHandler(BaseService):
         if server and table_moniker:
             broadcast_state = self.game_service.get_game_state(table_moniker, "")
             broadcast_state["type"] = "game_state"
+            observer_count = len(self.sessions.get_table_observers(table_moniker))
+            player_count = self.sessions.get_table_player_count(table_moniker)
+            io.echo(
+                f"broadcast game_state: channel=casino:table:{table_moniker} "
+                f"phase={broadcast_state.get('phase', '?')} "
+                f"players={player_count} observers={observer_count}",
+                level="info",
+            )
             await server.publish(f"casino:table:{table_moniker}", broadcast_state)
-        
+
         return game_state
 
 
@@ -618,8 +644,16 @@ class BetServiceHandler(BaseService):
             if server and table_moniker:
                 broadcast_state = self.game_service.get_game_state(table_moniker, "")
                 broadcast_state["type"] = "game_state"
+                observer_count = len(self.sessions.get_table_observers(table_moniker))
+                player_count = self.sessions.get_table_player_count(table_moniker)
+                io.echo(
+                    f"broadcast game_state: channel=casino:table:{table_moniker} "
+                    f"phase={broadcast_state.get('phase', '?')} "
+                    f"players={player_count} observers={observer_count}",
+                    level="info",
+                )
                 await server.publish(f"casino:table:{table_moniker}", broadcast_state)
-            
+
             return game_state
         else:
             error_msg = result.get("message", "")
