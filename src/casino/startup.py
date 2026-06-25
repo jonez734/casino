@@ -122,6 +122,8 @@ def main(args, **kwargs):
                 ("casino.log", "log_view.sql"),
                 ("casino.__hand", "hand.sql"),
                 ("casino.hand", "hand_view.sql"),
+                ("casino.__slot_spin", "slots.sql"),
+                ("casino.slot_spin", "slot_spin_view.sql"),
             )
 
             for c, sql in classlist:

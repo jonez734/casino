@@ -56,3 +56,8 @@
 \i hand.sql
 \echo hand_view
 \i hand_view.sql
+
+\echo slots
+\i slots.sql
+\echo slot_spin_view
+\i slot_spin_view.sql

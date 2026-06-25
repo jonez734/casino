@@ -1,7 +1,9 @@
-from bbsengine6 import io, register_module
+from bbsengine6 import register_module
 
 
 __version__ = "202210010112"
+
+__all__ = ["lib", "dealer", "player", "play", "game"]
 
 
 def init(args, **kw: dict) -> bool:
@@ -23,5 +25,5 @@ def buildargs(args, **kw):
 
 
 def main(args, **kw):
-    io.echo("slots module not yet implemented")
-    return True
+    from . import game
+    return game.main(args, **kw)

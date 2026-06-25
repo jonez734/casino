@@ -18,6 +18,7 @@ class TestPlayerStatsValidation(unittest.TestCase):
         expected = {
             "wins", "losses", "pushes", "net",
             "blackjack.blackjacks", "blackjack.busts", "blackjack.surrenders", "blackjack.hands_played",
+            "slots.spins", "slots.wins", "slots.net", "slots.biggest_win",
         }
         self.assertEqual(dal_player.ALLOWED_STATS, expected)
 
@@ -75,7 +76,11 @@ class TestStatsExtensibility(unittest.TestCase):
         
         for stat in prefixed_stats:
             game_type, stat_name = stat.split(".", 1)
-            self.assertEqual(game_type, "blackjack", f"Game type should be 'blackjack', got '{game_type}'")
+            self.assertIn(
+                game_type,
+                {"blackjack", "slots"},
+                f"Game type should be a known prefix, got '{game_type}'",
+            )
 
 
 if __name__ == "__main__":

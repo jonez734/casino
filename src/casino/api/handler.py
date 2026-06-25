@@ -723,6 +723,131 @@ class ChatServiceHandler(BaseService):
         return None
 
 
+class SlotServiceHandler(BaseService):
+    """Handle slot machine messages.
+
+    Message types:
+    - ``slot_spin``   - client request: spin the reels
+    - ``slot_paytable`` - client request: get the table's paytable
+    - ``slot_history``  - client request: get the player's recent spins
+    """
+
+    def __init__(self, args: Any, session_manager: SessionManager, channel_state: Optional[ChannelState] = None):
+        super().__init__(args, session_manager)
+        self.channel_state = channel_state
+        from casino.services.slots import (
+            handle_spin as _handle_spin,
+            handle_get_paytable as _handle_paytable,
+            handle_get_history as _handle_history,
+        )
+        self._handle_spin = _handle_spin
+        self._handle_paytable = _handle_paytable
+        self._handle_history = _handle_history
+
+    async def handle_message(
+        self, server: Any, websocket: Any, path: str, message: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        msg_type = message.get("type")
+        if msg_type == "slot_spin":
+            return await self._handle_spin_msg(id(websocket), message, server)
+        if msg_type == "slot_paytable":
+            return await self._handle_paytable_msg(id(websocket), message)
+        if msg_type == "slot_history":
+            return await self._handle_history_msg(id(websocket), message)
+        return None
+
+    async def _handle_spin_msg(
+        self,
+        session_id: int,
+        message: Dict[str, Any],
+        server: Optional[Any] = None,
+    ) -> Dict[str, Any]:
+        moniker = self.sessions.get_moniker(session_id)
+        if not moniker:
+            return {"type": "error", "code": "not_authenticated"}
+
+        bet = message.get("bet", 0)
+        table_moniker = message.get("table_moniker") or self.sessions.get_table_moniker(session_id)
+        if not table_moniker:
+            return {"type": "error", "code": "not_at_table"}
+
+        result = self._handle_spin(self.args, table_moniker, moniker, bet)
+
+        if not result.get("success"):
+            return {
+                "type": "error",
+                "code": result.get("code", "spin_failed"),
+                "message": result.get("message", "Spin failed"),
+            }
+
+        spin = result["spin"]
+        # Broadcast to spectators at the table
+        if server is not None:
+            broadcast_msg = {
+                "type": "slot_result",
+                "table_moniker": table_moniker,
+                "player_moniker": moniker,
+                "spin": {
+                    "id": spin["id"],
+                    "bet": spin["bet"],
+                    "payout": spin["payout"],
+                    "net": spin["net"],
+                    "reels": spin["reels"],
+                    "center_row": spin["center_row"],
+                    "wins": spin["wins"],
+                },
+            }
+            try:
+                await server.publish(f"casino:table:{table_moniker}", broadcast_msg)
+            except Exception as e:
+                io.echo(f"slot broadcast failed: {e}", level="warning")
+
+        return {
+            "type": "slot_result",
+            "table_moniker": table_moniker,
+            "spin": spin,
+        }
+
+    async def _handle_paytable_msg(
+        self,
+        session_id: int,
+        message: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        moniker = self.sessions.get_moniker(session_id)
+        if not moniker:
+            return {"type": "error", "code": "not_authenticated"}
+        table_moniker = message.get("table_moniker") or self.sessions.get_table_moniker(session_id)
+        if not table_moniker:
+            return {"type": "error", "code": "not_at_table"}
+        result = self._handle_paytable(self.args, table_moniker)
+        if not result.get("success"):
+            return {
+                "type": "error",
+                "code": result.get("code", "paytable_failed"),
+                "message": result.get("message", "Paytable lookup failed"),
+            }
+        return {
+            "type": "slot_paytable",
+            "moniker": result["moniker"],
+            "payouts": result["payouts"],
+        }
+
+    async def _handle_history_msg(
+        self,
+        session_id: int,
+        message: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        moniker = self.sessions.get_moniker(session_id)
+        if not moniker:
+            return {"type": "error", "code": "not_authenticated"}
+        limit = int(message.get("limit", 50))
+        history = self._handle_history(self.args, moniker, limit)
+        return {
+            "type": "slot_history",
+            "spins": history,
+        }
+
+
 class BankServiceHandler(BaseService):
     """Handle bank management messages."""
     
@@ -1180,6 +1305,7 @@ class MessageRouter:
         self.bank_service = BankServiceHandler(args, self.sessions)
         self.postoffice_service = PostofficeServiceHandler(args, self.sessions)
         self.member_service = MemberServiceHandler(args, self.sessions)
+        self.slot_service = SlotServiceHandler(args, self.sessions, self.channel_state)
         
         # Channel service (created in register_all after server is available)
         self.channel_service: Optional[ChannelServiceHandler] = None
@@ -1215,6 +1341,11 @@ class MessageRouter:
         server.register_service(self.member_service, [
             "member_profile", "member_update", "member_tier",
             "member_referral_code", "member_referrals"
+        ])
+
+        # Register slot service for slot machine play
+        server.register_service(self.slot_service, [
+            "slot_spin", "slot_paytable", "slot_history"
         ])
     
     async def handle_broadcast(

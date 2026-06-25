@@ -146,6 +146,7 @@ def test_schema_permissions(args: Any) -> dict:
 ALLOWED_STATS = {
     "wins", "losses", "pushes", "net",
     "blackjack.blackjacks", "blackjack.busts", "blackjack.surrenders", "blackjack.hands_played",
+    "slots.spins", "slots.wins", "slots.net", "slots.biggest_win",
 }
 
 
@@ -223,9 +224,43 @@ def increment_stat(args: Any, moniker: str, stat_name: str, amount: int = 1) -> 
         with database.cursor(conn) as cur:
             cur.execute(
                 database.query(
-                    """UPDATE $casino.__player 
+                    """UPDATE $casino.__player
                        SET stats = stats || jsonb_build_object(:stat_name, COALESCE((stats->>:stat_name)::int, 0) + :amount)
                        WHERE membermoniker = :moniker""",
                     moniker=moniker, stat_name=stat_name, amount=amount
+                )
+            )
+
+
+def set_max_stat(args: Any, moniker: str, stat_name: str, value: int) -> None:
+    """Set a player stat to ``value`` only if it is greater than the current value.
+
+    Used for "biggest win" style stats where the new value is a candidate
+    and the existing one wins ties.
+
+    Args:
+        args: Application args
+        moniker: BBS member moniker
+        stat_name: Name of stat (must be in ALLOWED_STATS)
+        value: Candidate value (must be a non-negative integer)
+    """
+    if stat_name not in ALLOWED_STATS:
+        raise ValueError(
+            f"Invalid stat name: '{stat_name}'. Allowed stats: {sorted(ALLOWED_STATS)}"
+        )
+    if not isinstance(value, int) or value < 0:
+        raise ValueError(f"value must be a non-negative integer, got: {value!r}")
+
+    with database.connect(args) as conn:
+        with database.cursor(conn) as cur:
+            cur.execute(
+                database.query(
+                    """UPDATE $casino.__player
+                       SET stats = stats || jsonb_build_object(
+                           :stat_name,
+                           GREATEST(COALESCE((stats->>:stat_name)::int, 0), :value)
+                       )
+                       WHERE membermoniker = :moniker""",
+                    moniker=moniker, stat_name=stat_name, value=value
                 )
             )
