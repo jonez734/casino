@@ -4,7 +4,7 @@
 from datetime import datetime
 from typing import Any, Dict, Optional
 
-from bbsengine6 import io, member
+from bbsengine6 import io, member, database
 from bbsengine6.message import deliver_pending_on_connect, get_unread_count
 from bbsengine6.net import (
     ChannelState,
@@ -12,15 +12,10 @@ from bbsengine6.net import (
     channel_unsubscribe,
     channel_unsubscribe_all,
     channel_get_session_channels,
-    channel_publish,
 )
 from bbsengine6.message_delivery import send as notify_send, NotificationUrgency
-from casino.dal import table as dal_table
 from casino.dal import player as dal_player
 from casino.dal.aiosql import table as async_dal_table
-from casino.dal.aiosql import game as async_dal_game
-from casino.dal.aiosql import bet as async_dal_bet
-from casino.dal.aiosql import player as async_dal_player
 
 
 class SessionManager:
@@ -370,6 +365,34 @@ class TableServiceHandler(BaseService):
             return {"type": "error", "code": "invalid_request", "message": "moniker required"}
 
         is_sysop = self.sessions.get_is_sysop(session_id)
+
+        # Slots v1 single-seater invariant: a slots table holds at most
+        # one seated player. Spectators can watch via `watch_table` but
+        # cannot take a second seat. Multi-player is v2.
+        from casino.dal import table as dal_table_join
+        table = dal_table_join.get_table(self.args, table_moniker)
+        if table and table.get("type") == "slots":
+            try:
+                with database.connect(self.args) as conn:
+                    with database.cursor(conn) as cur:
+                        cur.execute(
+                            database.query(
+                                "SELECT COUNT(DISTINCT playermoniker) AS n "
+                                "FROM $casino.map_cardtable_player "
+                                "WHERE cardtablemoniker = :m",
+                                m=table_moniker,
+                            )
+                        )
+                        row = cur.fetchone()
+                        if row and int(row["n"]) >= 1:
+                            return {
+                                "type": "error",
+                                "code": "join_failed",
+                                "message": "Slots tables have a single seat; "
+                                           "another player is already seated",
+                            }
+            except Exception as e:
+                io.echo(f"slots single-seater check failed: {e}", level="warning")
 
         result = self.table_service.join_table(
             moniker=table_moniker,
