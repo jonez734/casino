@@ -13,6 +13,28 @@ primary driver: every game menu in the casino today is an
 `menu` message type replaces that with a single BED request/reply envelope
 that is consumable by any BED client (TUI, headless, web, bot).
 
+### Cross-reference to other BED message types
+
+The `menu` envelope is a 1:1 projection of `bbsengine6.io.inputchoice()`'s
+positional and unconditional kwargs (`prompt`, `options`, `default`,
+`noneok`, `rewriteprompt`, `timeout`). Two related message types live
+elsewhere in `bed/TODO.md`:
+
+- **`help` / `help_result` / `help_error`** (F1, per-menu): the call site's
+  `help=<string or callable>` kwarg is stashed server-side and served
+  on demand when the user presses `KEY_F1`. The menu envelope does NOT
+  carry help text. See `bed/TODO.md` "Help on demand (F1)".
+- **`key_f2` / `key_f2_result` / `key_f2_empty` / `key_f2_error`**
+  (F2, session-level): lists new messages from the user's subscribed
+  channels. NOT a per-menu help callback; not bound to any `menu`
+  `request_id`. Casino's `key_f2` adoption (lobby announcements, open
+  tables, tournament invites) is a future task; the envelope shape
+  is defined in `bed/TODO.md` "`key_f2` — session-level new-messages
+  query".
+
+The `inputchoice` `f2_handler` kwarg is **not** projected to the wire
+at all (no game in this monorepo passes it).
+
 ### Why casino drives this
 - Blackjack, Poker, Roulette, and the lobby each have multiple menus that
   are flat option lists with one keystroke per option.
