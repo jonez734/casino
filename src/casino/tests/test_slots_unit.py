@@ -244,6 +244,56 @@ class TestRTP(unittest.TestCase):
         # And reasonably close to the 0.92 target
         self.assertLess(abs(rtp - self.TARGET), 0.05)
 
+    def test_theoretical_rtp_with_progress_callback(self):
+        """When progress_every > 0, the screen updateprogress helper is
+        called at least once and the returned RTP matches the no-progress
+        result exactly (fast-path is identical regardless of progress).
+        """
+        from unittest.mock import patch
+
+        rng = lib.RNG(random.Random(0))
+        reels = lib.default_reels(lib.DEFAULT_SYMBOLS, rng)
+
+        rtp_no_progress = lib.Paytable().theoretical_rtp(reels)
+
+        with patch("bbsengine6.io.screen.updateprogress") as mock_progress:
+            rtp_with_progress = lib.Paytable().theoretical_rtp(
+                reels, progress_every=1
+            )
+
+        self.assertAlmostEqual(rtp_with_progress, rtp_no_progress, places=10)
+        self.assertGreater(
+            mock_progress.call_count, 0, "updateprogress was never called"
+        )
+
+    def test_theoretical_rtp_silent_when_progress_zero(self):
+        """Default progress_every=0 must not touch the screen module.
+        Regression guard for the no-progress path.
+        """
+        from unittest.mock import patch
+
+        rng = lib.RNG(random.Random(0))
+        reels = lib.default_reels(lib.DEFAULT_SYMBOLS, rng)
+
+        with patch("bbsengine6.io.screen.updateprogress") as mock_progress:
+            rtp = lib.Paytable().theoretical_rtp(reels)
+        self.assertGreater(rtp, 0.5)
+        self.assertEqual(mock_progress.call_count, 0)
+
+    def test_theoretical_rtp_screen_import_failure_is_safe(self):
+        """If bbsengine6.io.screen can't be imported, RTP still returns
+        a valid number (the lazy import must not raise).
+        """
+        from unittest.mock import patch
+
+        rng = lib.RNG(random.Random(0))
+        reels = lib.default_reels(lib.DEFAULT_SYMBOLS, rng)
+
+        with patch.dict("sys.modules", {"bbsengine6.io.screen": None}):
+            # Even with progress_every > 0, missing screen is non-fatal
+            rtp = lib.Paytable().theoretical_rtp(reels, progress_every=1000)
+        self.assertGreater(rtp, 0.5)
+
 
 class TestRenderAscii(unittest.TestCase):
     def test_renders_with_correct_symbols(self):

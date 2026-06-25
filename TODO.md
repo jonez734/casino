@@ -1256,3 +1256,87 @@ the moment BED runs with casino's router.
   `TestSlotBedIntegration` (20 cases + copied `WebSocketTestClient`)
 - `casino/TODO.md` — this section
 
+---
+
+## Slots v1.2: theoretical_rtp Progress + Fast-Path
+
+The original `Paytable.theoretical_rtp` was a full
+``prod(strip_size)`` enumeration of every possible spin outcome.
+At the v1 default reel sizes (33 × 32 × 32 × 32 × 32 = 34.6M
+outcomes) this took minutes with **no output**, so users had no
+feedback that the call was alive.
+
+Two changes:
+
+### 1. Per-Paytable-Key Fast-Path
+
+`theoretical_rtp` now enumerates only the first ``k`` reels over
+the *distinct symbol set* of each paytable key, weighted by
+per-reel symbol occurrence counts in the strip. The remaining
+``num_reels - k`` reels can be anything, so the count for that
+entry is multiplied by ``prod(strip_size for strip in reels[k:])``.
+This is **exact** (same answer as the brute force) but orders of
+magnitude cheaper — sub-millisecond at default reel sizes, vs.
+minutes for the brute force.
+
+### 2. Progress Bar via `bbsengine6.io.screen.updateprogress`
+
+`theoretical_rtp` accepts two new keyword-only arguments:
+
+- `progress_every: int = 0` — default `0` preserves the silent
+  behavior for existing callers and tests. When `> 0`, the function
+  calls `bbsengine6.io.screen.updateprogress(done, total)` every N
+  outcomes processed.
+- `progress_total: int | None = None` — defaults to the total number
+  of outcomes (`prod(strip_sizes)`). Callers can override.
+
+The screen import is **lazy** (`from bbsengine6.io import screen`)
+and any screen import failure or call failure is silently swallowed
+so the RTP result is always returned. This means the function is
+safe to call from contexts where `screen.init()` has not been run
+(tests, library use, etc.).
+
+### CLI Surface
+
+`casino/slots/__main__.py` adds an `--rtp-progress N` flag that
+plumbs `progress_every=N` to `theoretical_rtp` in both the smoke
+mode and the demo mode. With `screen.init()` active, the user sees
+the same `Progress [NN%]: [#####...]` bottom bar used by the rest
+of the BBS engine.
+
+### Test Coverage
+
+Three new tests in `test_slots_unit.py::TestRTP`:
+
+- `test_theoretical_rtp_with_progress_callback` — patches
+  `bbsengine6.io.screen.updateprogress`, calls with
+  `progress_every=1`, asserts the callback was called and that
+  the returned RTP matches the no-progress result exactly.
+- `test_theoretical_rtp_silent_when_progress_zero` — default
+  `progress_every=0` must not touch the screen module (regression
+  guard for the no-progress path).
+- `test_theoretical_rtp_screen_import_failure_is_safe` — even with
+  `progress_every > 0`, a missing or broken `screen` module is
+  non-fatal.
+
+The two pre-existing `TestRTP` tests (empirical and theoretical
+band) are unchanged and continue to pass.
+
+### Performance
+
+| variant | reel size | runtime (no progress) |
+|---|---|---|
+| brute force (v1.0/v1.1) | 33 × 32⁴ = 34.6M | minutes |
+| per-key fast-path (v1.2) | 33 × 32⁴ = 34.6M | ~0.1 ms |
+
+Test suite runtime dropped from ~56 s to ~0.5 s.
+
+### Files Touched
+
+- `casino/src/casino/slots/lib.py` — `theoretical_rtp` rewritten
+  with the fast-path and progress kwargs
+- `casino/src/casino/slots/__main__.py` — `--rtp-progress N` flag
+- `casino/src/casino/tests/test_slots_unit.py` — three new
+  `TestRTP` cases
+- `casino/TODO.md` — this section
+

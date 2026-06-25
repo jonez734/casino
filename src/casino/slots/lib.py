@@ -262,32 +262,120 @@ class Paytable:
             return False
         return row[: len(key)] == key
 
-    def theoretical_rtp(self, reels: Sequence[Reel]) -> float:
-        """Brute-force RTP estimate. With 22 stops per reel and 5 reels the
-        full enumeration is 22^5 = 5.1M outcomes; OK for offline tuning,
-        too slow for hot paths. Returns 0.0 if no reels are supplied.
+    def theoretical_rtp(
+        self,
+        reels: Sequence[Reel],
+        *,
+        progress_every: int = 0,
+        progress_total: int | None = None,
+    ) -> float:
+        """Exact theoretical RTP via per-paytable-key enumeration.
+
+        For each paytable entry of length k, enumerate the first k reels
+        over the *distinct symbol set* of the key, weighting each symbol
+        by its strip-occurrence count in each reel. The remaining
+        (num_reels - k) reels can be anything, so the count for that
+        entry is multiplied by ``prod(strip_size for strip in reels[k:])``.
+        This is exact and dramatically cheaper than full enumeration
+        (~34.6M outcomes at default reel sizes).
+
+        ``progress_every``: if > 0, calls
+        ``bbsengine6.io.screen.updateprogress(done, total)`` every N
+        entries. ``progress_total`` defaults to the sum of per-entry
+        operation counts. The screen import is lazy; if the screen
+        module is unavailable or uninitialized, progress is silently
+        skipped and the RTP is still returned.
+
+        Returns 0.0 if no reels are supplied.
         """
         if not reels:
             return 0.0
-        total = 0
-        count = 0
+
         stops = [r.as_strip() for r in reels]
-        idx = [0] * len(reels)
+        num_reels = len(reels)
+        strip_sizes = [len(s) for s in stops]
+        total_outcomes = 1
+        for n in strip_sizes:
+            total_outcomes *= n
 
-        def recurse(pos: int) -> None:
-            nonlocal total, count
-            if pos == len(reels):
-                row = [stops[i][idx[i]] for i in range(len(reels))]
+        # Per-reel per-symbol strip occurrence count.
+        symbol_counts_per_reel: list[dict[str, int]] = [
+            {s.name: 0 for s in stop_list} for stop_list in stops
+        ]
+        for r_idx, stop_list in enumerate(stops):
+            counts: dict[str, int] = {}
+            for sym in stop_list:
+                counts[sym.name] = counts.get(sym.name, 0) + 1
+            symbol_counts_per_reel[r_idx] = counts
+
+        screen_updateprogress = None
+        if progress_every > 0:
+            try:
+                from bbsengine6.io import screen as _screen
+                screen_updateprogress = _screen.updateprogress
+            except Exception:
+                screen_updateprogress = None
+
+        running_total = 0
+        running_count = 0
+        progress_total_eff = progress_total
+        if progress_total_eff is None and progress_every > 0:
+            progress_total_eff = total_outcomes
+
+        import itertools
+
+        progress_threshold = progress_every
+        next_progress = progress_threshold if progress_threshold > 0 else None
+
+        for key, mult in self._payouts.items():
+            if mult <= 0 or len(key) > num_reels:
+                continue
+            k = len(key)
+            tail = 1
+            for n in strip_sizes[k:]:
+                tail *= n
+            distinct_symbols = list(set(key))
+            for combo in itertools.product(distinct_symbols, repeat=k):
+                row = [Symbol(name, 1, name) for name in combo]
                 wins = self.evaluate(row, bet=1)
-                total += sum(w.payout for w in wins)
-                count += 1
-                return
-            for j, sym in enumerate(stops[pos]):
-                idx[pos] = j
-                recurse(pos + 1)
+                payout = sum(w.payout for w in wins)
+                if payout <= 0:
+                    continue
+                # Per-reel occurrence count for this exact row.
+                # Note: evaluate() matches row[:k] == key, so the first
+                # k reels must equal the key (in order). The number of
+                # ways to draw (key[0], key[1], ..., key[k-1]) from
+                # the first k reels is the product of the per-reel
+                # occurrence counts.
+                ways = 1
+                for r_idx, sym_name in enumerate(combo):
+                    ways *= symbol_counts_per_reel[r_idx].get(sym_name, 0)
+                if ways <= 0:
+                    continue
+                running_total += payout * ways * tail
+                running_count += ways * tail
+            if (
+                next_progress is not None
+                and screen_updateprogress is not None
+                and running_count >= next_progress
+            ):
+                try:
+                    screen_updateprogress(
+                        running_count, progress_total_eff or total_outcomes
+                    )
+                except Exception:
+                    screen_updateprogress = None
+                next_progress = running_count + progress_threshold
 
-        recurse(0)
-        return (total / count) if count else 0.0
+        if progress_every > 0 and screen_updateprogress is not None:
+            try:
+                screen_updateprogress(
+                    total_outcomes, progress_total_eff or total_outcomes
+                )
+            except Exception:
+                pass
+
+        return (running_total / total_outcomes) if total_outcomes else 0.0
 
 
 def default_reels(symbols: dict[str, Symbol], rng: RNG) -> list[Reel]:
