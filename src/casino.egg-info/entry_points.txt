@@ -1,0 +1,8 @@
+[casino.poker.variants]
+omaha = casino.poker.variant.omaha:Omaha
+omaha_hi_lo = casino.poker.variant.omaha:OmahaHiLo
+seven_card_stud = casino.poker.variant.seven_card_stud:SevenCardStud
+texas_hold_em = casino.poker.variant.texas_hold_em:TexasHoldEm
+
+[console_scripts]
+casino = casino.__main__:main

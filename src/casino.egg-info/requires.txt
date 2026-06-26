@@ -1,0 +1,5 @@
+bbsengine6
+
+[dev]
+pytest
+ruff

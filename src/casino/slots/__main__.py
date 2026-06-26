@@ -94,10 +94,9 @@ def _smoke_spin(seed: int | None, rtp_progress: int) -> int:
         paytable=lib.Paytable(),
         rng=rng,
     )
-    print("default reels:", len(dealer._reels), "x", dealer.num_rows)
-    print("target RTP:    ", f"{lib.RTP_DEFAULT:.2%}")
-    print("theoretical RTP:", f"{dealer.paytable.theoretical_rtp(dealer._reels, progress_every=rtp_progress):.4f}")
-    print()
+    io.echo(f"{{var:labelcolor}}total reels: {{var:valuecolor}}{len(dealer._reels)x{dealer.num_rows}")
+    io.echo(f"{{var:labelcolor}}target RTP:  {{var:valuecolor}}{lib.RTP_DEFAULT:.2%}")
+    print("theoretical RTP:", f"{dealer.paytable.theoretical_rtp(dealer._reels, progress_every=rtp_progress):.4f}{f6}")
 
     player = SlotPlayer(
         moniker="smoke",
