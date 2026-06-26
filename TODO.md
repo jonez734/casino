@@ -1340,3 +1340,154 @@ Test suite runtime dropped from ~56 s to ~0.5 s.
   `TestRTP` cases
 - `casino/TODO.md` — this section
 
+---
+
+## Yahtzee v1: BED-only, single-player, hybrid protocol
+
+Adds yahtzee to the casino as a BED-only game. Replaces the legacy
+door-mode stub at `casino/src/casino/yahtzee/` with a service-based
+implementation behind a new `YahtzeeServiceHandler` registered in
+`MessageRouter.register_all`.
+
+### Bank model
+
+Mirrors blackjack's BED flow:
+
+- Player money: `engine.__member.credits`. Debit on bet, credit on
+  payout, via `dal_bet.place_bet` / `dal_bet.settle_bet`. One
+  `__betlog` row per session (single bet at start of session,
+  settled round-by-round).
+- Table treasury: `bank.__account` keyed on `table_moniker`, via
+  `__bank_table` mapping. Auto-created by
+  `services.table.TableService.create_table` (no yahtzee-specific
+  bank code).
+- One `__log` row per turn for audit (`message='yahtzee_turn'`,
+  `attrs={"turn": n, "category": ..., "score": v, "net": v,
+  "rake": 0}`).
+- `__table` row stays `status='open'` across sessions; reused by
+  `quick_play` on the next session.
+- One `__game` row per session; closed at end of 13th round.
+  `__table` is **not** closed.
+- `RAKE_PERCENT = 0` in v1; rake math is implemented in
+  `lib.net_payout` but short-circuited to return `score` unchanged.
+  Re-enable when adding multiplayer in v2.
+
+### BED message protocol (hybrid)
+
+Server owns randomness; client owns choices. New message types
+added to `api/messages.py:MessageType`:
+
+- `yahtzee_quick_play` (C→S) — lazily creates/reuses a hidden
+  yahtzee table owned by the player, opens a `__game` row, places
+  the session bet (table's `minimumbet`), returns initial
+  `yahtzee_state`.
+- `yahtzee_roll` (C→S) — server rolls the 5 dice, decrements
+  `rolls_left` from 2 to 1.
+- `yahtzee_reroll` (C→S) `{locks: [int, ...]}` — sets held dice
+  per the lock indices, rolls unlocked dice, decrements
+  `rolls_left`.
+- `yahtzee_score` (C→S) `{category: str}` — computes
+  `value = lib.score(dice, category)`, credits the player via
+  `dal_bet.settle_bet`, writes the per-turn `__log` row, advances
+  the round, resets `rolls_left = 2`.
+- `yahtzee_state` (S→C) — broadcast to the
+  `casino:table:{moniker}` channel after every successful state
+  change. Payload: `table_moniker, round, dice[5], locked[5],
+  rolls_left, scorecard{13}, running_total, last_score, is_over`.
+- `yahtzee_result` (S→C) — sent once at the end of the 13th
+  round. Payload: `table_moniker, final_scorecard, upper_total,
+  lower_total, grand_total, rake_total, new_balance`.
+
+Server-side rules (enforced in `YahtzeeService`):
+
+- `yahtzee_roll` allowed only at start of a round
+  (`rolls_left == 2`).
+- `yahtzee_reroll` allowed when `rolls_left > 0`.
+- `yahtzee_score` allowed any time the round is active. Validates
+  category is one of the 13 and is currently `None` in the
+  scorecard. Player may score early (before exhausting rolls).
+- Each successful state change publishes `yahtzee_state` to
+  `casino:table:{table_moniker}` so spectators see the dice.
+- On `yahtzee_score` that completes the game, sets
+  `__game.status = 'closed'`, sends `yahtzee_result` to the
+  player, removes the game from `_games`. `__table` stays open.
+- Disconnect mid-game: `finalize_on_disconnect` settles the open
+  bet as a loss, sets `__game.status = 'cancelled'`. Hooked into
+  `MessageRouter.unregister_session`.
+
+### File layout
+
+```
+src/casino/yahtzee/
+├── __init__.py            # REWRITE: BBS module shims only
+├── lib.py                 # NEW:    constants, scoring, rake (0), net_payout
+├── dealer.py              # NEW:    YahtzeeDealer — 5 dice, locked set
+├── service.py             # NEW:    YahtzeeGame + YahtzeeService (in-memory registry)
+├── api_handler.py         # NEW:    YahtzeeServiceHandler — BED dispatch
+├── README.md              # REWRITE: v1 BED protocol docs
+├── Makefile               # KEEP
+├── yahtzee1.png           # KEEP (unused asset)
+├── play.py                # DELETE (legacy 74-line stub)
+├── __main__.py            # DELETE
+└── testshowdice.py        # DELETE (legacy ttyio5 script)
+
+src/casino/api/handler.py  # EDIT: register YahtzeeServiceHandler in register_all
+src/casino/api/messages.py # EDIT: add 6 entries to MessageType enum
+src/casino/main.py         # EDIT: drop the "Y" Yahtzee menu entry
+src/casino/tests/
+├── test_yahtzee_lib.py    # NEW (commit 1)
+├── test_yahtzee_dealer.py # NEW (commit 1)
+├── test_yahtzee_service.py # NEW (commit 2)
+└── test_yahtzee_handler.py # NEW (commit 3)
+```
+
+### Commits (3)
+
+1. **Pure engine** — `yahtzee/lib.py`, `yahtzee/dealer.py`,
+   `tests/test_yahtzee_lib.py`, `tests/test_yahtzee_dealer.py`.
+   No DB, no I/O, no BED. ~400 lines, 2 test files.
+2. **Service + bank integration** — `yahtzee/service.py`,
+   `tests/test_yahtzee_service.py`. `YahtzeeGame` (per-table
+   state) + `YahtzeeService` (in-memory `_games` registry, mirrors
+   `PokerService._tables`). Calls `dal_bet.place_bet` /
+   `settle_bet`, `services.table.TableService.create_table`,
+   `database.connect` for log rows. ~350 lines, 1 test file.
+3. **BED handler + integration** — `yahtzee/api_handler.py`,
+   `tests/test_yahtzee_handler.py`. Edits `api/handler.py`
+   (register handler, hook disconnect cleanup), `api/messages.py`
+   (6 enum entries), `main.py` (drop "Y" entry). Deletes
+   `yahtzee/play.py`, `yahtzee/__main__.py`,
+   `yahtzee/testshowdice.py`. Rewrites `yahtzee/__init__.py` (BBS
+   shims only) and `yahtzee/README.md` (v1 protocol docs). ~200
+   lines + edits + deletes, 1 test file.
+
+### Out of scope (v1)
+
+- `games/config.py` registry + `YahtzeeConfig`. Hardcoded
+  `RAKE_PERCENT=0`, `MIN_BET=10`, `MAX_BET=1000` in
+  `yahtzee/lib.py`.
+- Scorecard persistence (in-memory only; final scorecard in
+  `__log.attrs` of the closing log row + the `yahtzee_result`
+  payload).
+- Player stats (no `casino.__player.stats` keys added).
+- Upper-section bonus, yahtzee bonus, joker rule.
+- Multiplayer (`YahtzeeService._games` is keyed on
+  `table_moniker`; v1 assumes one player per session because the
+  bank/scoring logic assumes the player is the table owner).
+- Door-mode `play.py` (deleted).
+- Top-level `Y` menu shortcut in `main.py` (removed; players
+  reach yahtzee via the existing `Create` + `Join` flow).
+- `cmd_yahtzee_quick_play()` helper in `connect.py` for the
+  BBS-side client (a future commit can wrap the BED messages for
+  door-mode use).
+
+### Verification per commit
+
+- `pytest src/casino/tests/` green, `ruff` clean on all new files.
+- Commits 1 and 2 are fully mocked (no live DB).
+- Commit 3 is fully mocked for the handler tests. Manual smoke
+  (if a live BED is available, not mandated): start `casino.bed`,
+  connect via `connect.py`, `Create` a yahtzee table, `Join`,
+  exercise `yahtzee_roll` / `yahtzee_reroll` / `yahtzee_score`
+  via a debug BED message sender (out of scope to add).
+
