@@ -1491,3 +1491,408 @@ src/casino/tests/
   exercise `yahtzee_roll` / `yahtzee_reroll` / `yahtzee_score`
   via a debug BED message sender (out of scope to add).
 
+---
+
+## Seats per Table — Blackjack & Poker Capacity Model
+
+**Status:** Planned
+
+A unified capacity model for how many players a casino table can hold,
+parameterized by game type, surfaced consistently through the
+`create_table` / `update_table` / `join_table` / `list_tables` /
+`get_table_state` API.
+
+> **Related**: see "AI bot players" (item 14) in "Blackjack Missing
+> Features" — that feature depends on this capacity model landing
+> first. The owner must be able to seat bots into the table up to
+> `min_players` before the hand engine will start; the
+> `services.table.can_start_hand` extension point defined here is
+> the integration surface.
+
+### Problem
+
+The codebase currently has **three divergent seat counts** scattered
+across modules, none of which are wired to the table row or the join
+path:
+
+- **Blackjack** — `blackjack/game.py:29-40` builds a single
+  `BlackjackPlayer` and a single dealer, so a hand is hard-coded to
+  **1 player vs. 1 dealer**. There is no concept of multi-player
+  blackjack.
+- **Poker** — `poker/variant/base.py:18-19` declares
+  `min_players=2, max_players=10`; `poker/variant/texas_hold_em.py:8-9`
+  and `omaha.py:8-9` repeat `max_players=10`; `seven_card_stud.py:8-9`
+  uses `max_players=8`. These are class attributes on the variant, not
+  columns on the table row.
+- **Slots** — `api/handler.py:369-396` enforces a hard-coded
+  "**single seat**" for `table.type == "slots"` (slots v1 invariant),
+  counted via `SELECT COUNT(*) FROM casino.__bank_table WHERE
+  table_moniker = :m`. (Wiring bug — see below.)
+- **Poker in DAL** — `casino.dal.table.add_player_to_table`
+  (`dal/table.py:232-244`) inserts into `casino.map_cardtable_player`
+  with **no occupancy check** at all; only the BED handler's
+  slots-specific check exists.
+
+The `casino.__table` row has **no `min_players` / `max_players`
+column**; per-table "how many can sit" lives in code, scattered by
+game type, with no consistent read path for `get_table_state` or
+`list_tables`.
+
+### Goals
+
+1. **One source of truth** for table capacity, keyed by `table.type`
+   with per-table overrides.
+2. **Pluggable per game type** so the same scheme covers blackjack,
+   poker, slots, yahtzee, and future games.
+3. **Validated at create / update time** (not at first join) so
+   misconfiguration surfaces immediately.
+4. **Enforced in `join_table`** before the player is added, with a
+   clear `error` envelope back to the client.
+5. **Surfaced in `list_tables` and `get_table_state`** so the lobby /
+   TUI can show "3 / 7 seats taken".
+6. **Spectator model stays separate** — spectators are unlimited and
+   don't count against seat capacity (matches current slots v1
+   behavior).
+7. **Mid-hand joins rejected** across poker / blackjack / yahtzee —
+   industry norm; late joiners wait for the next round.
+8. **Poker variant floor respected** — the variant class attribute is
+   the floor; `PokerConfig.max_players` can raise but never lower.
+9. **Extension point for bot-fill** — `services.table.can_start_hand`
+   exists and gates hand start on `min_players`, so the "AI bot
+   players" feature (TODO item 14) can plug in without a refactor.
+
+### Per-Game Defaults
+
+| Game type   | Default `min_players` | Default `max_players` | Rationale |
+|-------------|-----------------------|-----------------------|-----------|
+| `blackjack` | 1                     | 7                     | Standard physical blackjack table seats 5–7 players; existing door-mode code is single-player, so 1 is the safe floor. Industry standard: 1-player minimum is acceptable (one human vs. house dealer). |
+| `poker`     | 2                     | 10                    | Matches `poker/variant/base.py` defaults. Seven-Card Stud overrides variant max to 8 (`seven_card_stud.py:9`). Effective max per table = `max(variant.max_players, config.max_players or variant.max_players)`. |
+| `slots`     | 0                     | 1                     | Slots v1 invariant from `api/handler.py:369-396` — single seat, spectators unlimited. `min_players=0` lets a table sit empty between sessions. |
+| `yahtzee`   | 1                     | 6                     | Roll-and-pass supports up to 6; standard Yahtzee cap. |
+
+Defaults are encoded in a new `GameCapacityRegistry` (mirroring the
+`GameTypeConfigRegistry` and `VariantRegistry` patterns in
+`casino/games/config.py` and `casino/poker/variant/__init__.py`).
+
+### Wire Shape
+
+`create_table` (additive, optional):
+
+```json
+{ "type": "create_table",
+  "game_type": "poker",
+  "min_bet": 1, "max_bet": 1000,
+  "config": { "min_players": 2, "max_players": 9, "variant": "texas_hold_em" } }
+```
+
+`update_table` semantics match the "Generic Per-Game Config" section:
+`config: {}` resets to defaults; partial overrides are replaced
+wholesale in v1.
+
+`list_tables` and `get_table_state` return:
+
+```json
+{ "moniker": "NorthAlpha", "game_type": "poker",
+  "min_players": 2, "max_players": 10,
+  "seats_taken": 4, "seats_available": 6,
+  "players": ["alice","bob","carol","dave"],
+  "spectators": [...] }
+```
+
+`join_table` error envelopes:
+
+```json
+{ "type": "error", "code": "join_failed",
+  "message": "Table is full (4/4 seats taken)" }
+```
+
+```json
+{ "type": "error", "code": "join_failed",
+  "message": "Hand in progress; try again at next shuffle" }
+```
+
+(Reuses the existing `join_failed` error code from
+`api/handler.py:391`.)
+
+### Storage
+
+Add **two columns** to `casino.__table` via an additive migration,
+mirroring the pattern from `sql/hidden_table_migration.sql` and the
+planned `sql/table_config_migration.sql`:
+
+```sql
+-- sql/table_capacity_migration.sql
+alter table casino.__table
+    add column if not exists "min_players" integer;
+alter table casino.__table
+    add column if not exists "max_players" integer;
+```
+
+Both columns nullable. On read, `dal/table.get_table` and `list_tables`
+resolve `None` → `GameCapacityRegistry.get(table.type).defaults`
+(single source of truth, not stored in DB). This avoids backfilling
+every existing row and keeps the registry as the canonical default.
+
+`PokerConfig` (from the "Generic Per-Game Config" section above)
+already declares `min_players` and `max_players`; the `__table`
+columns and the config schema stay in sync: write goes through
+`config`, read back-fills from the registry if the columns are `NULL`.
+
+### Capacity Resolution Rules
+
+**Generic (blackjack / slots / yahtzee):**
+
+- `effective_min = config.min_players or registry.defaults.min_players`
+- `effective_max = config.max_players or registry.defaults.max_players`
+- Validation at `create_table` / `update_table`:
+  - `0 <= min_players <= max_players <= sanity_cap`
+  - sanity caps: blackjack=7, slots=1, yahtzee=6
+
+**Poker (variant floor, config raises only):**
+
+- `variant_min = 2`, `variant_max = variant.max_players` (e.g., 8 for
+  Stud, 10 for Hold'em/Omaha)
+- `effective_min = config.min_players or 2`, bounded `[2, effective_max]`
+- `effective_max = config.max_players or variant_max`, validated
+  `>= variant_max` (config can raise, never lower)
+- Upper sanity cap: `23` (physical table limit; matches the 26-letter
+  phonetic alphabet range used in `dal/table.py:11-17` minus a few)
+
+The `GameCapacityRegistry.get(game_type, config=None) -> GameCapacity`
+helper centralizes this logic and is the single entry point for both
+write-time validation and read-time resolution.
+
+### Join-Time Enforcement
+
+`join_table` checks (in order):
+
+1. **Generic capacity**: `seats_taken >= effective_max` → `join_failed`
+   "Table is full (N/M seats taken)".
+2. **Mid-hand rejection (poker / blackjack / yahtzee)**:
+   - Fetch the active game for the table: `casino.__game` row where
+     `tablemoniker = :m` and
+     `status NOT IN ('settled', 'cancelled')`.
+   - If a row exists (hand in progress), reject with `join_failed`
+     "Hand in progress; try again at next shuffle".
+   - Slots has no multi-step "hand" — one spin is one event — so
+     step 2 does not apply. Capacity alone is the gate.
+3. **Spectator immunity**: `watch_table` is independent of seat
+   occupancy (matches `api/handler.py:393-396`).
+
+### Wiring Bug to Fix
+
+The current slots check in `api/handler.py:391` counts
+`casino.__bank_table` rows. The DAL already has
+`dal/table.get_table_players(args, moniker)` (`dal/table.py:206-216`)
+which queries `casino.map_game_player` joined to `casino.__game`. The
+join-table check should use that helper, not a raw `COUNT(*)` on
+`__bank_table` (which is a 1:1 bank-account table, not a seat map).
+The new capacity work consolidates on `get_table_players` + a
+`min_players/max_players` check in the DAL/service layer, and the
+slots branch in `api/handler.py:369-396` is removed in favor of the
+unified path.
+
+### Hand-Start Extension Point
+
+A new `services/table.can_start_hand(args, table, players) ->
+tuple[bool, str]` helper gates hand start:
+
+- Returns `(True, "ok")` when `len(players) >= effective_min`.
+- Returns `(False, f"Need at least {effective_min} players; have
+  {len(players)}")` otherwise.
+
+This is **purely an extension point** in v1. The bot-fill feature
+(TODO item 14) plugs in by:
+
+1. Calling `can_start_hand` before dealing.
+2. If `False`, the owner (or a sysop) may invoke a new
+   `fill_with_bots` action; if `table.attrs["auto_fill_bots"] = true`,
+   the service auto-fills.
+3. The bot-fill *implementation* (which bot, what strategy, what
+   stats) is out of scope for the capacity work — it lands with item
+   14.
+
+The hand engines call `can_start_hand` from:
+
+- `services/game.py` (blackjack round start)
+- `services/poker.py` (poker hand start; replaces the inline
+  `if len(table.players) < table.min_players` check at
+  `services/poker.py:229-230`)
+
+This makes item 14 a clean follow-up: add `fill_with_bots`, call it
+before the `can_start_hand` check, no other refactor required.
+
+### Files
+
+**New:**
+
+- `casino/src/casino/games/capacity.py` — `GameCapacity` dataclass,
+  `GameCapacityRegistry`, per-game-type defaults,
+  `get_capacity(game_type, config=None) -> GameCapacity`
+- `casino/src/casino/sql/table_capacity_migration.sql` — additive
+  columns
+
+**Edited:**
+
+- `casino/src/casino/dal/table.py` — `get_table` and `list_tables`
+  populate `min_players`, `max_players`, `seats_taken`,
+  `seats_available`; `add_player_to_table` no longer capacity-checks
+  (moved to service); raw `__bank_table` count removed
+- `casino/src/casino/services/table.py` — `join_table` does the
+  unified capacity + mid-hand check; `create_table` / `update_table`
+  validate the config via the registry; new `can_start_hand` helper
+- `casino/src/casino/api/handler.py` — `_handle_join_table` routes all
+  game types through the unified capacity check; the slots-only
+  branch at `api/handler.py:369-396` is removed
+- `casino/src/casino/services/poker.py` — replace the inline
+  `if len(table.players) < table.min_players` check at
+  `services/poker.py:229-230` with a call to `can_start_hand`
+- `casino/src/casino/services/game.py` — blackjack round start calls
+  `can_start_hand`
+- `casino/src/casino/startup.py` — register the migration SQL
+- `casino/src/casino/games/config.py` — `PokerConfig` validation:
+  `config.max_players >= variant.max_players`;
+  `config.max_players <= 23`
+
+**Cross-reference edits:**
+
+- TODO line 238 (item 14, "AI bot players"): add a one-line
+  prerequisite note at the top: `> Prerequisite: "Seats per Table"
+  capacity model must land first. The owner must be able to seat bots
+  up to min_players before the hand engine starts; the
+  services.table.can_start_hand extension point is the integration
+  surface.`
+
+### Test Coverage
+
+`tests/test_table_capacity.py`:
+
+- **Defaults**:
+  - `test_blackjack_default_capacity` — no config; `min_players=1,
+    max_players=7`
+  - `test_poker_default_capacity` — no config; `min_players=2,
+    max_players=10`
+  - `test_poker_seven_card_stud_default_capacity` — `max_players=8`
+    (variant-specific floor)
+  - `test_poker_seven_card_stud_config_raises_max` —
+    `config: {max_players: 10}`; effective max 10
+  - `test_slots_single_seat_default_capacity` — `max_players=1`;
+    second `join_table` → `join_failed`
+  - `test_yahtzee_default_capacity` — `min_players=1, max_players=6`
+- **Custom config**:
+  - `test_custom_capacity_in_config` — poker `config: {max_players:
+    4}`; fifth `join_table` rejected
+  - `test_invalid_capacity_min_greater_than_max` —
+    `config: {min_players: 5, max_players: 3}` → `invalid_config`
+  - `test_poker_config_max_below_variant_max_rejected` — Stud with
+    `config: {max_players: 6}` → `invalid_config`
+  - `test_poker_config_max_above_variant_max_accepted` — Stud with
+    `config: {max_players: 10}` → accepted, effective max is 10
+  - `test_poker_max_above_sanity_cap_rejected` —
+    `config: {max_players: 24}` → `invalid_config`
+- **Spectator model**:
+  - `test_capacity_unrelated_to_spectators` — fill all seats; 10
+    spectators `watch_table`; all allowed
+- **List / state surface**:
+  - `test_list_tables_shows_seats_taken_and_available` — fill 3 of 5;
+    row has `seats_taken=3, seats_available=2`
+- **Update flow**:
+  - `test_update_table_can_raise_capacity` — owner
+    `config: {max_players: 6}`; existing 4 seated unaffected
+  - `test_shrinking_capacity_below_current_occupancy_rejected` — 4
+    seated, `config: {max_players: 2}` → `invalid_config` (cannot
+    leave players stranded over the cap)
+- **Leave / free seat**:
+  - `test_leave_table_frees_seat` — player leaves; `seats_taken`
+    decrements
+- **Capacity-zero (slots)**:
+  - `test_capacity_zero_min_players_allows_empty_table` — slots table
+    with no seated players; spin still permitted
+- **Mid-hand rejection**:
+  - `test_poker_join_rejected_mid_hand` — start a hand with 3/10
+    seated; 4th `join_table` → `join_failed` "Hand in progress";
+    after hand settles, the same `join_table` succeeds
+  - `test_blackjack_join_rejected_mid_hand` — same shape for
+    blackjack
+  - `test_yahtzee_join_rejected_mid_hand` — same shape for yahtzee
+  - `test_slots_allows_join_anytime` — slots has no multi-step hand;
+    `join_table` between spins is allowed (and a 2nd joiner is
+    rejected only on capacity, not "mid-spin")
+- **Blackjack floor**:
+  - `test_blackjack_single_player_hand_starts` — owner alone,
+    `min_players=1`, hand starts (regression guard for the floor at 1)
+- **Hand-start extension point**:
+  - `test_can_start_hand_true_when_at_min` — 2/2 poker; returns
+    `(True, "ok")`
+  - `test_can_start_hand_false_when_below_min` — 1/2 poker; returns
+    `(False, "Need at least 2 players; have 1")`
+  - `test_poker_hand_start_uses_can_start_hand` — replace the inline
+    check at `services/poker.py:229-230`; verify the call site
+    delegates
+- **Door-mode compat**:
+  - `test_door_mode_compat` — door-mode blackjack with the new column
+    still works (regression guard for the migration)
+
+### Out of Scope (v1)
+
+- **Multi-player blackjack** (a single hand shared by N players vs.
+  one dealer). The capacity model permits 1–7 players at a blackjack
+  table, but the **hand engine** in `blackjack/hand.py` and
+  `blackjack/phase.py` is still single-player in v1. The capacity
+  column is forward-compatible: it permits the seat count without yet
+  wiring the dealer to deal N hands per round. Multi-player blackjack
+  is its own workstream that consumes this capacity model when it
+  lands.
+- **AI bot players filling empty seats** (TODO line 238, item 14). The
+  capacity check is independent of *who* fills the seat. The
+  extension point (`can_start_hand`) is in place; the bot-fill
+  implementation lands with item 14.
+- **Per-variant poker override UI** — the API accepts the override;
+  the lobby/TUI rendering of "Stud: 2–8" or "Stud: 2–10
+  (operator-raised)" is a follow-up.
+- **Spectator caps** — explicitly unlimited by design; matches
+  `api/handler.py:393-396` ("Spectators can watch via `watch_table`
+  but cannot take a second seat").
+- **Auto-fill-bots policy details** — `attrs["auto_fill_bots"]` is
+  read by the extension point; the policy (which bot, what difficulty,
+  what stats) is item 14's concern.
+
+### Resolved Decisions
+
+1. **Mid-hand poker join**: REJECTED. Industry norm.
+2. **Variant floor / config raises only**: Variant class attribute is
+   the floor; `PokerConfig.max_players` can raise but not lower.
+3. **Bot fill at hand start**: `services/table.can_start_hand` gates
+   hand start on `min_players`; the owner (or a sysop) may invoke a
+   new `fill_with_bots` action; `attrs["auto_fill_bots"]=true` enables
+   auto-fill. Bot-fill *implementation* lands with TODO item 14.
+4. **Blackjack `min_players=1` floor**: Confirmed. Single-player
+   blackjack is valid in BED mode, matching door mode.
+5. **Yahtzee mid-hand join**: same `Hand in progress` rejection as
+   poker/blackjack (consistency).
+6. **Cross-reference to item 14**: two-way pointer; item 14 gains a
+   prerequisite note, and this section points back.
+
+### Implementation Order
+
+1. `games/capacity.py` (registry + dataclass + defaults +
+   variant-aware poker resolution)
+2. `sql/table_capacity_migration.sql` + `startup.py` edit
+3. `dal/table.py` edit (return `min_players`, `max_players`,
+   `seats_taken`, `seats_available`; remove the `__bank_table` count)
+4. `services/table.py` edit (`join_table` unified capacity + mid-hand
+   check; `create_table` / `update_table` validation; new
+   `can_start_hand` helper)
+5. `api/handler.py` edit (remove slots-only branch; route all game
+   types through the unified path)
+6. `services/poker.py` edit (replace inline `min_players` check at
+   line 229-230 with `can_start_hand`)
+7. `services/game.py` edit (blackjack round start calls
+   `can_start_hand`)
+8. `games/config.py` edit (`PokerConfig.max_players >=
+   variant.max_players` and `<= 23` validation)
+9. Cross-reference: TODO line 238 (item 14) gains a one-line
+   prerequisite note
+10. `tests/test_table_capacity.py`
+11. Lint, typecheck, full pytest suite
+
