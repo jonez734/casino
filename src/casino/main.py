@@ -67,7 +67,6 @@ def main(args: Namespace, **kwargs) -> bool:
         ("B", "Blackjack", "blackjack.play"),
         ("P", "Poker", "poker.play"),
         ("S", "Slots", "slots.play"),
-        ("Y", "Yahtzee", "yahtzee.play"),
         ("C", "Connect", "connect"),
         ("L", "List tables", "table.list"),
         ("J", "Join table", "table.join"),

@@ -1,7 +1,7 @@
-from bbsengine6 import io, register_module
+from bbsengine6 import register_module
 
 
-__version__ = "202210010112"
+__version__ = "202601010900"
 
 
 def init(args, **kw: dict) -> bool:
@@ -23,5 +23,5 @@ def buildargs(args, **kw):
 
 
 def main(args, **kw):
-    io.echo("yahtzee module not yet implemented")
+    """No door-mode entry; yahtzee v1 is BED-only."""
     return True

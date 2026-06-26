@@ -16,6 +16,7 @@ from bbsengine6.net import (
 from bbsengine6.message_delivery import send as notify_send, NotificationUrgency
 from casino.dal import player as dal_player
 from casino.dal.aiosql import table as async_dal_table
+from casino.yahtzee.api_handler import YahtzeeServiceHandler
 
 
 class SessionManager:
@@ -1329,6 +1330,7 @@ class MessageRouter:
         self.postoffice_service = PostofficeServiceHandler(args, self.sessions)
         self.member_service = MemberServiceHandler(args, self.sessions)
         self.slot_service = SlotServiceHandler(args, self.sessions, self.channel_state)
+        self.yahtzee_service_handler = YahtzeeServiceHandler(args, self.sessions)
         
         # Channel service (created in register_all after server is available)
         self.channel_service: Optional[ChannelServiceHandler] = None
@@ -1370,6 +1372,11 @@ class MessageRouter:
         server.register_service(self.slot_service, [
             "slot_spin", "slot_paytable", "slot_history"
         ])
+
+        # Register yahtzee service for dice play
+        server.register_service(self.yahtzee_service_handler, [
+            "yahtzee_quick_play", "yahtzee_roll", "yahtzee_reroll", "yahtzee_score"
+        ])
     
     async def handle_broadcast(
         self, server: Any, websocket: Any, path: str, message: Dict[str, Any]
@@ -1393,6 +1400,11 @@ class MessageRouter:
     
     def unregister_session(self, session_id: int) -> None:
         """Clean up session on disconnect."""
+        # If the player had a yahtzee game in progress, settle it as
+        # a loss so the bet row doesn't stay 'pending' forever.
+        table_moniker = self.sessions.get_table_moniker(session_id)
+        if table_moniker:
+            self.yahtzee_service_handler.finalize_on_disconnect(table_moniker)
         # Unsubscribe from all channels
         channel_unsubscribe_all(self.channel_state, session_id)
         self.sessions.unregister_session(session_id)
