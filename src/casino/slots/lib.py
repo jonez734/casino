@@ -16,6 +16,8 @@ import random as _random
 from dataclasses import dataclass
 from typing import Iterable, Optional, Sequence, Union
 
+from bbsengine6 import io
+
 
 DEFAULT_NUM_REELS = 5
 DEFAULT_NUM_ROWS = 3
@@ -319,7 +321,8 @@ class Paytable:
             try:
                 from bbsengine6.io import screen as _screen
                 screen_updateprogress = _screen.updateprogress
-            except Exception:
+            except Exception as e:
+                io.echo(f"slots.lib: screen.updateprogress import unavailable: {e!r}", level="warning")
                 screen_updateprogress = None
 
         running_total = 0
@@ -369,7 +372,8 @@ class Paytable:
                     screen_updateprogress(
                         running_count, progress_total_eff or total_outcomes
                     )
-                except Exception:
+                except Exception as e:
+                    io.echo(f"slots.lib: screen.updateprogress call failed (mid-loop): {e!r}", level="warning")
                     screen_updateprogress = None
                 next_progress = running_count + progress_threshold
 
@@ -378,8 +382,8 @@ class Paytable:
                 screen_updateprogress(
                     total_outcomes, progress_total_eff or total_outcomes
                 )
-            except Exception:
-                pass
+            except Exception as e:
+                io.echo(f"slots.lib: screen.updateprogress final call failed: {e!r}", level="warning")
 
         return (running_total / total_outcomes) if total_outcomes else 0.0
 

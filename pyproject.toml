@@ -1,0 +1,136 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "casino"
+dynamic = ["version"]
+description = "Casino games (blackjack, slots, poker, yahtzee, tictactoe) for bbsengine6"
+readme = "README.md"
+requires-python = ">=3.9"
+license = "GPL-2.0-or-later"
+authors = [
+    { name = "zoidtechnologies.com", email = "casino@projects.zoidtechnologies.com" },
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "Operating System :: POSIX",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Communications :: BBS",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Terminals",
+]
+dependencies = [
+    "bbsengine6",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7",
+    "pytest-cov>=4",
+    "ruff>=0.1",
+]
+test = [
+    "pytest>=7",
+    "pytest-cov>=4",
+]
+
+[project.entry-points."casino.poker.variants"]
+texas_hold_em = "casino.poker.variant.texas_hold_em:TexasHoldEm"
+omaha = "casino.poker.variant.omaha:Omaha"
+omaha_hi_lo = "casino.poker.variant.omaha:OmahaHiLo"
+seven_card_stud = "casino.poker.variant.seven_card_stud:SevenCardStud"
+
+[project.scripts]
+casino = "casino.__main__:main"
+
+[project.urls]
+Homepage = "https://github.com/jonez734/casino"
+Issues = "https://github.com/jonez734/casino/issues"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["casino*"]
+namespaces = false
+
+[tool.setuptools.package-data]
+casino = ["sql/*.sql", "data/*.json"]
+
+[tool.setuptools.dynamic]
+version = { attr = "casino._version.__version__" }
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+testpaths = ["src/casino/tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "-ra",
+    "--strict-markers",
+    "--strict-config",
+    "--tb=short",
+]
+markers = [
+    "integration: marks tests as integration tests (require BED server running)",
+]
+filterwarnings = [
+    "error",
+    "ignore::DeprecationWarning:bbsengine6.*",
+    "ignore::PendingDeprecationWarning",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py39"
+src = ["src"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "B",    # flake8-bugbear
+    "UP",   # pyupgrade
+    "SIM",  # flake8-simplify
+]
+ignore = [
+    "E501",  # line too long (handled by formatter)
+    "B008",  # function call in default argument (bbsengine6 patterns)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"src/casino/tests/*" = ["B", "E402"]
+"src/casino/__main__.py" = ["E402"]
+"src/casino/slots/__main__.py" = ["E402", "B008"]
+
+[tool.coverage.run]
+source = ["src/casino"]
+omit = [
+    "src/casino/tests/*",
+    "src/casino/__main__.py",
+    "src/casino/*/__main__.py",
+    "src/casino/_version.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "\\.\\.\\.",
+]
+show_missing = true
+skip_covered = false

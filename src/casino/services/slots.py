@@ -13,6 +13,7 @@
 
 from __future__ import annotations
 
+import uuid
 from typing import Any, Dict, List, Optional, Tuple
 
 from bbsengine6 import database, io
@@ -52,14 +53,18 @@ def _build_paytable_from_config(config: Dict[str, Any]) -> Paytable:
     if override is None:
         return Paytable()
     if not isinstance(override, dict):
+        io.echo(f"slots: paytable_override rejected: not a dict (got {type(override).__name__})", level="error")
         raise ValueError("paytable_override must be a dict of {symbol_tuple: multiplier}")
     parsed: Dict[Tuple[str, ...], int] = {}
     for key, mult in override.items():
         if not isinstance(key, (list, tuple)):
+            io.echo(f"slots: paytable_override rejected: key not list/tuple: {key!r}", level="error")
             raise ValueError(f"paytable key must be a list/tuple, got {key!r}")
         if not all(isinstance(s, str) and s for s in key):
+            io.echo(f"slots: paytable_override rejected: bad key entries: {key!r}", level="error")
             raise ValueError(f"paytable key entries must be non-empty strings, got {key!r}")
         if not isinstance(mult, int) or mult < 0:
+            io.echo(f"slots: paytable_override rejected: bad multiplier {mult!r} for key {key!r}", level="error")
             raise ValueError(f"paytable multiplier must be a non-negative int, got {mult!r}")
         parsed[tuple(key)] = mult
     return Paytable(parsed)
@@ -85,6 +90,7 @@ def get_dealer(args: Any, table_moniker: str) -> Optional[SlotDealer]:
     dealer = _dealers.get(table_moniker)
     if dealer is not None:
         return dealer
+    io.echo(f"slots: dealer cache miss table={table_moniker} building", level="info")
     dealer = _build_dealer_for_table(args, table_moniker)
     if dealer is not None:
         _dealers[table_moniker] = dealer
@@ -93,7 +99,8 @@ def get_dealer(args: Any, table_moniker: str) -> Optional[SlotDealer]:
 
 def invalidate_dealer(table_moniker: str) -> None:
     """Drop a cached dealer (call this on update_table / paytable change)."""
-    _dealers.pop(table_moniker, None)
+    if _dealers.pop(table_moniker, None) is not None:
+        io.echo(f"slots: invalidate_dealer table={table_moniker}", level="info")
 
 
 def _get_player_credits(args: Any, moniker: str) -> int:
@@ -117,25 +124,34 @@ def handle_spin(
     precondition failure. All side effects happen in a single atomic
     transaction.
     """
+    correlation_id = uuid.uuid4().hex
     if not isinstance(bet, int) or isinstance(bet, bool) or bet <= 0:
+        io.echo(f"slots: invalid_bet member={player_moniker} table={table_moniker} bet={bet!r} corr={correlation_id}", level="warning")
         return {"success": False, "code": "invalid_bet", "message": "Bet must be a positive integer"}
 
     table = dal_table.get_table(args, table_moniker)
     if not table:
+        io.echo(f"slots: table_not_found member={player_moniker} table={table_moniker} corr={correlation_id}", level="warning")
         return {"success": False, "code": "table_not_found", "message": f"Table {table_moniker} not found"}
     if table.get("type") != "slots":
+        io.echo(f"slots: wrong_game_type member={player_moniker} table={table_moniker} corr={correlation_id}", level="warning")
         return {"success": False, "code": "wrong_game_type", "message": f"Table {table_moniker} is not a slots table"}
 
     min_bet = int(table.get("minimumbet") or 1)
     max_bet = int(table.get("maximumbet") or 1000)
     if bet < min_bet:
+        io.echo(f"slots: bet_below_min member={player_moniker} table={table_moniker} bet={bet} min={min_bet} corr={correlation_id}", level="warning")
         return {"success": False, "code": "bet_below_min", "message": f"Minimum bet is {min_bet}"}
     if bet > max_bet:
+        io.echo(f"slots: bet_above_max member={player_moniker} table={table_moniker} bet={bet} max={max_bet} corr={correlation_id}", level="warning")
         return {"success": False, "code": "bet_above_max", "message": f"Maximum bet is {max_bet}"}
 
     dealer = get_dealer(args, table_moniker)
     if dealer is None:
+        io.echo(f"slots: dealer_build_failed table={table_moniker} corr={correlation_id}", level="error")
         return {"success": False, "code": "service_error", "message": "Failed to build dealer"}
+
+    io.echo(f"slots: {player_moniker} betting {bet} at {table_moniker} corr={correlation_id}", level="info")
 
     # Run the RNG outside the transaction (it has no side effects and we
     # want the spin to be deterministic from the result, not from any DB
@@ -159,16 +175,21 @@ def handle_spin(
                 row = cur.fetchone()
                 if row is None:
                     # Auto-create at zero so we have a place to credit
-                    cur.execute(
-                        database.query(
-                            "INSERT INTO bank.__account (moniker, balance) VALUES (:moniker, 0) RETURNING id, balance",
-                            moniker=player_moniker,
+                    try:
+                        cur.execute(
+                            database.query(
+                                "INSERT INTO bank.__account (moniker, balance) VALUES (:moniker, 0) RETURNING id, balance",
+                                moniker=player_moniker,
+                            )
                         )
-                    )
-                    row = cur.fetchone()
+                        row = cur.fetchone()
+                    except Exception as e:
+                        io.echo(f"slots: bank_account_auto_create_failed member={player_moniker} corr={correlation_id}: {e}", level="error")
+                        raise
                 account_id = int(row["id"])
                 current_balance = int(row["balance"])
                 if current_balance < bet:
+                    io.echo(f"slots: insufficient_funds member={player_moniker} balance={current_balance} bet={bet} corr={correlation_id}", level="warning")
                     return {
                         "success": False,
                         "code": "insufficient_funds",
@@ -228,7 +249,9 @@ def handle_spin(
                             moniker=player_moniker,
                         )
                     )
+                    io.echo(f"slots: biggest_win updated member={player_moniker} payout={result.payout} corr={correlation_id}", level="info")
         # Success
+        io.echo(f"slots: spin ok spin_id={spin_id} member={player_moniker} table={table_moniker} bet={bet} payout={result.payout} net={net} corr={correlation_id}", level="info")
         return {
             "success": True,
             "spin": {
@@ -244,7 +267,7 @@ def handle_spin(
             },
         }
     except Exception as e:
-        io.echo(f"slot spin failed: {e}", level="error")
+        io.echo(f"slots: spin failed member={player_moniker} table={table_moniker} corr={correlation_id}: {e}", level="error")
         return {"success": False, "code": "service_error", "message": str(e)}
 
 

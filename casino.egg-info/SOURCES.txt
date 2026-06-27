@@ -1,6 +1,0 @@
-README.md
-setup.py
-casino.egg-info/PKG-INFO
-casino.egg-info/SOURCES.txt
-casino.egg-info/dependency_links.txt
-casino.egg-info/top_level.txt
