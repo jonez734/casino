@@ -1,5 +1,84 @@
 # casino
 
+## Regulatory and Legal Notice
+
+This project is a software platform for casino-style games (blackjack,
+poker, slots, yahtzee, etc.). It is **not** a licensed gambling
+operator and is intended for development, testing, and demonstration
+purposes only. Deploying, operating, or accepting real-money wagers
+through this software may be regulated or prohibited in your
+jurisdiction.
+
+### Statewide prohibition (South Carolina)
+
+This project's home jurisdiction is **South Carolina**, which is one of
+the strictest US states with respect to gambling. Per the
+[Wikipedia state-by-state table](https://en.wikipedia.org/wiki/Gambling_in_the_United_States)
+and [SC Code Title 16, Chapter 19](https://www.scstatehouse.gov/code/t16c019.php):
+
+- No commercial casinos
+- No racetrack betting
+- No online gambling
+- No sports betting
+- The only legal gambling in SC is the **SC Education Lottery**
+- Video poker has been banned since **2000-07-01**
+
+The relevant criminal statutes:
+
+- **[SC Code §16-19-40](https://www.scstatehouse.gov/code/t16c019.php)**
+  "Unlawful games and betting" — misdemeanor; player fine up to $100 /
+  up to 30 days jail; operator fine up to $2,000 / up to 12 months.
+- **[SC Code §16-19-130](https://www.scstatehouse.gov/code/t16c019.php)**
+  "Betting, pool selling, bookmaking and the like prohibited" —
+  misdemeanor; fine up to $1,000 / up to 6 months.
+
+> Operating this software against SC residents, or operating it from
+> SC, is a criminal violation regardless of where the servers are
+> physically located. **Do not deploy this project to serve SC
+> customers.**
+
+### Operator location vs. server location (US)
+
+When the operator is in one US state and the servers are in another,
+**both jurisdictions are relevant, and several federal statutes sit on
+top:**
+
+1. **Operator's home state** — the state where the business is
+   conducted. Most state gambling statutes make it a crime to
+   *operate* a gambling business from within the state regardless of
+   where the servers sit.
+2. **Server's state** — the state where the hardware physically
+   resides. That state may license, regulate, or prohibit the
+   activity. Hosting unlicensed gambling software can be a separate
+   violation of the server's state law.
+3. **Customer's state** — the state where the bettor is located when
+   the bet is initiated. UIGEA (31 USC §5362) and the Wire Act (18 USC
+   §1084) key off "the place where the bet is made or received" — not
+   the server.
+4. **Federal overlay** — the Wire Act (interstate transmission of
+   sports-bets), UIGEA (payment processing for unlawful Internet
+   gambling), and the Bank Secrecy Act (FinCEN CTRs / SARs from
+   "gambling businesses") all apply on top of state law.
+
+**Practical guidance:** pick the most-restrictive state among
+{operator, server, customer} and design for that. Do not assume
+server location alone answers the question.
+
+### Federal statutory references
+
+- **[UIGEA, 31 USC §§ 5361-5367](https://www.law.cornell.edu/uscode/text/31/5361)**
+  — Unlawful Internet Gambling Enforcement Act of 2006.
+- **[Federal Wire Act, 18 USC § 1084](https://en.wikipedia.org/wiki/Federal_Wire_Act)**
+  — transmission of wagering information. Per First Circuit + R.I.
+  District Court rulings, applies to sports betting only (DOJ 2018
+  OLC opinion disputes).
+- **[Bank Secrecy Act of 1970](https://en.wikipedia.org/wiki/Bank_Secrecy_Act)**
+  — anti-money-laundering / CTR / SAR obligations; FinCEN has
+  separate regulations for "gambling businesses."
+
+See `TODO.md` § "Compliance, AML, Responsible Gambling & Data
+Protection (Reference)" for the full reference list.
+
 ## Python 2 → Python 3 Migration Notes
 - Python 2 had `ttk` as a separate package (`import ttk`). Python 3 ships `ttk` as part of tkinter (`from tkinter import ttk`). This matters when migrating code or creating dependency lists.
 
