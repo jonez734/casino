@@ -9,52 +9,34 @@ purposes only. Deploying, operating, or accepting real-money wagers
 through this software may be regulated or prohibited in your
 jurisdiction.
 
-### Statewide prohibition (South Carolina)
-
-This project's home jurisdiction is **South Carolina**, which is one of
-the strictest US states with respect to gambling. Per the
-[Wikipedia state-by-state table](https://en.wikipedia.org/wiki/Gambling_in_the_United_States)
-and [SC Code Title 16, Chapter 19](https://www.scstatehouse.gov/code/t16c019.php):
-
-- No commercial casinos
-- No racetrack betting
-- No online gambling
-- No sports betting
-- The only legal gambling in SC is the **SC Education Lottery**
-- Video poker has been banned since **2000-07-01**
-
-The relevant criminal statutes:
-
-- **[SC Code §16-19-40](https://www.scstatehouse.gov/code/t16c019.php)**
-  "Unlawful games and betting" — misdemeanor; player fine up to $100 /
-  up to 30 days jail; operator fine up to $2,000 / up to 12 months.
-- **[SC Code §16-19-130](https://www.scstatehouse.gov/code/t16c019.php)**
-  "Betting, pool selling, bookmaking and the like prohibited" —
-  misdemeanor; fine up to $1,000 / up to 6 months.
-
-> Operating this software against SC residents, or operating it from
-> SC, is a criminal violation regardless of where the servers are
-> physically located. **Do not deploy this project to serve SC
-> customers.**
+> **State jurisdiction applies.** Gambling laws are set and enforced at
+> the state (and tribal) level in the United States. Each state has its
+> own statutes, licensing schemes, and prohibitions; some states permit
+> certain forms of gambling, others prohibit them entirely, and many
+> restrict or forbid online gambling specifically. You are responsible
+> for determining whether operating, hosting, or using this software is
+> lawful in the relevant state(s) and tribal jurisdiction(s) before any
+> deployment or use. State jurisdiction applies independently of where
+> the operator, the servers, and the customers are located.
 
 ### Operator location vs. server location (US)
 
 When the operator is in one US state and the servers are in another,
-**both jurisdictions are relevant, and several federal statutes sit on
-top:**
+**state jurisdiction applies to each, and several federal statutes sit
+on top:**
 
 1. **Operator's home state** — the state where the business is
    conducted. Most state gambling statutes make it a crime to
    *operate* a gambling business from within the state regardless of
-   where the servers sit.
+   where the servers sit. State jurisdiction applies.
 2. **Server's state** — the state where the hardware physically
    resides. That state may license, regulate, or prohibit the
    activity. Hosting unlicensed gambling software can be a separate
-   violation of the server's state law.
+   violation of the server's state law. State jurisdiction applies.
 3. **Customer's state** — the state where the bettor is located when
    the bet is initiated. UIGEA (31 USC §5362) and the Wire Act (18 USC
    §1084) key off "the place where the bet is made or received" — not
-   the server.
+   the server. State jurisdiction applies.
 4. **Federal overlay** — the Wire Act (interstate transmission of
    sports-bets), UIGEA (payment processing for unlawful Internet
    gambling), and the Bank Secrecy Act (FinCEN CTRs / SARs from
@@ -62,7 +44,8 @@ top:**
 
 **Practical guidance:** pick the most-restrictive state among
 {operator, server, customer} and design for that. Do not assume
-server location alone answers the question.
+server location alone answers the question. State jurisdiction applies
+to each of operator, server, and customer.
 
 ### Federal statutory references
 
