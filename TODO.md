@@ -1896,3 +1896,85 @@ before the `can_start_hand` check, no other refactor required.
 10. `tests/test_table_capacity.py`
 11. Lint, typecheck, full pytest suite
 
+---
+
+## Compliance, AML, Responsible Gambling & Data Protection (Reference)
+
+Reference material covering casino regulatory topics (KYC/AML, responsible
+gambling, data protection). Items added here are research / awareness
+inputs, not implementation tasks — pull items into the implementation
+sections above (or new sections) when a concrete feature is scoped.
+
+- [ ] Sum&Substance — "A complete guide to casino compliance: AML, responsible gambling, and data protection"
+  https://sumsub.com/blog/a-complete-guide-to-casino-compliance-aml-responsible-gambling-and-data-protection/
+
+### Jurisdiction: operator location vs. server location (US)
+
+When the operator is in one US state and the servers are in another, both
+jurisdictions apply, and several federal statutes sit on top:
+
+1. **Operator's home state** — the state where the business is conducted.
+   Most state gambling statutes (e.g., SC Code §16-19-40 "Unlawful games and
+   betting" and §16-19-130 "Betting, pool selling, bookmaking and the like
+   prohibited") make it a crime to *operate* a gambling business from
+   within the state regardless of where the servers sit. So if the operator
+   is in a state that prohibits casino-style gambling, the operator is
+   liable there even if servers are elsewhere.
+2. **Server's state** — the state where the hardware physically resides.
+   That state may license, regulate, or prohibit the activity. Hosting
+   unlicensed gambling software can be a separate violation of the
+   server's state law.
+3. **Customer's state** — the state where the bettor is located when the
+   bet is initiated. UIGEA (31 USC §5362) and the Wire Act (18 USC §1084)
+   key off "the place where the bet is made or received" — not the
+   server. So the customer's state is also a controlling jurisdiction.
+4. **Federal overlay** — the Wire Act (interstate transmission of
+   sports-bets), UIGEA (payment processing for unlawful internet
+   gambling), and the Bank Secrecy Act (FinCEN CTRs / SARs from
+   "gambling businesses") all apply on top of state law.
+
+Practical guidance:
+
+- **Pick the most-restrictive state among {operator, server, customer}**
+  and design for that. Don't assume server location alone answers the
+  question.
+- **South Carolina is one of the strictest**: no commercial casinos, no
+  racetrack betting, no online gambling, no sports betting. The only
+  legal gambling in SC is the SC Education Lottery (SC Code §16-19-40
+  et seq.; video poker banned 2000-07-01; see also "Gambling in the
+  United States" state-by-state table). Operating a casino from SC, or
+  serving SC customers from anywhere, is a §16-19-40 / §16-19-130
+  violation.
+- **Never accept a SC resident as a customer** without confirming the
+  activity is lawful in SC at the time of the bet. Server location is
+  irrelevant to that analysis.
+
+References (US):
+
+- [ ] 31 USC §§ 5361–5367 — Unlawful Internet Gambling Enforcement Act (UIGEA) of 2006
+  https://www.law.cornell.edu/uscode/text/31/5361
+- [ ] 18 USC § 1084 — Federal Wire Act (Transmission of wagering information)
+  https://en.wikipedia.org/wiki/Federal_Wire_Act
+- [ ] DOJ Office of Legal Counsel, 2011 opinion (Wire Act applies only to sports betting)
+  cited via Wikipedia: https://en.wikipedia.org/wiki/Federal_Wire_Act
+- [ ] DOJ OLC, 2018 opinion reversing 2011 (Wire Act covers all gambling)
+  cited via Wikipedia: https://en.wikipedia.org/wiki/Federal_Wire_Act
+- [ ] Bank Secrecy Act (BSA) of 1970 — anti-money-laundering / CTR / SAR
+  https://en.wikipedia.org/wiki/Bank_Secrecy_Act
+- [ ] FinCEN — "Casino regulations under the Bank Secrecy Act" (BSA applies to gambling businesses)
+  referenced via Wikipedia: https://en.wikipedia.org/wiki/Bank_Secrecy_Act
+- [ ] South Carolina Code of Laws, Title 16, Chapter 19 — Gambling and Lotteries
+  https://www.scstatehouse.gov/code/t16c019.php
+  (in particular §16-19-40 "Unlawful games and betting" and §16-19-130
+  "Betting, pool selling, bookmaking and the like prohibited")
+- [ ] SC Code §16-19-40 — Unlawful games and betting (misdemeanor, fine up to $100, jail up to 30 days for player; up to $2,000 fine, 12 months for operator)
+  https://www.scstatehouse.gov/code/t16c019.php
+- [ ] SC Code §16-19-130 — Pool selling / bookmaking prohibited (misdemeanor, fine up to $1,000, jail up to 6 months)
+  https://www.scstatehouse.gov/code/t16c019.php
+- [ ] "Gambling in the United States" — Wikipedia (state-by-state table; SC: No/No/No for charitable, pari-mutuel, lottery, video lottery, commercial, racetrack, online, sports betting)
+  https://en.wikipedia.org/wiki/Gambling_in_the_United_States
+- [ ] "Unlawful Internet Gambling Enforcement Act of 2006" — Wikipedia
+  https://en.wikipedia.org/wiki/Unlawful_Internet_Gambling_Enforcement_Act_of_2006
+- [ ] "Online gambling" — Wikipedia (US section; UIGEA, Wire Act, and US online-gambling overview)
+  https://en.wikipedia.org/wiki/Online_gambling
+
