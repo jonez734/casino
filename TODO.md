@@ -282,6 +282,38 @@ at all (no game in this monorepo passes it).
 ## Integration Test Issues
 
 - [X] Hole card: not hiding properly in integration tests (needs debug)
+- [ ] **Slots integration test fixtures violate `chk_member_moniker_format`**
+  (test_slots_integration.py:406-408, 426, 454, 459, 511, 522, 537, 542,
+  556, 574, 578, 602, 627, 636, 649, 655, 680, 689, 700, 713, 723, 735,
+  746, 757, 778, 794, 805, 813, 820, 827, 835, 845, 850, 860).
+
+  The test class uses monikers like `jam-1`, `jam-2`, `slots-jam-1`,
+  `blackjack-jam-1` — all with hyphens. The `engine.__member.moniker`
+  column has a `chk_member_moniker_format` check constraint requiring
+  `^[a-zA-Z0-9_]+$` (alphanumeric + underscore only, no hyphens), so
+  `_ensure_test_user` (test_slots_integration.py:334) raises a
+  `psycopg.errors.CheckViolation` before the test even runs.
+
+  Because the tests are decorated
+  `@unittest.skipUnless(_db_available(), ...)` and require
+  `CASINO_TEST_DB` in the environment, the bug has been silently
+  masked. Setting `CASINO_TEST_DB=zoid6test` (against the local
+  zoid6test database) exposes 26 failures — all 26 in
+  `test_slots_integration.py`, all with the same CheckViolation
+  root cause.
+
+  Fix is a one-time fixture rename: replace `jam-1` → `jam_1`,
+  `jam-2` → `jam_2`, `slots-jam-1` → `slots_jam_1`,
+  `blackjack-jam-1` → `blackjack_jam_1` throughout the file
+  (38 references). Verify the assertions on
+  `table_moniker` strings still match the production code path
+  (slots table monikers are constructed from player monikers in
+  the BED message contract).
+
+  Originally added in commit `354aa74` ("Add slots v1.1: single-seater
+  enforcement + bed integration tests"). Last touched in the same
+  commit — never updated after the moniker format constraint was
+  tightened.
 
 ## Poker
 
