@@ -12,8 +12,8 @@
       importable from `bed.client`. Empyre's `empyre.bed_client` is a
       re-export shim.
 - [ ] Replace the raw `websockets.connect` / `self.ws.send(json.dumps(...))`
-      / `self.ws.recv()` calls in `casino/src/casino/connect.py`
-      (`CasinoClient.__init__/connect/send/receive`, lines 142-209) with
+      / `self.ws.recv()` calls in `casino/src/casino/client/casino_client.py`
+      (`CasinoClient.__init__/connect/send/receive`, lines 23-83) with
       a `bed.client.BedConnection` instance. `connect()` should call
       `probe_bed()` instead of opening the socket eagerly; the actual
       WebSocket is opened lazily on the first `send`, matching empyre.
@@ -591,7 +591,7 @@ Add tests for all casino message system features:
 - Fixed `bbsengine6/database.py`: Fixed `AsyncCursor.fetchone()` and `fetchall()` to properly await async psycopg cursor methods
 - Fixed `bbsengine6/database.py`: Fixed `AsyncCursor.__aexit__()` to call `self._cur.close()` instead of non-existent `_curclose()`
 - Fixed `bbsengine6/database.py`: Fixed `async_query()` to use `database.query()` for processing SQL templates with `$schema.table` placeholders
-- Fixed `casino/services/game.py`: Added `player_hand` and `player_total` fields to `get_game_state()` return value for backward compatibility with tests and connect.py
+- Fixed `casino/services/game.py`: Added `player_hand` and `player_total` fields to `get_game_state()` return value for backward compatibility with tests and `client/casino_client.py`
 - Fixed `casino/tests/test_player_observer.py`: Added async pool cache reset in `asyncSetUp()` and `asyncTearDown()` to ensure clean state between tests
 
 ---
@@ -766,11 +766,11 @@ Replace all `inputchoice()` calls in the TUI client with `inputstring()` to supp
 
 ### Part 1: Simplify ActionInputHandler
 
-**File:** `casino/src/casino/connect.py`
+**File:** `casino/src/casino/client/action_input.py`
 
 Remove hotkey concept - shortest-unique-prefix matching already works via prefix matching on action names.
 
-**`resolve_action()` (lines 65-97):** Remove hotkey exact match, keep only prefix matching:
+**`resolve_action()` (lines 9-30):** Remove hotkey exact match, keep only prefix matching:
 ```python
 def resolve_action(input_str: str, actions: list[dict]) -> str | None:
     if not input_str:
@@ -812,10 +812,10 @@ Replace each `inputchoice()` call with `inputstring()` + `ActionInputHandler`:
 | File | Line | Actions |
 |------|------|---------|
 | `main.py` | 156 | Dynamic (from options list) |
-| `connect.py` | 372 | blackjack, poker, slots, yahtzee |
-| `connect.py` | 497 | house, player |
-| `connect.py` | 611 | balance, add, withdraw, transfer, pending, history, list, quit |
-| `connect.py` | 651 | tables, create, update, join, leave, bet, hit, stand, msg, bank, quit |
+| `client/casino_client.py` | 249 | blackjack, poker, slots, yahtzee |
+| `client/casino_client.py` | 420 | house, player |
+| `client/casino_client.py` | 534 | balance, add, withdraw, transfer, pending, history, list, quit |
+| `client/casino_client.py` | 574 | tables, create, update, join, leave, bet, hit, stand, msg, bank, quit |
 | | | **Also label [K] as [B]ank in main menu prompt** |
 | `commands/game/lib.py` | 120 | bet, hit, stand, double, play, split, quit |
 | `commands/poker/lib.py` | 254 | check, all, bet, raise, fold, hand, table, list, quit |
@@ -1551,7 +1551,7 @@ src/casino/tests/
 - Door-mode `play.py` (deleted).
 - Top-level `Y` menu shortcut in `main.py` (removed; players
   reach yahtzee via the existing `Create` + `Join` flow).
-- `cmd_yahtzee_quick_play()` helper in `connect.py` for the
+- `cmd_yahtzee_quick_play()` helper in `client/casino_client.py` for the
   BBS-side client (a future commit can wrap the BED messages for
   door-mode use).
 
@@ -1561,7 +1561,7 @@ src/casino/tests/
 - Commits 1 and 2 are fully mocked (no live DB).
 - Commit 3 is fully mocked for the handler tests. Manual smoke
   (if a live BED is available, not mandated): start `casino.bed`,
-  connect via `connect.py`, `Create` a yahtzee table, `Join`,
+  connect via `client/casino_client.py`, `Create` a yahtzee table, `Join`,
   exercise `yahtzee_roll` / `yahtzee_reroll` / `yahtzee_score`
   via a debug BED message sender (out of scope to add).
 
