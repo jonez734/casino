@@ -47,6 +47,14 @@ class MessageType(str, Enum):
     YAHTZEE_STATE = "yahtzee_state"
     YAHTZEE_RESULT = "yahtzee_result"
 
+    # Tic-Tac-Toe
+    TICTACTOE_QUICK_PLAY = "tictactoe_quick_play"
+    TICTACTOE_MOVE = "tictactoe_move"
+    TICTACTOE_RESIGN = "tictactoe_resign"
+    TICTACTOE_JOIN = "tictactoe_join"
+    TICTACTOE_STATE = "tictactoe_state"
+    TICTACTOE_RESULT = "tictactoe_result"
+
     # Chat
     CHAT_TABLE = "chat_table"
     CHAT_GLOBAL = "chat_global"
@@ -73,6 +81,7 @@ class GameType(str, Enum):
     POKER = "poker"
     SLOTS = "slots"
     YAHTZEE = "yahtzee"
+    TICTACTOE = "tictactoe"
 
 
 class ChatScope(str, Enum):

@@ -10,6 +10,7 @@ class GameType(str, Enum):
     POKER = "poker"
     SLOTS = "slots"
     YAHTZEE = "yahtzee"
+    TICTACTOE = "tictactoe"
 
 
 class GameAction(str, Enum):
