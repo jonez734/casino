@@ -68,7 +68,8 @@ class TestChannelSubscriptionIntegration(unittest.IsolatedAsyncioTestCase):
         # Create table service with channel state
         table_service = TableServiceHandler(self.args, self.sessions, self.channel_state)
 
-        # Mock table service
+        # Mock table service and DAL lookup (handler calls get_table to check
+        # single-seater slots invariant before delegating to table_service).
         table_service.table_service = MagicMock()
         table_service.table_service.join_table = MagicMock(
             return_value={"success": True, "moniker": "blackjack-1", "message": "Joined"}
@@ -78,10 +79,11 @@ class TestChannelSubscriptionIntegration(unittest.IsolatedAsyncioTestCase):
         session_id = 12345
         self.sessions.register_session(session_id, "alice")
 
-        # Handle join table
-        response = await table_service._handle_join_table(
-            session_id, {"moniker": "blackjack-1"}
-        )
+        # Handle join table (patch the DAL get_table so we don't hit Postgres)
+        with patch("casino.dal.table.get_table", return_value=None) as mock_get_table:
+            response = await table_service._handle_join_table(
+                session_id, {"moniker": "blackjack-1"}
+            )
 
         # Verify join success - response has type "joined_table"
         self.assertEqual(response["type"], "joined_table")
