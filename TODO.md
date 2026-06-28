@@ -2339,3 +2339,148 @@ here so the work isn't lost between repos.
   `bbsengine6.bank.api.handler` once the bank work lands.
 
 ---
+
+## Rework: route per-hand money through the bank
+
+End state: every money movement in the casino — bets, payouts,
+insurance, table-bank credits/debits — flows through
+`BankServiceHandler` and `bbsengine6.bank`. The direct
+`UPDATE engine.__member.credits` writes in `casino.dal.bet`
+(lines 54, 150, 201) become bank-mediated transfers between
+the member's account and the table's house account.
+
+### Current design (intentional, captured for context)
+
+The casino maintains **two independent ledgers**:
+
+- **Player's chip stack** — `engine.__member.credits`, the
+  per-member wallet. Read by `casino.dal.player.get_player_balance`
+  (line 92). Debited on `casino.dal.bet.place_bet` (line 54).
+  Credited on `casino.dal.bet.settle_bet` (line 150) and
+  `casino.dal.bet.settle_insurance` (line 201). One source of
+  truth: the `dal.bet` module.
+- **Table bank** — `bank.__account` rows mapped to tables via
+  `casino.__bank_table`. Operated by
+  `casino.api.handler.BankServiceHandler` (line 876) and
+  `casino.services.bank.BankService`. Covers the orthogonal
+  table-bank-management workflow: operator view of the table's
+  chip pool, transfers between tables, history audit.
+
+The per-hand money flow (bet → outcome → payout) moves chips
+**directly between the member and "in play"**, not through the
+table's house account. The two ledgers are intentionally
+independent:
+
+- The player's chip stack can go to zero without affecting the
+  table's house reserve, and vice versa.
+- A double-ledger consistency check is not required for a hand
+  to settle. The current design does not require
+  `engine.__member.credits` to match any `bank.__account` total.
+- Wins and losses are recorded in `casino.__betlog` regardless
+  of which ledger the money moves through.
+
+`BankServiceHandler` covers `bank_balance`, `bank_add`,
+`bank_remove`, `bank_transfer_request`, `bank_transfer_approve`,
+`bank_transfer_reject`, `bank_pending`, `bank_history`,
+`bank_list_all`, and `stats` — i.e. everything that touches the
+table bank rather than the player's chip stack.
+
+### Why the rework
+
+- **Consistent ledger.** Single source of truth for money
+  movement; no risk of `engine.__member.credits` drifting
+  from `bank.__account` totals.
+- **Phase 2 safety.** The `engine.__member.credits`
+  `NOT NULL DEFAULT 0` migration (tracked in the
+  NULL-credits section's "Phase 2 — schema migration" above)
+  becomes safer once the column is a derived view rather
+  than the writer of record.
+- **Enables real-money features** the current design blocks:
+  table transfers during play, cross-table payouts, audit
+  reconciliation, chargeback flows.
+
+### Why it's a long-term project
+
+- Requires extending `bbsengine6.bank` to model per-member
+  accounts, **or** adding a parallel `bank.__member_account`
+  table mapped to `engine.__member`. Schema decision lives in
+  `bbsengine6/TODO.md` Phase 7.3.
+- Requires a migration of existing `engine.__member.credits`
+  values into the new bank account structure, with backfill
+  and reconciliation.
+- Requires a new transaction-safety layer: every hand must be
+  atomic across member-balance, table-balance, and betlog
+  (currently `dal.bet` writes three places, not in a single
+  transaction; the rework requires one transaction per hand).
+- Requires zoid6-side coordination: the unified router's
+  bank imports (the "Failed to import bank" warning at
+  startup) need to resolve, since the rework makes the bank
+  load-bearing rather than operator-only.
+- Requires updating the door-mode path
+  (`casino.commands.bank`, `casino.services.bank`) and the
+  CLI maintenance commands (`casino.maint`) to use the same
+  bank-mediated flow.
+
+### Tasks (all unchecked; this is a long-term rework)
+
+- [ ] **Discovery.** Enumerate every writer to
+  `engine.__member.credits` in the monorepo. Currently only
+  `casino.dal.bet` (lines 54, 150, 201). Add any new writers
+  to this audit before the rework begins.
+- [ ] **Schema decision.** Per-member accounts in
+  `bbsengine6.bank` (extend the existing package) vs a new
+  `bank.__member_account` table (parallel structure).
+  Cross-references `bbsengine6/TODO.md` Phase 7.3. Decision
+  owner: bbsengine6 maintainers.
+- [ ] **Migration script.** Backfill existing
+  `engine.__member.credits` values into the chosen bank
+  structure. Reconcile against any `bank.__account` rows
+  already mapped to members.
+- [ ] **Transactional `place_bet` / `settle_bet`.** Wrap the
+  three writes (member, table, betlog) in a single
+  transaction. Fail loud on any error; no partial commits.
+  Single transaction per hand.
+- [ ] **Bank-mediated `settle_insurance`.** Replace the
+  direct `UPDATE engine.__member.credits` in
+  `casino.dal.bet.settle_insurance` (line 201) with a
+  `LedgerService.credit` call.
+- [ ] **Door-mode + CLI update.** Update `casino.commands.bank`
+  and `casino.maint` to use the bank-mediated flow.
+- [ ] **Phase 2 prerequisite.** The `engine.__member.credits`
+  `NOT NULL DEFAULT 0` migration (see NULL-credits section
+  above) becomes safe to land only after this rework, since
+  the column will be a derived view rather than the writer
+  of record.
+- [ ] **zoid6 wiring.** Resolve the "Failed to import bank"
+  warning at zoid6 startup. The unified router must load the
+  bank modulepath, since the bank is now load-bearing for
+  all money movement. Cross-references the separate task
+  filed in `zoid6/TODO.md` for the modulepath collision.
+- [ ] **Cross-repo coordination.** File one-line
+  cross-references in `bbsengine6/TODO.md` (schema decision,
+  Phase 7.3), `zoid6/TODO.md` (modulepath), `bed/TODO.md`
+  (auth balance reads), `mistermcfeely/TODO.md` (postoffice
+  / bank account model), `empyre/TODO.md` (note that the
+  separate `coins` column is unaffected). [Casino TODO owns
+  the task list; cross-refs are one-paragraph pointers in
+  the other files.]
+- [ ] **Tests.** Replace the per-hand direct-SQL tests in
+  `casino/tests/test_slots_integration.py`,
+  `casino/tests/test_player_service.py`, and
+  `casino/tests/test_yahtzee_service.py` with bank-mediated
+  tests. Add a reconciliation test that asserts
+  `engine.__member.credits` == `bank.__member_account.balance`
+  for a sample of members.
+
+### Cross-references
+
+- `bbsengine6/TODO.md` Phase 7.3 — schema decision for
+  per-member bank accounts.
+- `zoid6/TODO.md` bank/handler collision entry (line 988)
+  and the separate "Failed to import bank" task filed below.
+- `empyre/TODO.md` — note that empyre's `coins` column is a
+  separate ledger and is unaffected by this rework.
+- `casino/dal/bet.py:54,150,201` — the three direct-SQL
+  writes this rework will replace.
+- `casino/api/handler.py:876` — `BankServiceHandler` that
+  the rework will route through.
