@@ -1,4 +1,45 @@
+# casino project Makefile
+# Two roles:
+#   1) Project-root lifecycle (build, version, install, sdist, clean) - modeled after empyre
+#   2) Test orchestration (test-unit, test-integration, test-phase-N, etc.) - pre-existing
+
+PROJECT = casino
+PYTHON = python3
+
+.PHONY: all build version install sdist clean push
 .PHONY: test test-unit test-integration test-all test-phase-1 test-phase-2 test-phase-3
+.PHONY: test-quick test-file help
+
+all:
+
+# Per-subpackage backup-file cleanup. Recurses into src/, which in turn
+# recurses into src/casino/ and each game subdir (poker, blackjack,
+# yahtzee, tictactoe).
+clean:
+	-rm *~
+	$(MAKE) -C src clean
+
+push:
+	git push
+
+# Empyre-style: writes src/casino/_version.py. pyproject.toml reads
+# version via setuptools dynamic attr `casino._version.__version__`
+# (see [tool.setuptools.dynamic] in pyproject.toml).
+version:
+	@echo '__version__ = "0.0.1.dev'`date +%Y%m%d%H%M`'"' > src/casino/_version.py
+	@echo 'githash = "'`git log -1 --format='%H' 2>/dev/null | cut -c 1-16`'"' >> src/casino/_version.py
+	@echo 'datestamp = "'`date +%Y%m%d%H%M`'"' >> src/casino/_version.py
+
+build: version
+	$(PYTHON) -m build --outdir dist
+
+sdist: version
+	$(PYTHON) -m build --sdist --outdir dist
+
+install:
+	$(PYTHON) -m pip install .
+
+# --- test targets (pre-existing) ---------------------------------------------
 
 # Run unit tests only (fast, no external dependencies)
 test-unit:
@@ -40,6 +81,14 @@ test-file:
 	cd src && python -m pytest casino/tests/$(FILE) -v --tb=short
 
 help:
+	@echo "Available build targets:"
+	@echo "  make build        - Bump version, run python -m build into ./dist"
+	@echo "  make version      - Rewrite src/casino/_version.py from git + date"
+	@echo "  make sdist        - Build sdist only into ./dist"
+	@echo "  make install      - pip install . in current env"
+	@echo "  make clean        - Remove ~ backups and recurse into src/"
+	@echo "  make push         - git push"
+	@echo ""
 	@echo "Available test targets:"
 	@echo "  make test-unit        - Run unit tests only (fast)"
 	@echo "  make test-integration - Run integration tests (requires BED)"
