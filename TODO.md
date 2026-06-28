@@ -2052,3 +2052,290 @@ References (US):
 - [ ] "Online gambling" — Wikipedia (US section; UIGEA, Wire Act, and US online-gambling overview)
   https://en.wikipedia.org/wiki/Online_gambling
 
+---
+
+## `casino/dal/player.py:92` crashes on `NULL` credits
+
+### Problem
+
+`casino/src/casino/dal/player.py:92` reads a member's balance as:
+
+```python
+return int(row["credits"]) if row else 0
+```
+
+`row["credits"]` is `None` whenever `engine.__member.credits`
+is `NULL` (the default for any new member row), which makes
+the `int(None)` call raise:
+
+```
+TypeError: int() argument must be a string, a bytes-like object or
+a real number, not 'NoneType'
+```
+
+The exception propagates out of `PlayerService.authenticate`
+(`casino/src/casino/services/player.py:51`) and surfaces to
+the BED client as:
+
+```json
+{"type": "error", "code": "service_error",
+ "message": "int() argument must be a string, a bytes-like object
+              or a real number, not 'NoneType'"}
+```
+
+**Net effect:** every member in the database who has never
+had a credit transaction crashes on `auth`. That includes
+every freshly-created test user — `alice`, `bob`, `jam`,
+`socrates_test_user`, `vulcan_test_user`,
+`teos_integration_test_user`, etc. in the `zoid6test`
+database. A working casino bring-up therefore requires a
+one-time `UPDATE engine.__member SET credits = 1000 WHERE
+credits IS NULL` (or equivalent) before any client can log
+in. The smoke test on 2026-06-28 hit this; the workaround
+is documented in the chat history.
+
+The bug surfaced during the bed+casino bring-up against
+`zoid6test`. The `engine.__member.credits` column is
+`numeric(10,0)`, nullable, no default. The DAL assumes
+non-NULL.
+
+### Why this matters
+
+- **Production breakage.** Any new member who hasn't
+  received a credit transaction yet will fail `auth` with
+  a `service_error`. The user sees a Python traceback
+  message, not a friendly "balance unavailable" — this
+  leaks internal implementation details to clients.
+- **Test setup fragility.** The smoke test
+  (`/tmp/bed-logs/smoke.py`) and any future integration
+  test against a fresh database has to remember to seed
+  `credits`. The fix is one line of SQL or one line of
+  Python; whichever lands, the workaround should not
+  exist in user-facing docs.
+- **The pattern is repeated.** Other DAL reads in casino
+  (e.g. `casino/src/casino/dal/table.py`, `dal/bank.py`)
+  may have the same `int(row["x"])` shape. None of those
+  are reported broken today, but the audit below is worth
+  doing once.
+
+### Fix options
+
+#### Option A — Python-side null-safe coercion (one-line)
+
+Change
+`casino/src/casino/dal/player.py:92` from
+
+```python
+return int(row["credits"]) if row else 0
+```
+
+to
+
+```python
+return int(row["credits"]) if row and row["credits"] is not None else 0
+```
+
+(or `int(row["credits"] or 0)`, which is shorter and
+equivalent for `numeric` columns that round-trip as
+`Decimal` or `int` — `None` and `0` are the only falsy
+values).
+
+- **Pros:** Tiny diff. No schema change. Stays close to the
+  existing logic. Existing callers see `0` for a new
+  member, which is the safe default.
+- **Cons:** Pushes the null-handling into every DAL call
+  site individually. Future column reads could reintroduce
+  the same bug.
+
+#### Option B — SQL-side `COALESCE` (one-line at the SELECT)
+
+Change the SELECT in
+`casino/src/casino/dal/player.py:80-90` from
+`SELECT credits FROM engine.__member WHERE moniker = %s`
+to
+`SELECT COALESCE(credits, 0) AS credits FROM engine.__member WHERE moniker = %s`. The Python side becomes
+`return int(row["credits"]) if row else 0` again, and
+`None` is never seen by the application.
+
+- **Pros:** Same diff size as A. The fix lives at the
+  data-shape boundary, which is the right layer. Other
+  DAL readers can adopt the same `COALESCE(..., 0)` pattern
+  for their `numeric` columns.
+- **Cons:** A future `credits` column that legitimately
+  could be NULL (e.g. "balance not yet computed") would
+  silently become `0`. For `numeric(10,0)` balance columns
+  this is fine; for nullable "amount" or "rate" columns
+  the pattern is wrong.
+
+#### Option C — schema-side `NOT NULL DEFAULT 0` migration
+
+Add a migration that runs
+`ALTER TABLE engine.__member ALTER COLUMN credits SET DEFAULT 0, ALTER COLUMN credits SET NOT NULL`
+and backfill existing rows. The DAL code stays as-is.
+
+- **Pros:** Fixes the bug at the data layer; no
+  application-side null handling needed. Future inserts
+  without an explicit `credits` value get `0`.
+- **Cons:** Cross-schema migration; affects every consumer
+  of `engine.__member.credits` (bbsengine6 bank service,
+  zoid6, empyre, murdermotel, mistermcfeely, casino).
+  Not all of those want `NOT NULL` — empyre's player
+  `coins` is nullable on purpose (player can have 0 coins
+  is the default, but the schema was written before the
+  convention was standardized). The risk of cascading
+  breakage is non-trivial.
+
+### Recommendation: A + C, phased
+
+Phased approach: ship A in the casino repo this week (no
+coordination, fixes the immediate crash), land C in a
+follow-up bbsengine6-flavored PR (permanent fix at the
+schema layer). A and C are complementary, not alternatives.
+
+**Phase 1 — casino-only, ships now (Option A):**
+
+Read-site null check at `casino/src/casino/dal/player.py:92`.
+Smallest possible diff; no SQL change; no schema migration;
+no cross-repo coordination. The fix is local to the
+function that crashes; the underlying nullable column
+stays nullable, so this is a bandage.
+
+The schema for `engine.__member.credits` is `numeric(10,0)`
+nullable with no default — a NULL row remains NULL after the
+read. Phase 1 fixes the crash, not the data shape.
+
+**Phase 2 — bbsengine6 follow-up (Option C):**
+
+Schema migration to `NOT NULL DEFAULT 0` on
+`engine.__member.credits`, with a backfill of existing NULL
+rows. Once C lands and is deployed, the Option-A read-site
+check in `get_player_balance` becomes dead code and can be
+reverted. This is the permanent fix; see "Phase 2 — schema
+migration" below for the detailed plan.
+
+**Why not Option B (SQL `COALESCE`) alone:** Option B's
+`COALESCE(..., 0)` pattern is the right convention for
+nullable balance reads, and `bbsengine6.bank.account` does
+use it. But applying B to `get_player_balance` would leave
+the underlying column nullable, and other consumers of
+`engine.__member.credits` (zoid6, empyre, murdermotel,
+mistermcfeely) would still see NULL. Option A is the same
+one-line diff and keeps the fix in the function that
+crashes; once C lands, both A's defensive check and B's
+COALESCE become unnecessary.
+
+### Tasks
+
+- [X] **Apply Option A to `casino/src/casino/dal/player.py:81-94`**.
+  Read-site check: `if row and row["credits"] is not None:
+  return int(row["credits"]); return 0`. SQL unchanged.
+- [X] **Audit other `int(row["…"])` call sites in casino**:
+  - `grep -rn "int(row\[" casino/src/casino/dal/`
+  - See "Audit results" below for the per-site decisions.
+- [X] **Remove the workaround** from the bring-up notes:
+  the `UPDATE engine.__member SET credits = 1000 WHERE credits IS NULL`
+  step documented in the 2026-06-28 chat history is no
+  longer needed once the DAL is fixed. The smoke test
+  comment block at `/tmp/bed-logs/smoke.py` has been
+  updated to point at this fix.
+- [X] **Add a regression test** in
+  `casino/src/casino/tests/test_player_service.py` (new
+  file): insert a member with `credits=NULL`, call
+  `PlayerService.authenticate`, assert the call returns
+  `balance=0` and does not raise. Also asserts the DAL
+  read does not backfill NULL to 0 (Phase 1 is a read
+  fix; the column stays nullable until C).
+- [X] **Update the smoke test** at `/tmp/bed-logs/smoke.py`
+  comment block — drop the `psql -c "update engine.__member set credits=1000 where credits is null"`
+  line; it's not needed anymore.
+
+### Audit results
+
+`grep -rn "int(row\[" casino/src/casino/dal/` returned 5
+matches across 4 files. Decisions per site:
+
+| File:Line | Column | Schema | Decision | Notes |
+|---|---|---|---|---|
+| `dal/player.py:93` | `engine.__member.credits` | `numeric(10,0)`, nullable, no default | A (read-site check) | **The original bug.** Fixed. |
+| `dal/bet.py:45` | `engine.__member.credits` | same column as above | A (read-site check) | Same column, same bug class. Reading the column for a balance check before deducting. Fixed in the same pass. |
+| `dal/slots.py:39` | `casino.__slot_spin.id` | `SERIAL PRIMARY KEY` (NOT NULL) | leave-as-is | Defensive coercion only — `int(row["id"])` on a NOT NULL column cannot raise. No change. |
+| `dal/bet.py:177` | `casino.__betlog.attrs->'insurance'` (jsonb) | jsonb value, present only when `set_insurance` was called | leave-as-is | Already guarded by `if row and row["insurance"]: return int(...); return 0`. The `if row["insurance"]` is truthy on `None`, `0`, and missing key, so the int cast is safe. No change. |
+| `dal/table.py:189` | `casino.__table.minimumbet` | `numeric(10,0) default 100`, nullable | leave-as-is | Already guarded by `int(row["minimumbet"]) if row["minimumbet"] else 0`. The truthy check covers `None` and `0`. No change. |
+| `dal/table.py:190` | `casino.__table.maximumbet` | `numeric(10,0) default 100`, nullable | leave-as-is | Same shape as `minimumbet`. No change. |
+
+**Decision criteria:**
+- **A (read-site `is not None` check):** column is nullable
+  `numeric`, `None` should mean `0`, the existing code path
+  has no null guard. Applied at `dal/player.py:92` and
+  `dal/bet.py:45`.
+- **Leave-as-is:** column is `NOT NULL`, or the column is
+  nullable but the existing truthy check (`if row["x"]`)
+  already handles `None` correctly.
+
+**Note on `dal/table.py:189-190`:** the existing
+`int(row["x"]) if row["x"] else 0` shape is functionally
+equivalent to a `is not None` check for `numeric` columns
+(`None` and `0` are both falsy). The explicit form is left
+in place to avoid a noisy diff; a follow-up could normalize
+all three sites to the same shape if desired.
+
+### Phase 2 — schema migration (Option C)
+
+**Cross-repo follow-up.** Landed in `bbsengine6` (or
+wherever `engine.__member` is owned), not casino. Tracked
+here so the work isn't lost between repos.
+
+**Tasks:**
+
+- [ ] **Cross-consumer audit.** Enumerate every consumer of
+  `engine.__member.credits` across the monorepo
+  (bbsengine6.bank.account, zoid6, empyre, murdermotel,
+  mistermcfeely, casino). For each, confirm the migration
+  is safe — i.e. no consumer relies on the column being
+  nullable. (The TODO note about empyre's `coins` column
+  being intentionally nullable refers to a different
+  column; the `credits` column is the one in scope here.)
+- [ ] **Write the migration in `bbsengine6/sql/`.** Three
+  statements, in this order:
+  ```sql
+  UPDATE engine.__member SET credits = 0 WHERE credits IS NULL;
+  ALTER TABLE engine.__member ALTER COLUMN credits SET DEFAULT 0;
+  ALTER TABLE engine.__member ALTER COLUMN credits SET NOT NULL;
+  ```
+  Order matters: backfill first (cheap), then default
+  (no rewrite if PG version is recent enough), then NOT
+  NULL (fast because the backfill already cleared all
+  NULLs).
+- [ ] **Coordinate with the maintainers of the other
+  consumers.** At minimum, file an issue in each
+  affected repo linking to the migration PR so the
+  consumer can adopt the new invariant.
+- [ ] **Simplify `get_player_balance` in casino.** Once C
+  is deployed, the `is not None` check in
+  `dal/player.py:92` becomes dead code. Revert to
+  `return int(row["credits"]) if row else 0`. The
+  regression test in
+  `casino/src/casino/tests/test_player_service.py` stays
+  — it now serves as a guard against re-introducing the
+  nullable column.
+- [ ] **Add a schema-invariant test.** A test that
+  queries `information_schema.columns` and asserts
+  `engine.__member.credits` has `is_nullable='NO'` and
+  `column_default='0'`. Catches the case where the
+  casino suite runs against an un-migrated database.
+
+### Cross-references
+
+- `casino/src/casino/dal/player.py:80-92` — the buggy
+  `get_player_balance` function.
+- `casino/src/casino/services/player.py:51` — the
+  `authenticate` call that surfaces the error to clients.
+- `bbsengine6/py/src/bbsengine6/bank/account.py` — the
+  reference `COALESCE(..., 0)` pattern already in use by
+  the bank service.
+- `zoid6/TODO.md` "data/bed.json — bank and channel
+  modulepaths do not resolve" — related cleanup, the
+  casino `BankServiceHandler` may defer to
+  `bbsengine6.bank.api.handler` once the bank work lands.
+
+---

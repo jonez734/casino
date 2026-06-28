@@ -89,7 +89,9 @@ def get_player_balance(args: Any, moniker: str) -> int:
                 )
             )
             row = cur.fetchone()
-            return int(row["credits"]) if row else 0
+            if row and row["credits"] is not None:
+                return int(row["credits"])
+            return 0
 
 
 def update_player_lastplayed(args: Any, moniker: str) -> None:

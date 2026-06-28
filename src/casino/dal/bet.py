@@ -42,7 +42,10 @@ def place_bet(
             if not row:
                 raise ValueError("Player not found")
             
-            balance = int(row["credits"])
+            if row["credits"] is None:
+                balance = 0
+            else:
+                balance = int(row["credits"])
             if balance < amount:
                 raise ValueError("Insufficient funds")
             
