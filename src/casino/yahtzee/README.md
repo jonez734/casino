@@ -119,6 +119,6 @@ existing WebSocket transport.
 - Door-mode `play.py` (deleted; v1 is BED-only).
 - Top-level `Y` menu shortcut in `main.py` (removed; players
   reach yahtzee via the existing `Create` + `Join` flow).
-- `cmd_yahtzee_quick_play()` helper in `connect.py` for the
+- `cmd_yahtzee_quick_play()` helper in `client/casino_client.py` for the
   BBS-side client (a future commit can wrap the BED messages
   for door-mode use).

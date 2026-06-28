@@ -796,7 +796,7 @@ Replace each `inputchoice()` call with `inputstring()` + `ActionInputHandler`:
 ### Example Pattern
 
 ```python
-from casino.connect import ActionInputHandler
+from casino.client import ActionInputHandler
 
 handler = ActionInputHandler([
     {"action": "bet", "hotkey": "", "label": "Bet"},

@@ -7,7 +7,7 @@ from bbsengine6 import io, util, member, database, session
 
 from . import lib
 from . import _version
-from . import connect
+from . import auth
 
 
 def parse_module_path(path: str) -> tuple[str, str | None]:
@@ -67,7 +67,7 @@ def main(args: Namespace, **kwargs) -> bool:
         ("B", "Blackjack", "blackjack.play"),
         ("P", "Poker", "poker.play"),
         ("S", "Slots", "slots.play"),
-        ("C", "Connect", "connect"),
+        ("C", "Connect", "auth"),
         ("L", "List tables", "table.list"),
         ("J", "Join table", "table.join"),
         ("V", "View table", "table.view"),
@@ -79,7 +79,7 @@ def main(args: Namespace, **kwargs) -> bool:
         ("P", "Play", "game.play"),
         ("G", "Global msg", "chat.global"),
         ("K", "Bank", "bank"),
-        ("X", "Disconnect", "connect.disconnect"),
+        ("X", "Disconnect", "auth.disconnect"),
         ("M", "Maintenance", "maint.main"),
     )
 
@@ -96,7 +96,7 @@ def main(args: Namespace, **kwargs) -> bool:
     io.echo(f"casino.main.400: {args=} {kwargs=}")
     util.heading("casino")
 
-    connect.init_remote_client_screen()
+    auth.init_remote_client_screen()
 
     io.echo(
         f"database: {args.databasename} host: {args.databasehost}:{args.databaseport}",
@@ -162,8 +162,8 @@ def main(args: Namespace, **kwargs) -> bool:
 
                     if ch == "Q" or ch == "X":
                         if remote_client is not None:
-                            connect.disconnect(args, client=remote_client)
-                            connect.cleanup_remote_client_screen()
+                            auth.disconnect(args, client=remote_client)
+                            auth.cleanup_remote_client_screen()
                         io.echo(":door: {optioncolor}Q{labelcolor} -- quit game{/all}")
                         done = True
                         break
@@ -186,9 +186,12 @@ def main(args: Namespace, **kwargs) -> bool:
                             if subcommand is not None:
                                 run_kwargs["subcommand"] = subcommand
 
-                            res = lib.runmodule(args, module, prefix="casino.commands", **run_kwargs)
+                            if module == "auth" and subcommand is None:
+                                res = auth.connect(args, **run_kwargs)
+                            else:
+                                res = lib.runmodule(args, module, prefix="casino.commands", **run_kwargs)
 
-                            if module == "connect" and subcommand is None:
+                            if module == "auth" and subcommand is None:
                                 remote_client = res
                             elif res is not True:
                                 io.echo(

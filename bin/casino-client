@@ -1,0 +1,2 @@
+#!/bin/sh
+python -W all -m "casino.client" "$@"

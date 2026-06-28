@@ -7,7 +7,7 @@ from bbsengine6 import io
 
 
 def get_client():
-    from casino.connect import get_client as _get_client
+    from casino.client import get_client as _get_client
 
     return _get_client()
 
@@ -93,7 +93,7 @@ def play(args, client=None, **kwargs) -> bool:
         io.echo("No actions available. Join a table first.")
         return False
 
-    from casino.connect import ActionInputHandler
+    from casino.client import ActionInputHandler
 
     handler = ActionInputHandler(
         [{"action": a, "hotkey": "", "label": a} for a in actions]

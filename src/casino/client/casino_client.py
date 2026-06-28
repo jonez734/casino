@@ -1,147 +1,28 @@
-#!/usr/bin/env python3
-# casino/connect.py
-# Remote casino server connection via WebSocket
+# casino/client/casino_client.py
+# CasinoClient: WebSocket-based terminal client for the BED casino server.
 
 from __future__ import annotations
 
 import argparse
 import asyncio
 import json
-import sys
+from typing import TYPE_CHECKING, Callable
 
 import websockets
+from bbsengine6 import io, util
 
-from bbsengine6 import io, util, member
-from bbsengine6.io.inputstring import Completer
-
-
-_clients: dict[str, "CasinoClient"] = {}
-_current_moniker: str | None = None
-
-
-def get_client(moniker: str | None = None) -> "CasinoClient" | None:
-    """Get a client by moniker, or the current moniker if None."""
-    if moniker is None:
-        moniker = _current_moniker
-    return _clients.get(moniker)
-
-
-def get_current_moniker() -> str | None:
-    """Get the current active moniker."""
-    return _current_moniker
-
-
-def set_current_moniker(moniker: str | None) -> None:
-    """Set the current active moniker."""
-    global _current_moniker
-    _current_moniker = moniker
-
-
-def _casino_table_fragment(**kwargs) -> str:
-    """Fragment showing current table info for remote client."""
-    client = get_client()
-    if client is None or client.current_table_moniker is None:
-        return ""
-    return f"{client.current_table_moniker} ({client.current_table_game_type}) players: {client.current_table_players}"
-
-
-def init_remote_client_screen() -> None:
-    """Initialize screen and register fragments for remote client."""
-    from bbsengine6 import io as bbsio
-
-    bbsio.screen.init()
-    from bbsengine6 import screen as bbs_screen
-
-    bbs_screen.register_bottombar_fragment(_casino_table_fragment)
-
-
-def cleanup_remote_client_screen() -> None:
-    """Unregister fragments on disconnect."""
-    from bbsengine6 import screen
-
-    screen.unregister_bottombar_fragment(_casino_table_fragment)
-
-
-def resolve_action(input_str: str, actions: list[dict]) -> str | None:
-    """Resolve user input to action, handling ambiguous matches.
-
-    Args:
-        input_str: User input (hotkey prefix or action name)
-        actions: List of action dicts with 'action', 'label', 'hotkey' keys
-
-    Returns:
-        Action name if unambiguous, None if no match,
-        Raises ValueError if ambiguous (multiple matches)
-    """
-    if not input_str:
-        return None
-
-    input_lower = input_str.lower()
-
-    # First check exact hotkey match
-    for action in actions:
-        if action.get("hotkey", "").lower() == input_lower:
-            return action["action"]
-
-    # Then check prefix match on action names
-    matches = [a for a in actions if a["action"].lower().startswith(input_lower)]
-
-    if len(matches) == 0:
-        return None
-
-    if len(matches) == 1:
-        return matches[0]["action"]
-
-    # Multiple matches - raise error with action names
-    options = ", ".join([a["action"] for a in matches])
-    raise ValueError(f"Which actions? {options}")
-
-
-class ActionInputHandler(Completer):
-    """Handler for action input with tab completion support."""
-
-    def __init__(self, actions: list[dict]):
-        super().__init__()
-        self.actions = actions
-        self.action_map = {}
-        for a in actions:
-            self.action_map[a.get("hotkey", "").lower()] = a["action"]
-            self.action_map[a["action"].lower()] = a["action"]
-
-    def resolve(self, input_str: str) -> str | None:
-        """Resolve input to action name."""
-        return resolve_action(input_str, self.actions)
-
-    def get_matches(self, prefix: str, **kwargs) -> list[str]:
-        """Return list of possible completions for the prefix.
-
-        Matches against both action names and hotkeys.
-        """
-        if not prefix:
-            return [a["action"] for a in self.actions]
-
-        prefix_lower = prefix.lower()
-        matches = []
-
-        for a in self.actions:
-            if a["action"].lower().startswith(prefix_lower):
-                matches.append(a["action"])
-            elif a.get("hotkey", "").lower() == prefix_lower:
-                matches.append(a["action"])
-
-        return sorted(set(matches))
-
-    def get_completer(self) -> "ActionInputHandler":
-        """Return self for use as completer with inputstring."""
-        return self
+if TYPE_CHECKING:
+    from bbsengine6 import WebSocketClientProtocol
 
 
 class CasinoClient:
     """Terminal client for casino system."""
 
+    auth_prompt: Callable | None = None
+
     def __init__(self, args: argparse.Namespace):
         self.args = args
-        self.ws: websockets.WebSocketClientProtocol | None = None
+        self.ws: WebSocketClientProtocol | None = None
         self.connected = False
         self.authenticated = False
         self.moniker = ""
@@ -345,23 +226,19 @@ class CasinoClient:
         if available_actions:
             io.echo(f"Actions: {', '.join(available_actions)}.{{f6}}")
 
-    def cmd_auth(self) -> None:
-        """Handle auth command."""
-        moniker = io.inputstring("{var:promptcolor}Moniker: {var:inputcolor}", None, None)
+    async def cmd_auth(self) -> bool:
+        """Handle auth command.
 
-        password = ""
-        if member.has_password(self.args, moniker):
-            password = util.inputpassword("Password: ")
+        Resolves the auth prompt at call time:
+            1. self.auth_prompt (class or instance attribute), or
+            2. casino.auth.auth_prompt (the module-level default).
 
-        self._loop.run_until_complete(
-            self.send(
-                {
-                    "type": "auth",
-                    "moniker": moniker,
-                    "password": password,
-                }
-            )
-        )
+        Returns:
+            True if the prompt completed, False if the user aborted.
+        """
+        from .. import auth
+        prompt = self.auth_prompt or auth.auth_prompt
+        return await prompt(self.args, self)
 
     def cmd_list_tables(self) -> None:
         """Handle list_tables command."""
@@ -370,8 +247,8 @@ class CasinoClient:
     def cmd_create_table(self) -> None:
         """Handle create_table command."""
         game_type = io.inputchoice(
-            "{var:promptcolor}Game type: {var:optioncolor}[blackjack,poker,slots,yahtzee]{var:promptcolor}: {var:inputcolor}",
-            "blackjack,poker,slots,yahtzee",
+            "{var:promptcolor}Game type: {var:optioncolor}[blackjack,poker,slots,yahtzee,tictactoe]{var:promptcolor}: {var:inputcolor}",
+            "blackjack,poker,slots,yahtzee,tictactoe",
             default="blackjack",
         )
         min_bet = io.inputinteger("{var:promptcolor}Min bet: {var:inputcolor}", default=10)
@@ -448,6 +325,52 @@ class CasinoClient:
                     "amount": amount,
                 }
             )
+        )
+
+    def cmd_tictactoe_quick_play(self) -> None:
+        """Door-mode helper for tictactoe_quick_play. Prompts for mode
+        and sends the BED message. Mode 0 = 2 AI (demo), 1 = human vs
+        AI, 2 = 2 humans (requires a second player to send
+        tictactoe_join)."""
+        mode = io.inputinteger(
+            "{var:promptcolor}Mode [0=2AI, 1=1P+1AI, 2=2P]: {var:inputcolor}",
+            default=1,
+        )
+        if mode not in (0, 1, 2):
+            io.echo("{errorcolor}mode must be 0, 1, or 2{/all}", level="error")
+            return
+        self._loop.run_until_complete(
+            self.send(
+                {
+                    "type": "tictactoe_quick_play",
+                    "mode": int(mode),
+                }
+            )
+        )
+
+    def cmd_tictactoe_move(self) -> None:
+        """Door-mode helper for tictactoe_move. Prompts for a cell
+        index 0-8."""
+        cell = io.inputinteger("{var:promptcolor}Cell [0-8]: {var:inputcolor}")
+        self._loop.run_until_complete(
+            self.send(
+                {
+                    "type": "tictactoe_move",
+                    "cell": int(cell),
+                }
+            )
+        )
+
+    def cmd_tictactoe_join(self) -> None:
+        """Door-mode helper for tictactoe_join (mode 2: take the O seat)."""
+        self._loop.run_until_complete(
+            self.send({"type": "tictactoe_join"})
+        )
+
+    def cmd_tictactoe_resign(self) -> None:
+        """Door-mode helper for tictactoe_resign."""
+        self._loop.run_until_complete(
+            self.send({"type": "tictactoe_resign"})
         )
 
     def cmd_chat(self) -> None:
@@ -644,15 +567,15 @@ class CasinoClient:
 
         self._receive_task = self._loop.create_task(self.receive_loop())
 
-        self.cmd_auth()
+        self._loop.run_until_complete(self.cmd_auth())
         self._loop.run_until_complete(asyncio.sleep(0.5))
 
         while self.connected and self.authenticated:
             cmd = io.inputchoice(
                 f"{{var:promptcolor}}[{self.moniker}] Balance: {self.balance}"
                 + (f" Table: {self.current_table}" if self.current_table else "")
-                + f"{{var:optioncolor}}[T]ables  [C]reate  [U]pdate  [J]oin  [L]eave  [B]et  [H]it  [S]tand  [M]sg  [K]  [Q]uit{{var:promptcolor}}: {{var:inputcolor}}",
-                "t,c,u,j,l,b,h,s,m,k,q",
+                + "{{var:optioncolor}}[T]ables  [C]reate  [U]pdate  [J]oin  [L]eave  [B]et  [H]it  [S]tand  [M]sg  [K]  [X]TicTac  [V]Move  [N]JoinT  [G]Resign  [Q]uit{{var:promptcolor}}: {{var:inputcolor}}",
+                "t,c,u,j,l,b,h,s,m,k,x,v,n,g,q",
                 default="q",
             )
 
@@ -679,6 +602,14 @@ class CasinoClient:
                     self.cmd_chat()
             elif cmd == "K":
                 self.cmd_bank_menu()
+            elif cmd == "X":
+                self.cmd_tictactoe_quick_play()
+            elif cmd == "V":
+                self.cmd_tictactoe_move()
+            elif cmd == "N":
+                self.cmd_tictactoe_join()
+            elif cmd == "G":
+                self.cmd_tictactoe_resign()
             elif cmd == "Q":
                 break
 
@@ -686,92 +617,3 @@ class CasinoClient:
 
         self._loop.run_until_complete(self.disconnect())
         self._loop.close()
-
-
-def init(args, **kwargs):
-    """BBS module init."""
-    return True
-
-
-def access(args, op: str, **kwargs):
-    """BBS module access check."""
-    return True
-
-
-def buildargs(args, **kwargs) -> argparse.ArgumentParser | None:
-    """BBS module buildargs."""
-    return None
-
-
-def connect(args, **kwargs) -> "CasinoClient" | None:
-    """Entry point - connect to server and authenticate."""
-    global _current_moniker
-
-    util.heading("connect to server")
-    host = getattr(args, "host", "127.0.0.1")
-    port = getattr(args, "port", 8765)
-    io.echo(f"Connecting to {host}:{port}...")
-
-    client = CasinoClient(args)
-    client._loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(client._loop)
-
-    if not client._loop.run_until_complete(client.connect()):
-        client._loop.close()
-        io.echo("Failed to connect", level="error")
-        return None
-
-    client._receive_task = client._loop.create_task(client.receive_loop())
-
-    moniker = io.inputstring("{var:promptcolor}Moniker: {var:inputcolor}", None, None)
-    password = ""
-    if member.has_password(args, moniker):
-        password = util.inputpassword("Password: ")
-
-    client._loop.run_until_complete(
-        client.send(
-            {
-                "type": "auth",
-                "moniker": moniker,
-                "password": password,
-            }
-        )
-    )
-    client._loop.run_until_complete(asyncio.sleep(0.5))
-
-    if not client.authenticated:
-        client._loop.run_until_complete(client.disconnect())
-        client._loop.close()
-        io.echo("Authentication failed", level="error")
-        return None
-
-    _clients[client.moniker] = client
-    _current_moniker = client.moniker
-    io.echo(f"Connected as {client.moniker}, balance: {client.balance}")
-    return client
-
-
-def disconnect(args, client: "CasinoClient" | None = None, **kwargs) -> bool:
-    """Disconnect from server."""
-    global _current_moniker
-
-    client = client or get_client()
-    if client is None:
-        io.echo("Not connected.", level="error")
-        return False
-
-    client._loop.run_until_complete(client.disconnect())
-    client._loop.close()
-
-    if client.moniker in _clients:
-        del _clients[client.moniker]
-    if _current_moniker == client.moniker:
-        _current_moniker = None
-
-    io.echo("Disconnected.")
-    return True
-
-
-def main(args, **kwargs) -> bool:
-    """BBS module entry point."""
-    return connect(args, **kwargs)

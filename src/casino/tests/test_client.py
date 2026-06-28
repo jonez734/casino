@@ -56,7 +56,7 @@ class TestClientMenuFlow(unittest.TestCase):
 
     def test_casino_client_can_be_instantiated(self):
         """Test that CasinoClient can be instantiated."""
-        from casino.connect import CasinoClient
+        from casino.client import CasinoClient
 
         args = argparse.Namespace(casino_host="localhost", casino_port=8765)
         client = CasinoClient(args)
@@ -69,7 +69,7 @@ class TestClientMenuFlow(unittest.TestCase):
 
     def test_casino_client_initial_state(self):
         """Test CasinoClient initial state."""
-        from casino.connect import CasinoClient
+        from casino.client import CasinoClient
 
         args = argparse.Namespace(host="localhost", port=8765)
         client = CasinoClient(args)
@@ -81,7 +81,7 @@ class TestClientMenuFlow(unittest.TestCase):
 
     def test_casino_client_play_function_has_defaults(self):
         """Test that play function has default host/port."""
-        from casino import connect
+        from casino import auth
 
         args = argparse.Namespace()
         host = getattr(args, "casino_host", "localhost")
@@ -96,7 +96,7 @@ class TestClientServerIO(unittest.TestCase):
 
     def test_auth_message_format(self):
         """Test that auth message is properly formatted."""
-        from casino.connect import CasinoClient
+        from casino.client import CasinoClient
 
         args = argparse.Namespace(casino_host="localhost", casino_port=8765)
         client = CasinoClient(args)
@@ -351,7 +351,7 @@ class TestCasinoMenuDisplay(unittest.TestCase):
             ("P", "Play", "game.play"),
             ("G", "Global msg", "chat.global"),
             ("K", "Bank", "bank"),
-            ("X", "Disconnect", "connect.disconnect"),
+            ("X", "Disconnect", "auth.disconnect"),
             ("M", "Maintenance", "maint.main"),
         )
 
@@ -387,7 +387,7 @@ class TestCasinoMenuDisplay(unittest.TestCase):
                 ("H", "Hit", "game.hit"),
                 ("T", "Stand", "game.stand"),
                 ("A", "Bet", "game.bet"),
-                ("X", "Disconnect", "connect.disconnect"),
+                ("X", "Disconnect", "auth.disconnect"),
             )
 
             for o in options:

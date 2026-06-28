@@ -13,7 +13,7 @@ class TestActionInputHandler(unittest.TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
-        from casino.connect import ActionInputHandler
+        from casino.client import ActionInputHandler
 
         self.actions = [
             {"action": "bet", "label": "Bet", "hotkey": "b"},
@@ -113,7 +113,7 @@ class TestActionInputHandler(unittest.TestCase):
 
     def test_multiple_actions_starting_same_letter(self):
         """Test actions with same starting letter."""
-        from casino.connect import ActionInputHandler
+        from casino.client import ActionInputHandler
         actions = [
             {"action": "check", "label": "Check", "hotkey": "c"},
             {"action": "call", "label": "Call", "hotkey": "c"},
@@ -130,7 +130,7 @@ class TestResolveAction(unittest.TestCase):
 
     def test_resolve_action_exact_match(self):
         """Test exact action name match."""
-        from casino.connect import resolve_action
+        from casino.client import resolve_action
 
         actions = [{"action": "bet", "label": "Bet", "hotkey": "b"}]
         result = resolve_action("bet", actions)
@@ -138,7 +138,7 @@ class TestResolveAction(unittest.TestCase):
 
     def test_resolve_action_hotkey_match(self):
         """Test hotkey match."""
-        from casino.connect import resolve_action
+        from casino.client import resolve_action
 
         actions = [{"action": "bet", "label": "Bet", "hotkey": "b"}]
         result = resolve_action("b", actions)
@@ -146,7 +146,7 @@ class TestResolveAction(unittest.TestCase):
 
     def test_resolve_action_ambiguous(self):
         """Test ambiguous match raises ValueError."""
-        from casino.connect import resolve_action
+        from casino.client import resolve_action
 
         actions = [
             {"action": "check", "label": "Check", "hotkey": "k"},
@@ -162,7 +162,7 @@ class TestCompleterInterface(unittest.TestCase):
 
     def test_is_callable(self):
         """Test that handler is callable for inputstring."""
-        from casino.connect import ActionInputHandler
+        from casino.client import ActionInputHandler
 
         actions = [{"action": "bet", "label": "Bet", "hotkey": "b"}]
         handler = ActionInputHandler(actions)
@@ -170,7 +170,7 @@ class TestCompleterInterface(unittest.TestCase):
 
     def test_accepts_buffer_and_kwargs(self):
         """Test that handler accepts buffer and kwargs like Completer."""
-        from casino.connect import ActionInputHandler
+        from casino.client import ActionInputHandler
 
         actions = [{"action": "bet", "label": "Bet", "hotkey": "b"}]
         handler = ActionInputHandler(actions)

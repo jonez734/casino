@@ -17,6 +17,7 @@ from bbsengine6.message_delivery import send as notify_send, NotificationUrgency
 from casino.dal import player as dal_player
 from casino.dal.aiosql import table as async_dal_table
 from casino.yahtzee.api_handler import YahtzeeServiceHandler
+from casino.tictactoe.api_handler import TictactoeServiceHandler
 
 
 class SessionManager:
@@ -1274,30 +1275,32 @@ class ChannelServiceHandler(BaseService):
 
 class PostofficeServiceHandler(BaseService):
     """Handle postoffice check_mail messages."""
-    
+
     def __init__(self, args: Any, session_manager: SessionManager):
         super().__init__(args, session_manager)
-        from postoffice.service import get_postoffice_service
-        self.postoffice_service = get_postoffice_service()
-    
+        from postoffice.services import get_service
+        self.postoffice_service = get_service()
+        from postoffice.services import check_mail as _check_mail
+        self._check_mail = _check_mail
+
     async def handle_message(
         self, server: Any, websocket: Any, path: str, message: Dict[str, Any]
     ) -> Optional[Dict[str, Any]]:
         msg_type = message.get("type")
-        
+
         if msg_type == "check_mail":
             return await self._handle_check_mail(id(websocket), message)
-        
+
         return None
-    
+
     async def _handle_check_mail(self, session_id: int, message: Dict[str, Any]) -> Dict[str, Any]:
         """Handle manual mail check request."""
         moniker = self.sessions.get_moniker(session_id)
         if not moniker:
             return {"type": "error", "code": "not_authenticated"}
-        
-        result = await self.postoffice_service.handle_check_mail(moniker)
-        
+
+        result = await self._check_mail(moniker=moniker)
+
         return {
             "type": "check_mail_result",
             "success": result["success"],
@@ -1331,6 +1334,7 @@ class MessageRouter:
         self.member_service = MemberServiceHandler(args, self.sessions)
         self.slot_service = SlotServiceHandler(args, self.sessions, self.channel_state)
         self.yahtzee_service_handler = YahtzeeServiceHandler(args, self.sessions)
+        self.tictactoe_service_handler = TictactoeServiceHandler(args, self.sessions)
         
         # Channel service (created in register_all after server is available)
         self.channel_service: Optional[ChannelServiceHandler] = None
@@ -1377,6 +1381,12 @@ class MessageRouter:
         server.register_service(self.yahtzee_service_handler, [
             "yahtzee_quick_play", "yahtzee_roll", "yahtzee_reroll", "yahtzee_score"
         ])
+
+        # Register tictactoe service for board play
+        server.register_service(self.tictactoe_service_handler, [
+            "tictactoe_quick_play", "tictactoe_move",
+            "tictactoe_resign", "tictactoe_join"
+        ])
     
     async def handle_broadcast(
         self, server: Any, websocket: Any, path: str, message: Dict[str, Any]
@@ -1405,6 +1415,10 @@ class MessageRouter:
         table_moniker = self.sessions.get_table_moniker(session_id)
         if table_moniker:
             self.yahtzee_service_handler.finalize_on_disconnect(table_moniker)
+            leaving_moniker = self.sessions.get_moniker(session_id)
+            self.tictactoe_service_handler.finalize_on_disconnect(
+                table_moniker, leaving_moniker
+            )
         # Unsubscribe from all channels
         channel_unsubscribe_all(self.channel_state, session_id)
         self.sessions.unregister_session(session_id)

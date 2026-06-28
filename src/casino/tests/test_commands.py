@@ -235,11 +235,11 @@ class TestMainDispatch(unittest.TestCase):
         self.assertEqual(module, "bank")
         self.assertIsNone(subcommand)
 
-    def test_parse_module_path_connect_disconnect(self):
+    def test_parse_module_path_auth_disconnect(self):
         from casino.main import parse_module_path
 
-        module, subcommand = parse_module_path("connect.disconnect")
-        self.assertEqual(module, "connect")
+        module, subcommand = parse_module_path("auth.disconnect")
+        self.assertEqual(module, "auth")
         self.assertEqual(subcommand, "disconnect")
 
 
@@ -247,7 +247,7 @@ class TestCasinoClientExtensions(unittest.TestCase):
     """Test CasinoClient has required attributes."""
 
     def test_last_available_actions_attribute(self):
-        from casino.connect import CasinoClient
+        from casino.client import CasinoClient
 
         args = MagicMock()
         args.casino_host = "localhost"

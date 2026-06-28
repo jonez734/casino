@@ -7,7 +7,7 @@ from bbsengine6 import io
 
 
 def get_client():
-    from casino.connect import get_client as _get_client
+    from casino.client import get_client as _get_client
 
     return _get_client()
 
