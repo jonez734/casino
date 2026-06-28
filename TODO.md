@@ -4,6 +4,48 @@
 
 - [ ] See `bed/TODO.md` "Bearer token" — adopt `bed.api.auth.AuthService` for BED-mode authentication and reconnect. Replaces per-game `auth` implementations. Casino benefits strongly: lobby browsing, spectator mode, multi-table clients, bot accounts.
 
+## Adopt `bed.client` for WebSocket transport
+
+- [ ] See `bed/src/bed/client/` (new subpackage) and the plan discussed
+      in the empyre refactor: `BedConnection`, `BedUnavailable`,
+      `probe_bed`, `get_bed_connection`, `reset_bed_connection` are now
+      importable from `bed.client`. Empyre's `empyre.bed_client` is a
+      re-export shim.
+- [ ] Replace the raw `websockets.connect` / `self.ws.send(json.dumps(...))`
+      / `self.ws.recv()` calls in `casino/src/casino/connect.py`
+      (`CasinoClient.__init__/connect/send/receive`, lines 142-209) with
+      a `bed.client.BedConnection` instance. `connect()` should call
+      `probe_bed()` instead of opening the socket eagerly; the actual
+      WebSocket is opened lazily on the first `send`, matching empyre.
+- [ ] Add `BedConnection.recv()` to `bed/src/bed/client/connection.py`
+      (request-id correlation in `send` is unaffected; `recv()` is a
+      plain `await ws.recv()` for server-pushed messages like chat and
+      `game_state`). Use it from `CasinoClient.receive_loop`.
+- [ ] Add `casino/src/casino/services/bank_client.py` with a
+      `BedBankClient` that **subclasses
+      `bed.client.messages.BedMessageClient`**. Methods take
+      `table_moniker` rather than `moniker`; each method translates
+      table→owner-moniker and calls `self._request(...)` once. Use
+      `not_found=` / `default=` from the
+      `BedMessageClient._request` contract (see
+      `bed/TODO.md` "`bed.client.messages` — shared base for
+      per-project message-family clients") for soft-404 semantics
+      where appropriate. This is **not** the same class as
+      `bed.client.bank.BedBankClient` — different wire shape, same
+      base. Wire `casino.services.bank.BankService` to choose
+      between bed and direct DB based on `args.bed_reachable`,
+      mirroring `empyre.services.player.PlayerService`. Add a
+      `CasinoBankUnavailable` exception parallel to
+      `empyre.services.player.PlayerServiceUnavailable`.
+- [ ] Out of scope for this pass: `record_win` / `record_loss` /
+      `approve_transfer` / `reject_transfer` / `list_pending_transfers`
+      in `casino.services.bank.BankService` stay on direct DB until
+      matching bed wire messages exist.
+- [ ] Test files that use raw `websockets.connect` directly
+      (`casino/src/casino/tests/test_*.py`) are intentionally left alone
+      — they exercise the wire protocol, not the client wrapper. Add
+      `casino/tests/test_client_transport.py` separately.
+
 ## BED `Sink` integration with `bbsengine6.io` (cross-project)
 
 - [ ] See `bbsengine6/TODO.md` "`bbsengine6.io` sink infrastructure
