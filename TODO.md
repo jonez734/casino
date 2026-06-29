@@ -917,7 +917,6 @@ No core code changes needed - just install the package.
 ### Missing Features
 
 - [ ] 1. Daemonization - `--foreground` flag exists but daemonization is never implemented
-- [ ] 2. PID file management - `--pidfile` arg exists but is never used
 - [X] 3. Configuration file support - Already implemented via bed.json and config.py
 - [ ] 4. SIGHUP reload - No way to reload config without full restart
 - [ ] 5. Health check endpoint - No /health or /status route
@@ -2519,11 +2518,11 @@ section for the per-repo task list.
 **One casino TODO edit** lands in Step 4a: the
 `## BED (BBS Engine Daemon) Improvements` section item 2
 ("PID file management - `--pidfile` arg exists but is
-never used") at `casino/TODO.md:920` is **deleted
-entirely** (option b in the session plan). The `--pidfile`
-arg is owned by the new `bed` package
-(`bed/src/bed/lib.py:48-51`); the casino-side `bed.py`
-stub is no longer the right home for tracking it. The
+never used") is **deleted entirely** (option b in the
+session plan). The `--pidfile` arg is owned by the new
+`bed` package (`bed/src/bed/lib.py:48-51`); the
+casino-side `bed.py` stub is no longer the right home
+for tracking it. The
 `bed/TODO.md` "## `--pidfile` PID file management" section
 is the single source of truth going forward.
 
@@ -2569,7 +2568,8 @@ When green-lit, the fixes land in this order:
 2. **`zoid6`**: `list_services` handler.
 3. **`zoid6`**: bank/channel JSON fix.
 4. **`casino`**: delete the superseded `--pidfile` entry
-   at `casino/TODO.md:920` (this file; no code change).
+   in the `## BED (BBS Engine Daemon) Improvements`
+   section (this file; no code change).
 5. **`bed`**: add `## \`--pidfile\` PID file management`
    section to `bed/TODO.md`.
 6. **`bed`**: pidfile lifecycle implementation
