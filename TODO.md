@@ -2484,3 +2484,134 @@ table bank rather than the player's chip stack.
   writes this rework will replace.
 - `casino/api/handler.py:876` — `BankServiceHandler` that
   the rework will route through.
+
+---
+
+## Session plan: post-bring-up cleanup (2026-06-28)
+
+The bed+casino bring-up session on 2026-06-28 discovered
+four pre-existing bugs and one missing feature across the
+zoid6, bed, and casino repos. The bring-up used a
+workaround (the casino side worked around the NULL credits
+crash with `UPDATE engine.__member SET credits=1000 WHERE
+credits IS NULL`) that is no longer needed once the
+fixes land. The NULL-credits crash is already fixed in
+`casino/03be20c`; this entry is the index for the
+cross-repo work that remains.
+
+This entry is the consolidated session plan and serves as
+the index for the per-repo implementation tasks. The
+per-repo tasks already exist in the
+`## \`_apply_auth_config\` overwrites CLI \`--bed-secret\`
+with literal \`~\`` and
+`## \`--pidfile\` PID file management` sections in
+`bed/TODO.md`, and the
+`## \`data/bed.json\` — \`bank\` and \`channel\`
+modulepaths do not resolve`,
+`## zoid6 unified router: bank modulepath collision`, and
+`## \`zoid6.api.handler.MessageRouter\` does not register
+\`list_services\`` sections in `zoid6/TODO.md`. Read this
+section for the cross-repo picture; read the per-repo
+section for the per-repo task list.
+
+### Casino-side work in this session
+
+**One casino TODO edit** lands in Step 4a: the
+`## BED (BBS Engine Daemon) Improvements` section item 2
+("PID file management - `--pidfile` arg exists but is
+never used") at `casino/TODO.md:920` is **deleted
+entirely** (option b in the session plan). The `--pidfile`
+arg is owned by the new `bed` package
+(`bed/src/bed/lib.py:48-51`); the casino-side `bed.py`
+stub is no longer the right home for tracking it. The
+`bed/TODO.md` "## `--pidfile` PID file management" section
+is the single source of truth going forward.
+
+**No code change in casino.** This is a doc-only edit.
+
+### Bugs found and status
+
+1. **casino `dal/player.py:92` crashes on `NULL` credits**
+   — **FIXED** in `casino/03be20c casino: read NULL credits
+   as 0 in get_player_balance and place_bet`. The bring-up
+   workaround is no longer needed.
+
+2. **`zoid6/src/zoid6/data/bed.json` `bank` and `channel`
+   `modulepath`s do not resolve** — open. Fix path:
+   `bank.modulepath` → `bbsengine6.bank.api.handler`;
+   `channel.enabled` → `false`. See
+   `zoid6/TODO.md` for tasks.
+
+3. **`bed/src/bed/main.py:101` `_apply_auth_config` tilde
+   bug** — open. Fix path: wrap the JSON value in
+   `os.path.expanduser` at three call sites. See
+   `bed/TODO.md` for tasks.
+
+4. **`zoid6/src/zoid6/api/handler.py:13`
+   `MessageRouter` does not register `list_services`** —
+   open. Fix path: add a `ListServicesService` class,
+   register it first in `MessageRouter.register_all`. See
+   `zoid6/TODO.md` for tasks.
+
+### Missing feature
+
+5. **`bed` `--pidfile` CLI arg exists but is never
+   written** — open. Fix path: write the pidfile at the
+   top of `bed/src/bed/main.py:main_async`, remove it in
+   a `try/finally` around the autorestart loop. See
+   `bed/TODO.md` for tasks.
+
+### Execution plan (7 commits across 4 repos)
+
+When green-lit, the fixes land in this order:
+
+1. **`bed`**: tilde fix.
+2. **`zoid6`**: `list_services` handler.
+3. **`zoid6`**: bank/channel JSON fix.
+4. **`casino`**: delete the superseded `--pidfile` entry
+   at `casino/TODO.md:920` (this file; no code change).
+5. **`bed`**: add `## \`--pidfile\` PID file management`
+   section to `bed/TODO.md`.
+6. **`bed`**: pidfile lifecycle implementation
+   (`bed/src/bed/main.py:main_async` write/remove +
+   tests + `bed/tests/scripts/stop_bed.sh` +
+   `bed/README.md`).
+7. **End-to-end verification**: re-run pytest in the
+   venv, restart bed with `--pidfile /tmp/bed-test.pid
+   --bed-secret /home/opencode/.config/bed/bed.secret`,
+   verify pidfile lifecycle, `list_services` returns 56+
+   types, no `Failed to import bank` / `Failed to import
+   channel` lines, `--bed-secret` honored.
+
+### Pre-execution cleanup (Step 0)
+
+Before any commit lands, four bed processes were racing
+on `127.0.0.1:8765` via `SO_REUSEPORT` (pids 3668500,
+3797060, 3802229, 3803184). The user's prior approval
+covers `kill 3797060 3802229 3803184` (SIGTERM, graceful)
+to leave only pid 3668500 (the user's intended instance)
+listening. The signal handler at
+`bed/src/bed/main.py:370-373` calls
+`asyncio.create_task(bed.stop())` on SIGTERM, which
+awaits `self.server.stop()` and releases the port.
+
+### Cross-references
+
+- `bed/TODO.md` "## `_apply_auth_config` overwrites CLI
+  `--bed-secret` with literal `~`" — per-repo tasks for
+  the tilde fix (Step 1).
+- `bed/TODO.md` "## `--pidfile` PID file management" —
+  per-repo tasks for the pidfile work (Steps 4b-4f).
+- `zoid6/TODO.md` "## `data/bed.json` — `bank` and
+  `channel` modulepaths do not resolve" — per-repo
+  tasks for the JSON fix (Step 3).
+- `zoid6/TODO.md` "## zoid6 unified router: bank
+  modulepath collision (file as separate task)" — the
+  separately-filed bank task (Step 3, option b chosen).
+- `zoid6/TODO.md` "## `zoid6.api.handler.MessageRouter`
+  does not register `list_services`" — per-repo tasks
+  for the handler addition (Step 2).
+- `casino/03be20c casino: read NULL credits as 0 in
+  get_player_balance and place_bet` — the casino-side
+  fix for the NULL credits crash (already landed).
+
