@@ -1,5 +1,82 @@
 # Casino - Not Implemented Features
 
+## Run `bbsengine6.startup` at casino bring-up
+
+- [ ] Call `bbsengine6.startup.main(...)` as part of casino's
+      bring-up so the engine-level stages (`stage_zero`,
+      `stage_one`, `bank` — see
+      `bbsengine6.startup.lib.BACKEND_STAGE_NAMES` in
+      `bbsengine6/py/src/bbsengine6/startup/lib.py:21`) run
+      before casino's own `casino.startup.main`. The engine
+      stages do the postgres-role / extension / functions
+      / engine checks that `casino.startup` does not.
+- [ ] In-progress: an uncommitted diff in
+      `casino/src/casino/__main__.py` adds a
+      `lib.runmodule(args, "bbsengine6.startup")` call before
+      `session.start` and bails out with a hard `return False`
+      on failure. Promote that diff into a real change:
+      confirm the engine stages are idempotent against an
+      already-initialized database, and surface their failure
+      as a casino bring-up error.
+- [ ] Decide whether `casino.startup.main` should still run
+      after `bbsengine6.startup` (likely yes — they cover
+      disjoint concerns: engine bring-up vs. casino schema /
+      class import). Document the ordering in
+      `casino/src/casino/__main__.py`.
+- [ ] Mirror the wiring into the in-process path: the door
+      mode entry point `casino.main.main` at
+      `casino/src/casino/main.py:106` already calls
+      `lib.runmodule(args, "startup", ...)` for casino's own
+      startup; confirm it does **not** also need to call
+      `bbsengine6.startup` (current assumption: `__main__`
+      only, since door mode is launched from a node that has
+      already been brought up).
+- [ ] Tests: extend `casino/tests/test_startup.py` (or add
+      one) to cover the engine-startup-fails → casino-bails
+      path. Use the same `bbsengine6.startup.lib.runmodule`
+      patch seam that `bbsengine6`'s own tests use
+      (`bbsengine6/py/src/bbsengine6/startup/main.py:26`).
+- [ ] Cross-reference: `bed/TODO.md` should link here once
+      `bed` adopts the same bring-up ordering.
+
+## `casino.lib.runmodule` kwarg: rename `prefix=` to `package=`
+
+`casino/src/casino/lib.py:559` `runmodule()` currently reads
+`kwargs.get("prefix", "casino")` and prepends it to `modulename`
+before delegating to `bbsengine6.module.runmodule`. The bbsengine6
+contract uses `package=`, not `prefix=` (see
+`bbsengine6/py/src/bbsengine6/module.py:255-268` and
+`module.py:868-874`). The new `casino/__main__.py:19` call
+(`lib.runmodule(args, "startup", package="bbsengine6")`) is
+silently mis-routed: `kwargs.get("prefix", ...)` returns the
+default `"casino"` and the call resolves to `casino.startup`
+(`casino/src/casino/startup.py`) — a totally different module
+that does casino's own schema/class import. Engine bring-up
+never runs.
+
+Fix is Option A from the discussion: minimal local rename, keep
+the f-string shim, forward `package=` through to
+`bbsengine6.module.runmodule`.
+
+- [ ] Rename local kwarg in `casino/src/casino/lib.py:559-563`:
+      accept `package=`, default `"casino"`, build
+      `f"{package}.{modulename}"` as today, and forward
+      `package=` to `bbsengine6.module.runmodule` so the
+      bbsengine6 resolver sees the same anchor.
+- [ ] Update the one explicit caller that passes the kwarg:
+      `casino/src/casino/main.py:192` (`prefix="casino.commands"`
+      → `package="casino.commands"`).
+- [ ] Verify no other `prefix=` call sites remain in
+      `casino/src/` (grep confirmed only the one above).
+- [ ] Manual smoke test: `python -m casino` prints
+      `bbsengine6 startup` heading and the casino
+      schema-import pass still succeeds; an in-process
+      `casino.commands.<X>` path (e.g. `table.list`) still
+      resolves to `casino.commands.table`.
+- [ ] Out of scope: `blackjack/lib.py:23-24` has its own
+      `runmodule` shim with an inlined `PACKAGENAME` prefix —
+      leave alone.
+
 ## BED bearer token
 
 - [ ] See `bed/TODO.md` "Bearer token" — adopt `bed.api.auth.AuthService` for BED-mode authentication and reconnect. Replaces per-game `auth` implementations. Casino benefits strongly: lobby browsing, spectator mode, multi-table clients, bot accounts.
