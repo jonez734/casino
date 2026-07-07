@@ -16,6 +16,10 @@ def main() -> None:
     if parser is not None:
         args, remaining_argv = parser.parse_known_args()
 
+    if lib.runmodule(args, "bbsengine6.startup") is False:
+        io.echo("bbsengine6 startup failed")
+        return False
+
     if args is not None:
         with database.getpool(args, database=args.databasename) as pool:
             session.start(args, pool=pool)
@@ -28,7 +32,7 @@ def main() -> None:
     try:
         lib.runmodule(args, "main", argv=remaining_argv)
     except KeyboardInterrupt:
-        io.echo("{/all}{bold}INTR{bold}")
+        io.echo("{/all}{bold}INTR{/bold}")
     except EOFError:
         io.echo("{/all}{bold}EOF{/bold}")
     finally:
