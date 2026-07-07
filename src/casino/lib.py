@@ -558,5 +558,5 @@ def buildargs(args: Namespace | None = None, **kwargs: Any) -> argparse.Argument
 
 def runmodule(args: Namespace | None, modulename: str, **kwargs: Any) -> Any:
 ##    io.echo(f"{args=} {modulename=}", level="debug")
-    prefix = kwargs.get("prefix", "casino")
-    return module.runmodule(args, f"{prefix}.{modulename}", **kwargs)
+    package = kwargs.pop("package", "casino")
+    return module.runmodule(args, f"{package}.{modulename}", **kwargs)

@@ -189,7 +189,7 @@ def main(args: Namespace, **kwargs) -> bool:
                             if module == "auth" and subcommand is None:
                                 res = auth.connect(args, **run_kwargs)
                             else:
-                                res = lib.runmodule(args, module, prefix="casino.commands", **run_kwargs)
+                                res = lib.runmodule(args, module, package="casino.commands", **run_kwargs)
 
                             if module == "auth" and subcommand is None:
                                 remote_client = res
