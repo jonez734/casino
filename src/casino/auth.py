@@ -16,7 +16,7 @@ import argparse
 import asyncio
 from typing import TYPE_CHECKING
 
-from bbsengine6 import io, member, util
+from bbsengine6 import io, member, util, bottombar
 
 from .client.registry import _clients, _current_moniker
 
@@ -72,16 +72,13 @@ def _casino_table_fragment(**kwargs) -> str:
 
 def init_remote_client_screen() -> None:
     from bbsengine6 import io as bbsio
-    from bbsengine6 import screen as bbs_screen
 
     bbsio.screen.init()
-    bbs_screen.register_bottombar_fragment(_casino_table_fragment)
+    bottombar.register_bottombar_fragment(_casino_table_fragment)
 
 
 def cleanup_remote_client_screen() -> None:
-    from bbsengine6 import screen
-
-    screen.unregister_bottombar_fragment(_casino_table_fragment)
+    bottombar.unregister_bottombar_fragment(_casino_table_fragment)
 
 
 def connect(args, **kwargs) -> CasinoClient | None:

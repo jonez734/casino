@@ -7,7 +7,7 @@ from typing import Any
 
 # import ttyio5 as ttyio
 # import bbsengine5 as bbsengine
-from bbsengine6 import io, database, screen, module, member, util
+from bbsengine6 import io, database, screen, module, member, util, bottombar
 
 import tkinter as tk
 from PIL import Image, ImageTk, ImageOps
@@ -441,47 +441,52 @@ class Seat:
         pass
 
 
-_current_args = None
-_current_player = None
+_casino_registry = bottombar.FragmentRegistry(name="casino")
 _casino_fragments = []
+
+# Legacy module-level aliases preserved so any external code that reads
+# `casino.lib._current_player` / `_current_args` keeps working. They are
+# kept in sync with `_casino_registry` by setbottombar().
+_current_args = _casino_registry.args
+_current_player = _casino_registry.player
 
 
 def _casino_player_fragment(**kwargs) -> str:
-    if _current_player is None:
+    if _casino_registry.player is None:
         return ""
-    return f"{_current_player.moniker}"
+    return f"{_casino_registry.player.moniker}"
 
 
 def _casino_credits_fragment(**kwargs) -> str:
-    if _current_player is None:
+    if _casino_registry.player is None:
         return ""
-    return util.pluralize(_current_player.credits, "credit", "credits")
+    return util.pluralize(_casino_registry.player.credits, "credit", "credits")
 
 
 def _register_casino_fragments() -> None:
     for fn in (_casino_player_fragment, _casino_credits_fragment):
         if fn not in _casino_fragments:
-            screen.register_bottombar_fragment(fn)
+            bottombar.register_bottombar_fragment(fn)
             _casino_fragments.append(fn)
 
 
 def _unregister_casino_fragments() -> None:
     for fn in _casino_fragments:
-        screen.unregister_bottombar_fragment(fn)
+        bottombar.unregister_bottombar_fragment(fn)
     _casino_fragments.clear()
 
 
 def setbottombar(args, buf, **kwargs) -> None:
     global _current_args, _current_player
-    _current_args = args
-    _current_player = kwargs.get("player", _current_player)
-    screen_kwargs = {}
-    if args is not None:
-        screen_kwargs["args"] = args
+    player = kwargs.get("player", None)
     pool = kwargs.get("pool", None)
-    if pool is not None:
-        screen_kwargs["pool"] = pool
-    screen.setbottombar(buf, **screen_kwargs)
+    # Stash on the per-package registry and on the legacy module globals
+    # so any code that still reads `_current_player` / `_current_args`
+    # continues to work.
+    _casino_registry.set_context(args=args, player=player, pool=pool)
+    _current_args = _casino_registry.args
+    _current_player = _casino_registry.player
+    bottombar.setbottombar(args, buf, player=player, pool=pool)
     _register_casino_fragments()
     return
 
