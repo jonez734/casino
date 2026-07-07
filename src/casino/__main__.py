@@ -16,7 +16,7 @@ def main() -> None:
     if parser is not None:
         args, remaining_argv = parser.parse_known_args()
 
-    if lib.runmodule(args, "bbsengine6.startup") is False:
+    if lib.runmodule(args, "startup", package="bbsengine6") is False:
         io.echo("bbsengine6 startup failed")
         return False
 
