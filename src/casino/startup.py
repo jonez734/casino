@@ -27,76 +27,8 @@ def buildargs(args, **kwargs):
 
 
 def main(args, **kwargs):
-    with database.getpool(args, database=database.DEFAULTDATABASE) as pool:
+    with database.getpool(args) as pool:
         with database.connect(args, pool=pool) as conn:
-            io.echo(
-                f"database {{var:valuecolor}}{args.databasename}{{var:labelcolor}}: ",
-                end="",
-                flush=True,
-            )
-            if database.exists(args, args.databasename, pool=pool) is False:
-                io.echo(
-                    "{var:valuecolor}fail{var:labelcolor}",
-                    level="error",
-                    flush=True,
-                )
-                return False
-            else:
-                io.echo(" ok ", level="ok", flush=True)
-
-    with database.getpool(args, database=args.databasename) as pool:
-        with database.connect(args, pool=pool) as conn:
-            # --- ensure bank schema exists (dependency) ---
-            io.echo("schema {var:valuecolor}bank{var:labelcolor}: ", end="")
-            if database.schemaexists(args, "bank", conn=conn) is False:
-                io.echo("create ", end="")
-                if database.createschema(args, "bank", conn=conn) is False:
-                    io.echo("fail", level="error")
-                    return False
-            io.echo(" ok ", level="ok")
-
-            # --- bank schema privs ---
-            for r in ("web", "term", "sysop"):
-                if (
-                    database.manage_schema_priv(
-                        args, "grant", "usage", "bank", r, conn=conn, **kwargs
-                    )
-                    is False
-                ):
-                    io.echo("fail", level="error")
-                    return False
-                else:
-                    io.echo(" ok ", level="ok")
-
-            failcount = 0
-
-            # --- bank classes ---
-            bank_classes = (
-                ("bank.__account", "bank.sql"),
-                ("bank.account", "bank.sql"),
-                ("bank.__transaction", "bank.sql"),
-                ("bank.transaction", "bank.sql"),
-                ("bank.__transfer", "bank.sql"),
-                ("bank.transfer", "bank.sql"),
-            )
-            for c, sql in bank_classes:
-                io.echo(
-                    f"{{var:labelcolor}}class {{var:valuecolor}}{c}{{var:labelcolor}}: ",
-                    end="",
-                )
-                if database.classexists(args, c, conn=conn) is False:
-                    io.echo("import ", end="")
-                    if (
-                        database.importsql(args, sql, conn=conn, package="bbsengine6.sql")
-                        is False
-                    ):
-                        failcount += 1
-                        io.echo("fail", level="error")
-                    else:
-                        io.echo(" ok ", level="ok")
-                else:
-                    io.echo("ok", level="ok")
-
             io.echo("schema {var:valuecolor}casino{var:labelcolor}: ", end="")
             if database.schemaexists(args, "casino", conn=conn) is False:
                 io.echo("import ", end="")
@@ -116,12 +48,12 @@ def main(args, **kwargs):
                 ("casino.game", "game_view.sql"),
                 ("casino.__account", "account.sql"),
                 ("casino.account", "account_view.sql"),
+                ("casino.__hand", "hand.sql"),
+                ("casino.hand", "hand_view.sql"),
                 ("casino.__betlog", "betlog.sql"),
                 ("casino.betlog", "betlog_view.sql"),
                 ("casino.__log", "log.sql"),
                 ("casino.log", "log_view.sql"),
-                ("casino.__hand", "hand.sql"),
-                ("casino.hand", "hand_view.sql"),
                 ("casino.__slot_spin", "slots.sql"),
                 ("casino.slot_spin", "slot_spin_view.sql"),
             )
@@ -144,41 +76,41 @@ def main(args, **kwargs):
                     io.echo("ok", level="ok")
 
             # --- engine message tables (Phase 1B) ---
-            io.echo("class {var:valuecolor}engine.__message{var:labelcolor}: ", end="")
-            if database.classexists(args, "engine.__message", conn=conn) is False:
-                io.echo("import ", end="")
-                if database.importsql(args, "message.sql", conn=conn, package="bbsengine6.sql") is False:
-                    failcount += 1
-                else:
-                    io.echo(" ok ", level="ok")
-            else:
-                io.echo("ok", level="ok")
+##            io.echo("class {var:valuecolor}engine.__message{var:labelcolor}: ", end="")
+##            if database.classexists(args, "engine.__message", conn=conn) is False:
+##                io.echo("import ", end="")
+##                if database.importsql(args, "message.sql", conn=conn, package="bbsengine6.sql") is False:
+##                    failcount += 1
+##                else:
+##                    io.echo(" ok ", level="ok")
+##            else:
+##                io.echo("ok", level="ok")
+##
+##            io.echo("class {var:valuecolor}engine.__message_recipient{var:labelcolor}: ", end="")
+##            if database.classexists(args, "engine.__message_recipient", conn=conn) is False:
+##                io.echo("import ", end="")
+##                if database.importsql(args, "message.sql", conn=conn, package="bbsengine6.sql") is False:
+##                    failcount += 1
+##                else:
+##                    io.echo(" ok ", level="ok")
+##            else:
+##                io.echo("ok", level="ok")
 
-            io.echo("class {var:valuecolor}engine.__message_recipient{var:labelcolor}: ", end="")
-            if database.classexists(args, "engine.__message_recipient", conn=conn) is False:
-                io.echo("import ", end="")
-                if database.importsql(args, "message.sql", conn=conn, package="bbsengine6.sql") is False:
-                    failcount += 1
-                else:
-                    io.echo(" ok ", level="ok")
-            else:
-                io.echo("ok", level="ok")
-
-            # --- engine message groups (Phase 1C) ---
-            io.echo("class {var:valuecolor}engine.__message_group{var:labelcolor}: ", end="")
-            if database.classexists(args, "engine.__message_group", conn=conn) is False:
-                io.echo("import ", end="")
-                if database.importsql(args, "message_groups.sql", conn=conn, package="bbsengine6.sql") is False:
-                    failcount += 1
-                else:
-                    io.echo(" ok ", level="ok")
-            else:
-                io.echo("ok", level="ok")
-
-            if failcount == 0:
-                io.echo(" ok ", level="ok")
-            else:
-                io.echo("fail", level="error")
-                conn.rollback()
-
-            return True if failcount == 0 else False
+##            # --- engine message groups (Phase 1C) ---
+##            io.echo("class {var:valuecolor}engine.__message_group{var:labelcolor}: ", end="")
+##            if database.classexists(args, "engine.__message_group", conn=conn) is False:
+##                io.echo("import ", end="")
+##                if database.importsql(args, "message_groups.sql", conn=conn, package="bbsengine6.sql") is False:
+##                    failcount += 1
+##                else:
+##                    io.echo(" ok ", level="ok")
+##            else:
+##                io.echo("ok", level="ok")
+##
+##            if failcount == 0:
+##                io.echo(" ok ", level="ok")
+##            else:
+##                io.echo("fail", level="error")
+##                conn.rollback()
+##
+##            return True if failcount == 0 else False
