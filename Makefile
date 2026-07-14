@@ -80,6 +80,8 @@ test-quick:
 test-file:
 	cd src && python -m pytest casino/tests/$(FILE) -v --tb=short
 
+deploy: build
+
 help:
 	@echo "Available build targets:"
 	@echo "  make build        - Bump version, run python -m build into ./dist"
