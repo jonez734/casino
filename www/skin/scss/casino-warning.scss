@@ -1,0 +1,34 @@
+@import "vars";
+@import "mixins";
+
+.casino-warning {
+  flex: 0 1 auto;
+
+  .header h1 {
+    margin: 0px;
+    padding: 0.50em;
+    font-weight: bold;
+    font-size: 130%;
+    background-color: $casino-warning-header-bg;
+    color: $casino-warning-header-fg;
+    @include backgroundgradient(lighten(#c0392b, 5%), darken(#c0392b, 5%));
+  }
+
+  .body {
+    overflow: hidden;
+    background-color: $casino-warning-body-bg;
+    color: $casino-warning-body-fg;
+  }
+
+  p {
+    margin: 1.0em 2.0em;
+  }
+
+  p:first-child {
+    margin-top: 1.5em;
+  }
+
+  p:last-child {
+    margin-bottom: 1.5em;
+  }
+}

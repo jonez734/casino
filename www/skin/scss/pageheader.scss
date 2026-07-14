@@ -1,0 +1,15 @@
+@import "vars";
+@import "mixins";
+
+#pageheader {
+  .body {
+    h1 {
+      font-size: 2.0em;
+    }
+
+    .est2002 {
+      font-style: italic;
+      opacity: 0.75;
+    }
+  }
+}

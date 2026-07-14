@@ -1,0 +1,56 @@
+{extends file="page.tmpl"}
+{block name="title"}casino{/block}
+{block name="head" append}
+<link rel="stylesheet" type="text/css" href="{$smarty.const.SKINURL}css/casino-warning.css" media="screen" />
+<link rel="stylesheet" type="text/css" href="{$smarty.const.SKINURL}css/pageheader.css" media="screen" />
+{/block}
+{block name="content"}
+
+<div class="blurb casino-warning vstretch">
+<div class="header"><h1>DEMONSTRATION ONLY</h1></div>
+<div class="body">
+<p><strong>This software is for development, testing, and demonstration purposes only.</strong> It is not a licensed gambling operator. No real-money wagers are accepted or processed.</p>
+<p>Deploying, operating, or accepting real-money wagers through this software may be regulated or prohibited in your jurisdiction. Gambling laws vary by state and tribal jurisdiction. You are responsible for determining whether operating, hosting, or using this software is lawful in the relevant jurisdiction(s) before any deployment or use.</p>
+</div>
+</div>
+
+<div class="blurb vstretch">
+<div class="header"><h1>casino</h1></div>
+<div class="body">
+<p>Casino-style games built on bbsengine6. Real-time WebSocket gameplay, database-backed sessions, and bank integration.</p>
+{if $currentmember.flags.AUTHENTICATED}
+<p><a href="https://github.com/jonez734/casino">View source on GitHub</a></p>
+{/if}
+</div>
+</div>
+
+<div class="blurb vstretch">
+<div class="header"><h1>tui client</h1></div>
+<div class="body">
+<p><code>casino-client</code> is a terminal-based WebSocket client that connects to the BED casino server. Run <code>casino-client --host HOST --port PORT</code> to connect, authenticate, and play.</p>
+<p>Supports table management, blackjack, poker, tic-tac-toe, chat, and bank operations &mdash; all from the command line.</p>
+</div>
+</div>
+
+<div class="blurb vstretch">
+<div class="header"><h1>games</h1></div>
+<div class="body">
+<ul class="nobullets">
+{foreach $data.games as $game}
+<li>
+<strong>{$game.name}</strong>
+{if isset($game.variants)}
+<ul class="nobullets">
+{foreach $game.variants as $variant}
+<li>{$variant.name} &mdash; {$variant.details}</li>
+{/foreach}
+</ul>
+{/if}
+<p>{$game.description}</p>
+</li>
+{/foreach}
+</ul>
+</div>
+</div>
+
+{/block}

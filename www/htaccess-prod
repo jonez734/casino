@@ -1,0 +1,19 @@
+#
+# htaccess-prod - Production rewrite rules for CASINO
+#
+
+RewriteEngine On
+RewriteBase /casino/
+
+RewriteRule ^favicon\.ico$ - [last]
+
+# Route directory requests to router
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^(.+)$ /engine/router.php?uri=$1 [last,qsappend]
+
+# Route clean URLs to router
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteRule ^([a-zA-Z0-9_/-]+)$ /engine/router.php?uri=$1 [last,qsappend]
+
+RewriteRule ^$ index.php [last]

@@ -1,0 +1,25 @@
+#
+# htaccess-dev - Development rewrite rules for CASINO
+#
+
+AuthName "casinodev"
+AuthType Basic
+AuthBasicProvider file
+AuthUserFile /srv/www/vhosts/casinodev.zoidtechnologies.com/80/html/.htpasswd
+Require valid-user
+
+RewriteEngine On
+
+RewriteBase /
+
+RewriteRule ^favicon\.ico$ - [last]
+
+# Route directory requests to index.php
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^(.+)$ index.php?uri=$1 [last,qsappend]
+
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteRule ^(.+) index.php/$1 [last]
+
+RewriteRule ^$ index.php [last]
