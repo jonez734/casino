@@ -3,10 +3,25 @@
 #   1) Project-root lifecycle (build, version, install, sdist, clean) - modeled after empyre
 #   2) Test orchestration (test-unit, test-integration, test-phase-N, etc.) - pre-existing
 
-PROJECT = casino
+export PROJECT = casino
+export STAGE = /srv/www/vhosts/zoidtechnologies.com/html/$(PROJECT)/
+export SKINDIR = $(STAGE)skin/
+export HOST = merlin
+
+export SCSSLOADPATH = --load-path /home/opencode/data/work/zoid6/shared/skin/scss/ \
+	--load-path /home/opencode/data/work/bbsengine6/skin/scss/ \
+	--load-path /home/opencode/data/work/casino/www/skin/scss/
+export SCSS = sass $(SCSSLOADPATH) --sourcemap=none --stop-on-error --trace --style expanded
+
+export RSYNC = rsync --chmod=Dg=rwxs,Fgu=rw,Fo=r --no-times --verbose \
+	--archive --update --backup --recursive \
+	--human-readable --checksum --rsh=ssh \
+	--mkpath --exclude='*~'
+
 PYTHON = python3
 
 .PHONY: all build version install sdist clean push
+.PHONY: deploy deploy-www deploy-tui
 .PHONY: test test-unit test-integration test-all test-phase-1 test-phase-2 test-phase-3
 .PHONY: test-quick test-file help
 
@@ -79,6 +94,13 @@ test-quick:
 # Run specific test file
 test-file:
 	cd src && python -m pytest casino/tests/$(FILE) -v --tb=short
+
+deploy-www:
+	$(MAKE) -C www prod
+	$(RSYNC) $(STAGE) $(HOST):$(STAGE)
+
+deploy-tui:
+	@echo "TUI deploy not yet implemented"
 
 deploy: build
 
