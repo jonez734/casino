@@ -99,8 +99,7 @@ deploy-www:
 	$(MAKE) -C www prod
 	$(RSYNC) $(STAGE) $(HOST):$(STAGE)
 
-deploy-tui:
-	@echo "TUI deploy not yet implemented"
+deploy-tui: build
 
 help:
 	@echo "Available build targets:"
