@@ -21,7 +21,7 @@ export RSYNC = rsync --chmod=Dg=rwxs,Fgu=rw,Fo=r --no-times --verbose \
 PYTHON = python3
 
 .PHONY: all build version install sdist clean push
-.PHONY: deploy deploy-www deploy-tui
+.PHONY: deploy-www deploy-tui
 .PHONY: test test-unit test-integration test-all test-phase-1 test-phase-2 test-phase-3
 .PHONY: test-quick test-file help
 
@@ -101,8 +101,6 @@ deploy-www:
 
 deploy-tui:
 	@echo "TUI deploy not yet implemented"
-
-deploy: build
 
 help:
 	@echo "Available build targets:"
