@@ -9,7 +9,7 @@
 <div class="blurb casino-warning vstretch">
 <div class="header"><h1>DEMONSTRATION ONLY</h1></div>
 <div class="body">
-<p><strong>This software is for development, testing, and demonstration purposes only.</strong> It is not a licensed gambling operator. No real-money wagers are accepted or processed. No cryptocurrency or other digital assets are accepted as wagers.</p>
+<p><strong>This software is for development, testing, and demonstration purposes only.</strong> No real-money wagers are accepted or processed, and no cryptocurrency or other digital assets are accepted as wagers.</p>
 <p>Deploying, operating, or accepting real-money or cryptocurrency wagers through this software may be regulated or prohibited in your jurisdiction. Gambling laws vary by state and tribal jurisdiction. When evaluating legality, plan for the most conservative intersection of server location, operator location, and player location &mdash; all three may independently impose regulatory requirements. You are responsible for determining whether operating, hosting, or using this software is lawful in the relevant jurisdiction(s) before any deployment or use.</p>
 </div>
 </div>
@@ -38,11 +38,11 @@
 <ul class="nobullets">
 {foreach $data.games as $game}
 <li>
-<strong>{$game.name}</strong>
+<strong><a href="{$game.url}">{$game.name}</a></strong>
 {if isset($game.variants)}
 <ul class="nobullets">
 {foreach $game.variants as $variant}
-<li>{$variant.name} &mdash; {$variant.details}</li>
+<li><a href="{$variant.url}">{$variant.name}</a> &mdash; {$variant.details}</li>
 {/foreach}
 </ul>
 {/if}
