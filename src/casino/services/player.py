@@ -3,7 +3,7 @@
 
 from typing import Any, Dict, Optional
 
-from bbsengine6 import member
+from bbsengine6 import database, member
 
 from casino.dal import player as dal_player
 
@@ -14,6 +14,19 @@ class PlayerService:
     def __init__(self, args: Any):
         self.args = args
     
+    def _pool(self) -> Any:
+        """Return the connection pool to use for member credential checks.
+
+        bbsengine6.member requires the caller to own the pool
+        (CONN_POOL_PATTERN). bed puts a pool on ``args.pool`` at startup;
+        reuse it when present, otherwise fall back to the cached
+        ``database.getpool``.
+        """
+        pool = getattr(self.args, "pool", None)
+        if pool is not None:
+            return pool
+        return database.getpool(self.args, database=self.args.databasename)
+    
     def authenticate(self, moniker: str, password: str) -> Dict[str, Any]:
         """
         Authenticate a player via BBS member credentials.
@@ -21,8 +34,11 @@ class PlayerService:
         Returns:
             Dict with success, moniker, balance, message
         """
+        pool = self._pool()
         # Verify member exists
-        if not member.verifyMemberFound(self.args, moniker, column="moniker"):
+        if not member.verifyMemberFound(
+            self.args, moniker, column="moniker", pool=pool
+        ):
             return {
                 "success": False,
                 "moniker": "",
@@ -31,11 +47,11 @@ class PlayerService:
             }
         
         # Check if member has a password set
-        has_pwd = member.has_password(self.args, moniker)
+        has_pwd = member.has_password(self.args, moniker, pool=pool)
         
         # If member has a password, verify it
         if has_pwd:
-            result = member.checkpassword(self.args, password, moniker)
+            result = member.checkpassword(self.args, password, moniker, pool=pool)
             if result is None or result is False:
                 return {
                     "success": False,

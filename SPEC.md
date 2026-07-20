@@ -70,6 +70,33 @@ Total: 7 services handling 38+ message types.
 - Catches `SIGTERM` and `SIGINT` for graceful shutdown
 - Handles Windows limitation (no signal handlers)
 
+### 6. Authentication & Connection Pooling
+
+`AuthService` delegates credential checks to
+`casino.services.player.PlayerService.authenticate`, which validates a
+member against the shared `bbsengine6.member` layer
+(`verifyMemberFound`, `has_password`, `checkpassword`) and then loads or
+creates the casino player record and balance.
+
+Casino owns authentication for its own router: services register on a
+last-write-wins basis (`bbsengine6.net.transport.register_service`), so
+the casino router's `AuthService` (registered for `auth`) supersedes any
+generic auth handler a fronting daemon may have registered earlier.
+Because casino must not depend on the daemon, the shared credential
+primitives live in `bbsengine6.member`, not in the daemon.
+
+`bbsengine6.member.verifyMemberFound` follows the **CONN_POOL_PATTERN**:
+the caller must supply a `pool=`. `PlayerService` resolves the pool once
+per `authenticate` call via `PlayerService._pool()`, which:
+
+1. reuses `args.pool` when the daemon has set one at startup, otherwise
+2. falls back to the cached `database.getpool(args, database=...)`.
+
+The resolved pool is threaded through `verifyMemberFound`,
+`has_password`, and `checkpassword` so a single borrowed connection
+backs the whole credential check. Omitting the pool triggers
+`bbsengine6.member._verify_member.100: pool is required`.
+
 ## Dependencies
 
 - `bbsengine6.net.WebSocketServer` - WebSocket infrastructure
