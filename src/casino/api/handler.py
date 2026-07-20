@@ -19,57 +19,47 @@ from casino.yahtzee.api_handler import YahtzeeServiceHandler
 from casino.tictactoe.api_handler import TictactoeServiceHandler
 
 
-class SessionManager:
-    """Manages WebSocket sessions and authentication state."""
-    
+from bbsengine6.session import SessionManager
+
+
+class CasinoSessionManager(SessionManager):
+    """Extends base SessionManager with table/spectator tracking."""
+
     def __init__(self):
-        # {session_id: {"moniker": str, "table_moniker": Optional[str]}}
-        self._sessions: Dict[int, Dict[str, Any]] = {}
-        
-        # Track spectators: table_moniker -> set of session_ids
+        super().__init__()
         self._spectators: Dict[str, set] = {}
-    
+
     def register_session(self, session_id: int, moniker: str, is_sysop: bool = False) -> None:
-        self._sessions[session_id] = {"moniker": moniker, "table_moniker": None, "is_sysop": is_sysop}
-    
+        super().register_session(session_id, moniker, is_sysop)
+        self._sessions[session_id]["table_moniker"] = None
+
     def unregister_session(self, session_id: int) -> None:
         if session_id in self._sessions:
             table_moniker = self._sessions[session_id].get("table_moniker")
             if table_moniker and table_moniker in self._spectators:
                 self._spectators[table_moniker].discard(session_id)
-            del self._sessions[session_id]
-    
-    def get_session(self, session_id: int) -> Optional[Dict[str, Any]]:
-        return self._sessions.get(session_id)
-    
-    def get_moniker(self, session_id: int) -> Optional[str]:
-        session = self._sessions.get(session_id)
-        return session.get("moniker") if session else None
-    
+        super().unregister_session(session_id)
+
     def get_table_moniker(self, session_id: int) -> Optional[str]:
         session = self._sessions.get(session_id)
         return session.get("table_moniker") if session else None
-    
+
     def set_table_moniker(self, session_id: int, table_moniker: Optional[str]) -> None:
         io.echo(f"set_table_moniker: session_id={session_id}, table_moniker={table_moniker}", level="info")
         if session_id in self._sessions:
             self._sessions[session_id]["table_moniker"] = table_moniker
         else:
             io.echo(f"set_table_moniker: session {session_id} not found in sessions", level="warning")
-    
-    def get_is_sysop(self, session_id: int) -> bool:
-        session = self._sessions.get(session_id)
-        return session.get("is_sysop", False) if session else False
-    
+
     def add_spectator(self, table_moniker: str, session_id: int) -> None:
         if table_moniker not in self._spectators:
             self._spectators[table_moniker] = set()
         self._spectators[table_moniker].add(session_id)
-    
+
     def remove_spectator(self, table_moniker: str, session_id: int) -> None:
         if table_moniker in self._spectators:
             self._spectators[table_moniker].discard(session_id)
-    
+
     def get_table_observers(self, table_moniker: str) -> set:
         return self._spectators.get(table_moniker, set())
 
@@ -804,7 +794,7 @@ class MessageRouter:
     
     def __init__(self, args: Any):
         self.args = args
-        self.sessions = SessionManager()
+        self.sessions = CasinoSessionManager()
         
         # Channel subscription state for pub/sub messaging
         self.channel_state = ChannelState()

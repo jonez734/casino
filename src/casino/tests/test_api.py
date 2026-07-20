@@ -73,7 +73,7 @@ class TestMessageHandler(unittest.IsolatedAsyncioTestCase):
 
     async def test_session_manager(self):
         """Test session management."""
-        from casino.api.handler import SessionManager
+        from casino.api.handler import CasinoSessionManager as SessionManager
 
         sm = SessionManager()
 
