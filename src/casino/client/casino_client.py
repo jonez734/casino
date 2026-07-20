@@ -100,7 +100,19 @@ class CasinoClient:
                 self.balance = msg.get("balance", 0)
                 io.echo(f"Authenticated as {self.moniker}, balance: {self.balance}")
             else:
-                io.echo(f"Authentication failed: {msg.get('message')}")
+                reason = (msg.get("message") or "").lower()
+                if "invalid password" in reason or "wrong password" in reason or "password" in reason:
+                    io.echo(
+                        "{errorcolor}Authentication failed: the password you entered is incorrect. "
+                        "Reconnect and try again.{/all}"
+                    )
+                elif "not found" in reason:
+                    io.echo(
+                        "{errorcolor}Authentication failed: that moniker was not found. "
+                        "Check the spelling and try again.{/all}"
+                    )
+                else:
+                    io.echo(f"{{errorcolor}}Authentication failed: {msg.get('message')}{{/all}}")
 
         elif msg_type == "table_list":
             tables = msg.get("tables", [])

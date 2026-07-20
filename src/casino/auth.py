@@ -16,7 +16,7 @@ import argparse
 import asyncio
 from typing import TYPE_CHECKING
 
-from bbsengine6 import io, member, util, bottombar
+from bbsengine6 import io, util, bottombar
 
 from .client.registry import _clients, _current_moniker
 
@@ -41,9 +41,10 @@ async def auth_prompt(args: argparse.Namespace, client: CasinoClient) -> bool:
     moniker = io.inputstring("{var:promptcolor}Moniker: {var:inputcolor}", None, None)
     if not moniker:
         return False
-    password = ""
-    if member.has_password(args, moniker):
-        password = util.inputpassword("Password: ")
+    # The remote client does not have a local database, so it cannot know
+    # whether a member requires a password. Always prompt and let the server
+    # decide. (member.has_password needs DB args the client does not carry.)
+    password = util.inputpassword("Password: ")
     await client.send({"type": "auth", "moniker": moniker, "password": password})
     return True
 
