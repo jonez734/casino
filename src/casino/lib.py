@@ -441,7 +441,7 @@ class Seat:
         pass
 
 
-_casino_registry = bottombar.FragmentRegistry(name="casino")
+_casino_registry = bottombar.registry_for("casino")
 _casino_fragments = []
 
 # Legacy module-level aliases preserved so any external code that reads
