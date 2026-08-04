@@ -6,14 +6,9 @@ from typing import Any, Dict, List, Optional
 
 from bbsengine6 import database
 from bbsengine6.bank import BankService as BankModule
+from bbsengine6.message import MessageUrgency as NotificationUrgency
+from bbsengine6.message import send as notify_send
 from casino.dal import table as dal_table
-
-try:
-    from bbsengine6.message_delivery import send as notify_send, NotificationUrgency
-    HAS_NOTIFY = True
-except ImportError:
-    HAS_NOTIFY = False
-    NotificationUrgency = None
 
 logger = logging.getLogger(__name__)
 
@@ -251,17 +246,13 @@ class BankService:
 
     def _alert_house_status(self, message: str, urgency_level: str = "routine") -> None:
         """Send notification to sysop about house account status."""
-        if not HAS_NOTIFY:
-            logger.warning(f"House alert (notify unavailable): {message}")
-            return
-
         urgency_map = {
-            "routine": NotificationUrgency.ROUTINE if NotificationUrgency else None,
-            "important": NotificationUrgency.IMPORTANT if NotificationUrgency else None,
-            "high": NotificationUrgency.URGENT if NotificationUrgency else None,
-            "critical": NotificationUrgency.CRITICAL if NotificationUrgency else None,
+            "routine": NotificationUrgency.ROUTINE,
+            "important": NotificationUrgency.IMPORTANT,
+            "high": NotificationUrgency.URGENT,
+            "critical": NotificationUrgency.CRITICAL,
         }
-        urgency = urgency_map.get(urgency_level, NotificationUrgency.ROUTINE if NotificationUrgency else None)
+        urgency = urgency_map.get(urgency_level, NotificationUrgency.ROUTINE)
 
         try:
             notify_send(
@@ -278,14 +269,12 @@ class BankService:
 
     def _ensure_house_notification_type(self) -> None:
         """Ensure the casino.bankalert notification type exists."""
-        if not HAS_NOTIFY:
-            return
-        
         try:
-            from bbsengine6.message_delivery import register_type
-            register_type(
+            from bbsengine6.message import register_type_compat
+
+            register_type_compat(
                 NOTIFICATION_TYPE,
-                NotificationUrgency.ROUTINE if NotificationUrgency else None,
+                NotificationUrgency.ROUTINE,
                 100,
                 True,
                 self.args,

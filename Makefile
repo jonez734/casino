@@ -19,11 +19,13 @@ export RSYNC = rsync --chmod=Dg=rwxs,Fgu=rw,Fo=r --no-times --verbose \
 	--mkpath --exclude='*~'
 
 PYTHON = python3
+VERSION = $(shell date +%Y%m%d%H%M)
 
 .PHONY: all build version install sdist clean push
 .PHONY: deploy-www deploy-tui
 .PHONY: test test-unit test-integration test-all test-phase-1 test-phase-2 test-phase-3
 .PHONY: test-quick test-file help
+.PHONY: commit-version
 
 all:
 
@@ -119,3 +121,7 @@ help:
 	@echo "  make test-phase-3     - Run Phase 3: integration tests"
 	@echo "  make test-quick       - Quick unit test run"
 	@echo "  make test-file FILE=<test> - Run specific test file"
+
+commit-version:
+	git add src/$(PROJECT)/_version.py
+	git diff --cached --quiet || git commit -m "Bump $(PROJECT) version to $(VERSION)"

@@ -12,7 +12,8 @@ from bbsengine6.net import (
     channel_unsubscribe,
     channel_unsubscribe_all,
 )
-from bbsengine6.message_delivery import send as notify_send, NotificationUrgency
+from bbsengine6.message import MessageUrgency as NotificationUrgency
+from bbsengine6.message import send as notify_send
 from casino.dal import player as dal_player
 from casino.dal.aiosql import table as async_dal_table
 from casino.yahtzee.api_handler import YahtzeeServiceHandler
