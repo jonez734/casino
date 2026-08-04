@@ -1,93 +1,142 @@
-# Specification: `casino/src/casino/bed.py`
+# casino — Specification
 
-> **Note**: See [TODO.md](./TODO.md) for a list of unimplemented features and future work.
+> **Last updated:** 2026-08-03.
+> **Status:** Alpha (`Development Status :: 3 - Alpha`); production
+> wiring (MessageRouter + CasinoSessionManager + bed-native auth)
+> in place; games are feature-complete per their READMEs.
 
-## Overview
+> **Note**: See [`TODO.md`](./TODO.md) for a list of unimplemented
+> features and future work.
 
-**bed.py** implements the **BBS Engine Daemon (BED)** - a WebSocket server that provides real-time casino game services to BBS clients using the bbsengine6.net service registry.
+## Table of Contents
 
-## Purpose
+1. [Purpose & Scope](#1-purpose--scope)
+2. [Architecture](#2-architecture)
+3. [Layered package layout](#3-layered-package-layout)
+4. [WebSocket services](#4-websocket-services)
+5. [Door-mode BBS module](#5-door-mode-bbs-module)
+6. [Standalone TUI client](#6-standalone-tui-client)
+7. [Poker variant plugin system](#7-poker-variant-plugin-system)
+8. [SQL schema](#8-sql-schema)
+9. [Cross-reference map](#9-cross-reference-map)
+10. [Authoritative file index](#10-authoritative-file-index)
+11. [Out of scope](#11-out-of-scope)
 
-- Accepts WebSocket connections from casino clients
-- Routes messages to appropriate services (auth, table management, game play, betting, chat, banking)
-- Maintains session state for authenticated users
-- Broadcasts game state and chat messages to relevant players/spectators
+---
 
-## Key Components
+## 1. Purpose & Scope
 
-### 1. `BED` Class
+`casino` is a Python package that ships five casino-style games
+(blackjack, slots, poker, yahtzee, tic-tac-toe) on top of
+[bbsengine6](../bbsengine6/). It exposes three run modes:
 
-Main daemon controller managing server lifecycle.
+1. **Door-mode BBS module** — registered with bbsengine6, interactive
+   ttyio menu in a BBS session.
+2. **WebSocket game server** — registered with bed via
+   `casino.api.handler.MessageRouter`.
+3. **Standalone TUI client** — long-lived WebSocket client for
+   sysops and CI.
 
-**Attributes:**
+It does **not** own:
 
-- `args` - Command-line arguments (host, port, database credentials)
-- `server` - WebSocketServer instance
-- `router` - MessageRouter instance for dispatching messages
-- `_running` - Boolean flag for daemon state
+- Authentication wire-protocol (bed's `AuthService` does).
+- Daemon lifecycle (bed does).
+- Per-member PostgreSQL role provisioning
+  (`bbsengine6.pgrole` does).
+- The bank ledger (casino wraps `bbsengine6.bank`, but the ledger
+  lives in bbsengine6).
 
-**Methods:**
+## 2. Architecture
 
-- `async start()` - Initializes database pool, creates WebSocket server, registers services, starts listening
-- `async stop()` - Gracefully stops the server
-- `async restart()` - Stops and restarts the daemon
+```
+                ┌──────────────────────────────────────────────┐
+                │ casino  (Python package)                    │
+                │                                              │
+                │   ┌── MessageRouter  ◄─── bed --router      │
+                │   │     (api/handler.py:904)                 │
+                │   │     registers all 7+ services            │
+                │   │     + CasinoSessionManager               │
+                │   ▼                                          │
+                │   AuthService        ─► bbsengine6.member    │
+                │   TableServiceHandler                        │
+                │   GameServiceHandler                        │
+                │   BetServiceHandler                         │
+                │   ChatServiceHandler                        │
+                │   BankServiceHandler  ─► bbsengine6.bank     │
+                │   PokerServiceHandler ─► poker.*             │
+                │   Yahtzee / TicTacToe / PostOffice handlers │
+                │                                              │
+                │   ┌── DAL  ◄─── async (aiosql) + sync        │
+                │   ▼                                          │
+                │   services/  (game, poker, slots, …)         │
+                │                                              │
+                │   sql/   (casino.* schema)                   │
+                └──────────────────────────────────────────────┘
+                       ▲                          ▲
+                       │ (door-mode)              │ (TUI client)
+                       │                          │
+                ┌──────┴─────────┐         ┌──────┴─────────┐
+                │ main.py menu   │         │ CasinoClient   │
+                │ bbsengine6 BBS │         │ casino-client  │
+                └────────────────┘         └────────────────┘
+```
 
-### 2. Command-Line Arguments
+## 3. Layered package layout
 
-| Argument | Default | Description |
-|----------|---------|-------------|
-| `--host` | `0.0.0.0` | Bind address |
-| `--port` | `8765` | WebSocket port |
-| `--debug` | false | Enable debug logging |
-| `--foreground`, `-f` | false | Run in foreground (no daemonization) |
-| `--pidfile` | - | Path to PID file |
-| Database args | - | Via `databasebuildargs`: databasename, databasehost, databaseport, databaseuser, databasepassword |
+`casino` follows a four-layer architecture:
 
-### 3. Database Connection
+| Layer         | Module                     | Role                                    |
+|---------------|----------------------------|-----------------------------------------|
+| **Transport** | `api/handler.py`           | MessageRouter, CasinoSessionManager, all WebSocket services |
+|               | `api/messages.py`          | MessageType enum + dataclasses          |
+| **Service**   | `services/game.py`         | Blackjack game logic                    |
+|               | `services/poker.py`        | Poker betting state machine             |
+|               | `services/slots.py`        | Atomic spin transactions                |
+|               | `services/bank.py`         | Wraps `bbsengine6.bank` for casino:house |
+|               | `services/player.py`       | Auth via `bbsengine6.member`            |
+|               | `services/table.py`        | Table CRUD                              |
+| **DAL**       | `dal/bet.py game.py player.py slots.py table.py` | Sync DAL |
+|               | `dal/aiosql/*`             | Async DAL                               |
+| **Domain**    | `games/base.py`            | GameType / GameAction enums + BaseGame  |
+|               | `cards/__init__.py`        | Card dataclass + png loader             |
+|               | `poker/lib.py`             | HandRank, BettingStructure, PokerDeck   |
+|               | `blackjack/hand.py`        | Hand dataclass                          |
+|               | `tictactoe/lib.py`         | Board, AI, scoring                      |
+|               | `yahtzee/lib.py`           | Scoring + rake math                     |
 
-- Uses bbsengine6 database pool
-- Validates connection on startup with a connection test
-- Graceful failure if PostgreSQL unavailable
+## 4. WebSocket services
 
-### 4. Service Registration
+`casino.api.handler.MessageRouter` registers every service with the
+bed WebSocket server. The full surface:
 
-The MessageRouter registers these services with the WebSocket server:
+| Service                 | Message types                                                                                     |
+|-------------------------|---------------------------------------------------------------------------------------------------|
+| `AuthService`           | `auth`, `ping`                                                                                    |
+| `TableServiceHandler`   | `list_tables`, `create_table`, `update_table`, `join_table`, `leave_table`, `watch_table`, `stop_watching` |
+| `GameServiceHandler`    | `hit`, `stand`, `double`, `split`                                                                  |
+| `BetServiceHandler`     | `bet`                                                                                             |
+| `ChatServiceHandler`    | `chat_table`, `chat_global`, `emote`                                                              |
+| `BankServiceHandler`    | `bank_balance`, `bank_add`, `bank_remove`, `bank_transfer_request`, `bank_transfer_approve`, `bank_transfer_reject`, `bank_pending`, `bank_history`, `bank_list_all` |
+| `PokerServiceHandler`   | `poker_create_table`, `poker_join_table`, `poker_leave_table`, `poker_start_hand`, `poker_action`, `poker_fold`, `poker_check`, `poker_call`, `poker_bet`, `poker_raise`, `poker_all_in`, `poker_get_state`, `poker_list_tables` |
+| `YahtzeeService`        | (per-game — see `yahtzee/README.md`)                                                              |
+| `TicTacToeService`      | (per-game — see `tictactoe/README.md`)                                                            |
+| `PostOfficeService`     | IMAP polling, notification fan-out                                                                |
 
-| Service | Message Types |
-|---------|---------------|
-| **AuthService** | `auth`, `ping` |
-| **TableServiceHandler** | `list_tables`, `create_table`, `update_table`, `join_table`, `leave_table`, `watch_table`, `stop_watching` |
-| **GameServiceHandler** | `hit`, `stand`, `double`, `split` |
-| **BetServiceHandler** | `bet` |
-| **ChatServiceHandler** | `chat_table`, `chat_global`, `emote` |
-| **BankServiceHandler** | `bank_balance`, `bank_add`, `bank_remove`, `bank_transfer_request`, `bank_transfer_approve`, `bank_transfer_reject`, `bank_pending`, `bank_history`, `bank_list_all` |
-| **PokerServiceHandler** | `poker_create_table`, `poker_join_table`, `poker_leave_table`, `poker_start_hand`, `poker_action`, `poker_fold`, `poker_check`, `poker_call`, `poker_bet`, `poker_raise`, `poker_all_in`, `poker_get_state`, `poker_list_tables` |
+The `CasinoSessionManager` (subclass of `bbsengine6.session.SessionManager`)
+handles per-websocket session state, including the bottombar fragment
+registry per package (`bottombar.registry_for('casino')`).
 
-Total: 7 services handling 38+ message types.
+Services register on a last-write-wins basis
+(`bbsengine6.net.transport.register_service`), so when casino is the
+fronting router its `AuthService` (registered for `auth`) supersedes
+bed's native AuthService. Casino therefore owns its own auth flow
+because it must not depend on bed; the shared credential primitives
+live in `bbsengine6.member`, not in the daemon.
 
-### 5. Signal Handling
-
-- Catches `SIGTERM` and `SIGINT` for graceful shutdown
-- Handles Windows limitation (no signal handlers)
-
-### 6. Authentication & Connection Pooling
-
-`AuthService` delegates credential checks to
-`casino.services.player.PlayerService.authenticate`, which validates a
-member against the shared `bbsengine6.member` layer
-(`verifyMemberFound`, `has_password`, `checkpassword`) and then loads or
-creates the casino player record and balance.
-
-Casino owns authentication for its own router: services register on a
-last-write-wins basis (`bbsengine6.net.transport.register_service`), so
-the casino router's `AuthService` (registered for `auth`) supersedes any
-generic auth handler a fronting daemon may have registered earlier.
-Because casino must not depend on the daemon, the shared credential
-primitives live in `bbsengine6.member`, not in the daemon.
-
-`bbsengine6.member.verifyMemberFound` follows the **CONN_POOL_PATTERN**:
-the caller must supply a `pool=`. `PlayerService` resolves the pool once
-per `authenticate` call via `PlayerService._pool()`, which:
+`bbsengine6.member.verifyMemberFound` follows the
+**CONN_POOL_PATTERN**: the caller must supply a `pool=`.
+`PlayerService` resolves the pool once per `authenticate` call via
+`PlayerService._pool()`, which:
 
 1. reuses `args.pool` when the daemon has set one at startup, otherwise
 2. falls back to the cached `database.getpool(args, database=...)`.
@@ -97,139 +146,197 @@ The resolved pool is threaded through `verifyMemberFound`,
 backs the whole credential check. Omitting the pool triggers
 `bbsengine6.member._verify_member.100: pool is required`.
 
-## Dependencies
+## 5. Door-mode BBS module
 
-- `bbsengine6.net.WebSocketServer` - WebSocket infrastructure
-- `bbsengine6.util.getcurrentloginid` - BBS utilities
-- `bbsengine6.database.buildargs` - Database argument parsing
-- `casino.api.handler.MessageRouter` - Message routing and service coordination
+The door-mode entry is `python -m casino` (`__main__.py`). It:
 
-## Startup Flow
+1. Runs `bbsengine6.startup` to verify the database schema.
+2. Opens a BBS session (`bbsengine6.session.SessionRegistry`).
+3. Enters `main.py:main`, a ttyio-based menu offering:
+   - Blackjack
+   - Poker
+   - Slots
+   - Connect-to-BED
+   - Table list / join / view
+   - Watch / unwatch tables
+   - Bet / hit / stand
+   - Global chat
+   - Bank
+   - Maintenance (sysop only)
 
-1. Parse CLI arguments
-2. Create BED instance
-3. Set up signal handlers
-4. Call `bed.start()`:
-   - Build database args
-   - Initialize database pool (with connection test)
-   - Create MessageRouter
-   - Register all services with WebSocketServer
-   - Start WebSocket server on specified host:port
-5. Keep running until cancelled or stopped
+## 6. Standalone TUI client
 
-## Error Handling
+`casino-client` is a long-lived `CasinoClient` WebSocket client
+(`src/casino/client/casino_client.py`) that authenticates with the
+BED server and exposes table management, blackjack, poker,
+tic-tac-toe, chat, and bank operations from the command line.
+Useful for sysops and CI smoke tests.
 
-- Database connection failure logs error and exits
-- Unhandled exceptions in `main()` are caught, logged, and re-raised
+Auth always prompts for password (commit `ec0138e`) and reports a
+specific failure reason (`Member not found`, `Invalid moniker`,
+`Authentication service unavailable`).
 
-## Gameplay
+## 7. Poker variant plugin system
 
-bed.py does NOT handle gameplay directly. It only sets up the WebSocket server and registers services. The actual gameplay is handled by:
+Poker variants are registered via setuptools entry points under the
+`casino.poker.variants` group (`pyproject.toml`):
 
-- **GameServiceHandler** - handles `hit`, `stand`, `double`, `split` actions
-- **BetServiceHandler** - handles `bet` messages
+| Variant         | Entry point                            | Class                |
+|-----------------|----------------------------------------|----------------------|
+| Texas Hold'em   | `casino.poker.variant.texas_hold_em`    | `TexasHoldEm`        |
+| Omaha           | `casino.poker.variant.omaha`            | `Omaha`              |
+| Omaha Hi-Lo     | `casino.poker.variant.omaha`            | `OmahaHiLo`          |
+| 7-Card Stud     | `casino.poker.variant.seven_card_stud`  | `SevenCardStud`      |
 
-These services delegate to `casino/services/game.py` for game logic.
+`casino.poker.variant.VariantRegistry` discovers them at import time
+via `importlib.metadata.entry_points()`. New variants are added by
+subclassing `BaseVariant` and registering a new entry point — no
+core change required.
 
-## Poker Implementation
+### Betting streets
 
-### Overview
+- Texas Hold'em / Omaha: preflop → flop → turn → river
+- 7-Card Stud: third_street → fourth_street → fifth_street →
+  sixth_street → seventh_street
 
-The poker implementation provides a complete poker game system with multiple variants, betting structures, and hand evaluation.
+### Hand rankings
 
-### Package Structure
+All poker hands are evaluated from Royal Flush (highest) to High Card
+(lowest): Royal Flush, Straight Flush, Four of a Kind, Full House,
+Flush, Straight, Three of a Kind, Two Pair, Pair, High Card.
 
-```
-casino/src/casino/poker/
-├── __init__.py           # BBS module entry points
-├── lib.py                # Core utilities (PokerDeck, PokerCard, HandRank, BettingStructure, BetLimits)
-├── dealer.py             # PokerDealer class - manages deck operations
-├── player.py             # PokerPlayer class - player state and actions
-├── variant/              # Poker variant implementations
-│   ├── __init__.py       # Variant registry
-│   ├── base.py           # BaseVariant abstract class
-│   ├── evaluator.py      # Hand evaluation (all rankings + tie-breakers)
-│   ├── texas_hold_em.py  # Texas Hold'em
-│   ├── omaha.py          # Omaha + Omaha Hi-Lo
-│   └── seven_card_stud.py
-├── services/
-│   └── poker.py          # PokerService - game state machine, betting, showdown
-```
+### Key classes (in `poker/`)
 
-### Supported Variants
+| Class              | File                          | Role                                |
+|--------------------|-------------------------------|-------------------------------------|
+| `PokerDeck`        | `poker/lib.py`                | Deck management                     |
+| `PokerCard`        | `poker/lib.py`                | Card dataclass                      |
+| `HandRank`         | `poker/lib.py`                | Hand rank + tie-breaker             |
+| `BettingStructure` | `poker/lib.py`                | No-Limit / Pot-Limit / Fixed-Limit  |
+| `PokerDealer`      | `poker/dealer.py`             | Shuffle / deal / burn / reset       |
+| `PokerPlayer`      | `poker/player.py`             | Player state + action validation    |
+| `PokerService`     | `services/poker.py`           | Betting state machine + showdown     |
 
-| Variant | Hole Cards | Community Cards | Betting Structures |
-|---------|-------------|-----------------|-------------------|
-| Texas Hold'em | 2 | 5 (flop/turn/river) | No-Limit, Pot-Limit, Fixed-Limit |
-| Omaha | 4 (must use 2) | 5 | Pot-Limit, Fixed-Limit |
-| 7-Card Stud | 7 (no community) | 0 | Fixed-Limit |
+## 8. SQL schema
 
-### Betting Streets
+Two schema locations exist:
 
-- **Texas Hold'em / Omaha**: preflop → flop → turn → river
-- **7-Card Stud**: third_street → fourth_street → fifth_street → sixth_street → seventh_street
+- `src/casino/sql/` (~30 files) — current canonical schema, loaded
+  by `startup.py` at bring-up. Includes `schema.sql`, `account`,
+  `account_view`, `bank_migration`, `bank_player`, `bank_table`,
+  `betlog`, `betlog_view`, `casino.sql` (legacy), `game`,
+  `game_view`, `hand`, `hand_view`, `hidden_table_migration`,
+  `log`, `log_view`, `map_cardtable_player`, `map_game_player`,
+  `player`, `player_view`, `slot_spin_view`, `slots`, `table_shoe_migration`,
+  `table`, `table_view`, `test_data`.
+- `scripts/poker.sql` — older poker-only migration set with
+  `casino.__poker_table`, `casino.__poker_hand`,
+  `casino.__poker_player_hand`, `casino.__poker_bet`,
+  `casino.__poker_pot`, `casino.__poker_seat`,
+  `casino.__poker_stats`. Superseded by the current
+  `src/casino/sql/` schema for production use; kept for historical
+  reference.
+- `zoidweb2-casino.sql` — orphaned Dec-2025 snapshot. **Do not
+  use.**
 
-### Hand Rankings
+## 9. Cross-reference map
 
-All poker hands are evaluated from Royal Flush (highest) to High Card (lowest):
-- Royal Flush, Straight Flush, Four of a Kind, Full House, Flush, Straight, Three of a Kind, Two Pair, Pair, High Card
+| Concept                            | File                                          |
+|------------------------------------|-----------------------------------------------|
+| MessageRouter                      | `src/casino/api/handler.py`                   |
+| Message types                      | `src/casino/api/messages.py`                  |
+| Door-mode menu                     | `src/casino/main.py`                          |
+| Door-mode entry                    | `src/casino/__main__.py`                      |
+| Standalone client                  | `src/casino/client/casino_client.py`          |
+| Client auth                        | `src/casino/auth.py`                          |
+| Card / Hand / Shoe                 | `src/casino/lib.py`                           |
+| Blackjack game logic               | `src/casino/services/game.py`                 |
+| Poker state machine                | `src/casino/services/poker.py`                |
+| Slots                              | `src/casino/services/slots.py`                |
+| Bank wrapper                       | `src/casino/services/bank.py`                 |
+| Player auth                        | `src/casino/services/player.py`               |
+| Table CRUD                         | `src/casino/services/table.py`                |
+| DAL (sync)                         | `src/casino/dal/{bet,game,player,slots,table}.py` |
+| DAL (async / aiosql)               | `src/casino/dal/aiosql/*`                     |
+| Games registry                     | `src/casino/games/base.py`                    |
+| Card resource loader               | `src/casino/cards/__init__.py`                |
+| Poker evaluator                    | `src/casino/poker/lib.py`                     |
+| Poker variants                     | `src/casino/poker/variant/*`                  |
+| Tic-tac-toe protocol               | `src/casino/tictactoe/README.md`              |
+| Tic-tac-toe engine                 | `src/casino/tictactoe/{api_handler,dealer,lib,service}.py` |
+| Yahtzee protocol                   | `src/casino/yahtzee/README.md`                |
+| Yahtzee engine                     | `src/casino/yahtzee/{api_handler,dealer,lib,service}.py` |
+| Slots door                         | `src/casino/slots/{__main__,dealer,game,lib,play,player}.py` |
+| Sysop maintenance                  | `src/casino/maint/__main__.py`                |
+| Per-game BBS commands              | `src/casino/commands/{admin,bank,chat,game,poker,table}/` |
+| Schema (current)                   | `src/casino/sql/`                             |
+| Schema (poker legacy)              | `scripts/poker.sql`                           |
+| Per-host landing page              | `www/php/index.php` + `www/skin/{scss,tmpl}/` |
+| Console-script manifest            | `pyproject.toml`                              |
 
-### Key Classes
+## 10. Authoritative file index
 
-**PokerDealer** (`poker/dealer.py`):
-- `shuffle_deck(times)` - Shuffle the deck
-- `deal_hole_cards(players, count)` - Deal hole cards to players
-- `deal_community_cards(count)` - Deal community cards (burns first)
-- `reset()` - Reset for new hand
+| Path                                              | Role                                  |
+|---------------------------------------------------|---------------------------------------|
+| `pyproject.toml`                                  | Manifest (4 console scripts + 4 poker variants) |
+| `src/casino/__init__.py`                          | Package init (BBS module entry)      |
+| `src/casino/__main__.py`                          | `python -m casino` entry              |
+| `src/casino/main.py`                              | Door-mode menu                        |
+| `src/casino/auth.py`                              | BED auth + BBS entry                  |
+| `src/casino/lib.py`                               | Card / Hand / Shoe / CasinoPlayer + bottombar |
+| `src/casino/config.py`                            | Env-var config loader                 |
+| `src/casino/client_cli.py`                        | `casino-client` console-script entry  |
+| `src/casino/startup.py`                           | Schema import                         |
+| `src/casino/api/handler.py`                       | MessageRouter + CasinoSessionManager + services |
+| `src/casino/api/messages.py`                      | MessageType enum + dataclasses        |
+| `src/casino/services/{bank,game,player,poker,slots,table}.py` | Business logic              |
+| `src/casino/dal/*` + `dal/aiosql/*`               | Data access                           |
+| `src/casino/games/base.py`                        | GameType / GameAction enums + BaseGame |
+| `src/casino/cards/__init__.py`                    | Card dataclass + png loader           |
+| `src/casino/poker/lib.py`                         | HandRank, BettingStructure, PokerDeck |
+| `src/casino/poker/variant/{base,evaluator,texas_hold_em,omaha,seven_card_stud}.py` | Poker variants |
+| `src/casino/tictactoe/{api_handler,dealer,lib,service}.py` | Tic-tac-toe                  |
+| `src/casino/yahtzee/{api_handler,dealer,lib,service}.py`   | Yahtzee                      |
+| `src/casino/slots/{__main__,dealer,game,lib,play,player}.py` | Slots                       |
+| `src/casino/blackjack/{game,hand,lib,play}.py`    | Blackjack                             |
+| `src/casino/maint/__main__.py`                    | Sysop maintenance menu                |
+| `src/casino/commands/{admin,bank,chat,game,poker,table}/` | BBS CLI subcommands         |
+| `src/casino/sql/`                                 | Current canonical schema              |
+| `src/casino/tests/`                               | pytest (~50 modules)                  |
+| `scripts/opencode.sql`                            | opencode user grants                  |
+| `scripts/poker.sql`                               | Poker legacy migration                |
+| `scripts/setup_privileges.sql`                    | Helper functions                      |
+| `scripts/setup_test_db.py`                        | Test DB setup                         |
+| `scripts/tictactoe.sql`                           | Tic-tac-toe anchor                    |
+| `www/php/index.php`                               | Landing page                          |
+| `www/skin/{scss,tmpl}/`                           | Landing-page skin                     |
 
-**PokerPlayer** (`poker/player.py`):
-- `receive_card(card_str)` - Add card to hand
-- `post_bet(amount)` - Place a bet (handles all-in)
-- `can_act()`, `can_check()`, `can_call()` - Action validation
-- `collect_winnings(amount)` - Add winnings
+## 11. Out of scope
 
-**PokerService** (`poker/services/poker.py`):
-- `create_table()` - Create a new poker table
-- `join_table()` - Player joins table
-- `start_hand()` - Start a new hand
-- `player_action()` - Process bet/call/check/raise/fold/all-in
-- `get_table_state()` - Get current game state
-
-### Database Schema
-
-Poker tables are defined in `scripts/poker.sql`:
-- `casino.__poker_table` - Table configuration
-- `casino.__poker_hand` - Hand history
-- `casino.__poker_player_hand` - Player hands at showdown
-- `casino.__poker_bet` - Betting history per street
-- `casino.__poker_pot` - Pot/side pot tracking
-- `casino.__poker_seat` - Player seats at tables
-- `casino.__poker_stats` - Player statistics
-
-### Commands
-
-Poker commands are in `casino/commands/poker/`:
-- `poker check` - Check (call if no bet)
-- `poker call` - Call the current bet
-- `poker bet` - Place a bet
-- `poker raise` - Raise the bet
-- `poker fold` - Fold your hand
-- `poker allin` - Go all-in
-- `poker show` - Show hand at showdown
-- `poker muck` - Muck hand
-- `poker hand` - Show your current hand
-- `poker table` - Show table state
-- `poker create` - Create a new table
-- `poker join` - Join a table
-- `poker leave` - Leave the table
-- `poker list` - List available tables
-- `poker start` - Start a new hand
+- **Authentication wire-protocol** — bed's `AuthService`. Casino
+  overrides it with its own `AuthService` because it must not depend
+  on bed (last-write-wins registration on the same server). The
+  shared credential primitives (`verifyMemberFound`, `has_password`,
+  `checkpassword`) live in `bbsengine6.member`.
+- **Daemon lifecycle** — bed.
+- **Bank ledger storage** — casino wraps `bbsengine6.bank` for the
+  `casino:house` treasury; the ledger itself lives in bbsengine6.
+- **Per-member PostgreSQL role provisioning** — `bbsengine6.pgrole`.
+- **The PHP framework** — the `www/` landing page is a Smarty
+  template consumed by bbsengine6's PHP web layer, not a casino
+  service. The actual casino UI runs in the BBS door or the
+  WebSocket client.
+- **Real-money gambling** — see the regulatory notice in `README.md`.
+  This software is for development, testing, and demonstration only.
+- **The `zoidweb2-casino.sql` snapshot** — orphaned Dec-2025
+  schema; do not use.
 
 ## Coding Conventions
 
 ### PEP 8: Keyword Arguments
 
-Following PEP 8, use `**kwargs` (not `**kw`) for keyword argument unpacking in function signatures:
+Following PEP 8, use `**kwargs` (not `**kw`) for keyword argument
+unpacking in function signatures:
 
 ```python
 # Good
@@ -241,8 +348,6 @@ def foo(arg1, **kw):
     value = kw.get("key", default)
 ```
 
-Exception: BBS module entry points (`init`, `access`, `buildargs`, `main`) may use `**kw` for consistency with the bbsengine module loader interface.
-
----
-
-For unimplemented features and future work, see [TODO.md](./TODO.md).
+Exception: BBS module entry points (`init`, `access`, `buildargs`,
+`main`) may use `**kw` for consistency with the bbsengine module
+loader interface.
