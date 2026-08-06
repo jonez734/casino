@@ -13,8 +13,8 @@ export SCSSLOADPATH = --load-path /home/opencode/data/work/zoid6/shared/skin/scs
 	--load-path /home/opencode/data/work/casino/www/skin/scss/
 export SCSS = sass $(SCSSLOADPATH) --sourcemap=none --stop-on-error --trace --style expanded
 
-export RSYNC = rsync --chmod=Dg=rwxs,Fgu=rw,Fo=r --no-times --verbose \
-	--archive --update --backup --recursive \
+export RSYNC = rsync --chmod=Dg=rwxs,Fgu=rw,Fo=r --verbose \
+	--archive --times --no-group --update --backup --recursive \
 	--human-readable --checksum --rsh=ssh \
 	--mkpath --exclude='*~'
 
