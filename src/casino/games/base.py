@@ -76,6 +76,7 @@ class BaseGame(ABC):
         """Check if the current round is over."""
         pass
 
+    @abstractmethod
     def reset(self) -> None:
         """Reset the game for a new round."""
         pass

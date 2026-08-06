@@ -4,9 +4,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Optional, Sequence
-
 
 NUM_CELLS = 9
 MIN_BET = 10
@@ -44,10 +43,10 @@ class Board:
 
     cells: tuple[int, ...]
     to_move: int
-    winner: Optional[int] = None
+    winner: int | None = None
 
     @classmethod
-    def empty(cls) -> "Board":
+    def empty(cls) -> Board:
         return cls(cells=(0,) * NUM_CELLS, to_move=X, winner=None)
 
     def is_full(self) -> bool:
@@ -62,7 +61,7 @@ class Board:
     def available_moves(self) -> list[int]:
         return [i for i, c in enumerate(self.cells) if c == EMPTY]
 
-    def with_move(self, cell: int, mark: int) -> "Board":
+    def with_move(self, cell: int, mark: int) -> Board:
         """Return a new Board with ``mark`` played at ``cell``.
 
         Raises ValueError if the move is illegal (out of range, occupied,
@@ -106,7 +105,7 @@ class Board:
         )
 
 
-def check_winner(cells: Sequence[int]) -> Optional[int]:
+def check_winner(cells: Sequence[int]) -> int | None:
     """Return 1 if X has won, 2 if O has won, 0 on a full-board draw,
     or None if the game is still in progress.
 
@@ -228,8 +227,8 @@ def best_move(cells: Sequence[int], to_move: int = X) -> int:
     if not moves:
         raise ValueError("no legal moves available")
 
-    best_score: Optional[int] = None
-    best_cell: Optional[int] = None
+    best_score: int | None = None
+    best_cell: int | None = None
     for m in moves:
         new_cells = play(cells, m, to_move)
         # ``_minimax`` returns the score of the resulting position from
@@ -240,10 +239,7 @@ def best_move(cells: Sequence[int], to_move: int = X) -> int:
             best_score = score
             best_cell = m
             continue
-        if to_move == X and score > best_score:
-            best_score = score
-            best_cell = m
-        elif to_move == O and score < best_score:
+        if to_move == X and score > best_score or to_move == O and score < best_score:
             best_score = score
             best_cell = m
     assert best_cell is not None
@@ -279,7 +275,7 @@ def _apply_rake(payout: int) -> int:
     return payout
 
 
-def payout(winner: Optional[int], bet: int) -> int:
+def payout(winner: int | None, bet: int) -> int:
     """Return the amount credited to the player who placed the bet.
 
     ``winner`` is 1 (player X won), 2 (player O won), 0 (draw / push),
@@ -300,7 +296,7 @@ def payout(winner: Optional[int], bet: int) -> int:
     return _apply_rake(bet * 2)
 
 
-def bettor_payout(winner: Optional[int], bettor_mark: int, bet: int) -> int:
+def bettor_payout(winner: int | None, bettor_mark: int, bet: int) -> int:
     """Return the credit for a single bettor.
 
     ``winner`` is the winning mark (1, 2) or 0 for draw or None for

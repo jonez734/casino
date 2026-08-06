@@ -2,13 +2,13 @@
 # casino/tests/test_player_stats_integration.py
 # Integration tests for player statistics tracking
 
-import asyncio
 import sys
 import unittest
 
 sys.path.insert(0, "/home/opencode/data/work/casino/src")
 
 from bbsengine6 import database
+
 from casino import lib
 from casino.dal import player as dal_player
 
@@ -16,12 +16,11 @@ from casino.dal import player as dal_player
 def stats_column_exists(args):
     """Check if the stats column exists in __player table."""
     try:
-        with database.connect(args) as conn:
-            with database.cursor(conn) as cur:
-                cur.execute(
-                    "SELECT 1 FROM information_schema.columns WHERE table_name = '__player' AND column_name = 'stats'"
-                )
-                return cur.fetchone() is not None
+        with database.connect(args) as conn, database.cursor(conn) as cur:
+            cur.execute(
+                "SELECT 1 FROM information_schema.columns WHERE table_name = '__player' AND column_name = 'stats'"
+            )
+            return cur.fetchone() is not None
     except Exception:
         return False
 
@@ -35,30 +34,28 @@ class TestPlayerStatsDALIntegration(unittest.IsolatedAsyncioTestCase):
         self.args = parser.parse_args(["--databasename", "zoid6test"])
         self.pool = database.getpool(self.args)
         self.test_moniker = "stats_test_player"
-        
+
         self.stats_column_available = stats_column_exists(self.args)
-        
+
         if not self.stats_column_available:
             self.skipTest("stats column not available in database - run migration first")
 
         try:
-            with database.connect(self.args, pool=self.pool) as conn:
-                with database.cursor(conn) as cur:
+            with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
                     cur.execute(
                         "INSERT INTO engine.__member (moniker, loginid, password, email, credits) "
                         "VALUES ('stats_test_player', 'stats_test_player', crypt('test', gen_salt('md5')), 'stats@test.local', 100000) "
                         "ON CONFLICT (moniker) DO UPDATE SET password = crypt('test', gen_salt('md5'))"
                     )
-        except Exception as e:
+        except Exception:
             pass
 
         try:
-            with database.connect(self.args, pool=self.pool) as conn:
-                with database.cursor(conn) as cur:
-                    cur.execute(
-                        "DELETE FROM casino.__player WHERE membermoniker = 'stats_test_player'"
-                    )
-        except Exception as e:
+            with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
+                cur.execute(
+                    "DELETE FROM casino.__player WHERE membermoniker = 'stats_test_player'"
+                )
+        except Exception:
             pass
 
         dal_player.get_or_create_player(self.args, self.test_moniker)
@@ -67,11 +64,10 @@ class TestPlayerStatsDALIntegration(unittest.IsolatedAsyncioTestCase):
         """Clean up test data."""
         if hasattr(self, "pool") and self.pool is not None:
             try:
-                with database.connect(self.args, pool=self.pool) as conn:
-                    with database.cursor(conn) as cur:
-                        cur.execute(
-                            "DELETE FROM casino.__player WHERE membermoniker = 'stats_test_player'"
-                        )
+                with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
+                    cur.execute(
+                        "DELETE FROM casino.__player WHERE membermoniker = 'stats_test_player'"
+                    )
             except Exception:
                 pass
             self.pool.close()
@@ -145,7 +141,7 @@ class TestPlayerStatsDALIntegration(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(ValueError) as context:
             dal_player.increment_stat(self.args, self.test_moniker, "wins", 0)
         self.assertIn("amount must be a positive integer", str(context.exception))
-        
+
         with self.assertRaises(ValueError) as context:
             dal_player.increment_stat(self.args, self.test_moniker, "wins", -1)
         self.assertIn("amount must be a positive integer", str(context.exception))

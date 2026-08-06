@@ -404,7 +404,7 @@ class TestDefaults(unittest.TestCase):
                 self.assertIn(stop, lib.DEFAULT_SYMBOLS, f"reel {i} has unknown stop {stop}")
 
     def test_default_paytable_keys_known_symbols(self):
-        for key in lib.DEFAULT_PAYTABLE.keys():
+        for key in lib.DEFAULT_PAYTABLE:
             for s in key:
                 self.assertIn(s, lib.DEFAULT_SYMBOLS, f"paytable key references unknown symbol {s}")
 

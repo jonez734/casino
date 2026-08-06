@@ -76,34 +76,30 @@ class TestPlayerService(unittest.TestCase):
     def setUpClass(cls):
         from bbsengine6 import database
         cls._args = _make_args()
-        with database.connect(cls._args) as conn:
-            with database.cursor(conn) as cur:
-                cur.execute("SELECT 1")
-                cur.fetchone()
+        with database.connect(cls._args) as conn, database.cursor(conn) as cur:
+            cur.execute("SELECT 1")
+            cur.fetchone()
 
     def setUp(self):
         from bbsengine6 import database
-        with database.connect(self._args) as conn:
-            with database.cursor(conn) as cur:
-                _delete_test_member(cur, TEST_MONIKER)
-                _ensure_null_credits_member(cur, TEST_MONIKER)
+        with database.connect(self._args) as conn, database.cursor(conn) as cur:
+            _delete_test_member(cur, TEST_MONIKER)
+            _ensure_null_credits_member(cur, TEST_MONIKER)
 
     def tearDown(self):
         from bbsengine6 import database
-        with database.connect(self._args) as conn:
-            with database.cursor(conn) as cur:
-                _delete_test_member(cur, TEST_MONIKER)
+        with database.connect(self._args) as conn, database.cursor(conn) as cur:
+            _delete_test_member(cur, TEST_MONIKER)
 
     def test_get_player_balance_returns_zero_on_null_credits(self):
         """dal.player.get_player_balance must return 0, not raise, when
         engine.__member.credits IS NULL."""
-        from casino.dal import player as dal_player
-
         # Sanity: row exists with credits NULL.
         from bbsengine6 import database
-        with database.connect(self._args) as conn:
-            with database.cursor(conn) as cur:
-                self.assertIsNone(_credits(cur, TEST_MONIKER))
+
+        from casino.dal import player as dal_player
+        with database.connect(self._args) as conn, database.cursor(conn) as cur:
+            self.assertIsNone(_credits(cur, TEST_MONIKER))
 
         balance = dal_player.get_player_balance(self._args, TEST_MONIKER)
         self.assertEqual(balance, 0)
@@ -112,14 +108,14 @@ class TestPlayerService(unittest.TestCase):
         """dal.player.get_player_balance must return the int value when
         credits is not NULL."""
         from bbsengine6 import database
+
         from casino.dal import player as dal_player
 
-        with database.connect(self._args) as conn:
-            with database.cursor(conn) as cur:
-                cur.execute(
-                    "UPDATE engine.__member SET credits = 1234 WHERE moniker = %s",
-                    (TEST_MONIKER,),
-                )
+        with database.connect(self._args) as conn, database.cursor(conn) as cur:
+            cur.execute(
+                "UPDATE engine.__member SET credits = 1234 WHERE moniker = %s",
+                (TEST_MONIKER,),
+            )
 
         balance = dal_player.get_player_balance(self._args, TEST_MONIKER)
         self.assertEqual(balance, 1234)
@@ -129,12 +125,12 @@ class TestPlayerService(unittest.TestCase):
         (schema migration) is what makes NULL impossible; until then, a
         read must leave the column as-is."""
         from bbsengine6 import database
+
         from casino.dal import player as dal_player
 
         dal_player.get_player_balance(self._args, TEST_MONIKER)
-        with database.connect(self._args) as conn:
-            with database.cursor(conn) as cur:
-                self.assertIsNone(_credits(cur, TEST_MONIKER))
+        with database.connect(self._args) as conn, database.cursor(conn) as cur:
+            self.assertIsNone(_credits(cur, TEST_MONIKER))
 
     def test_player_service_authenticate_succeeds_on_null_credits(self):
         """End-to-end: PlayerService.authenticate must not raise TypeError

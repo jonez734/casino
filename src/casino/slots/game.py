@@ -11,7 +11,6 @@ from . import lib as slots_lib
 from .dealer import SlotDealer
 from .player import SlotPlayer
 
-
 __version__ = "202210010112"
 
 

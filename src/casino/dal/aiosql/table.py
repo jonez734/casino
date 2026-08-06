@@ -2,10 +2,9 @@
 # Async table data access layer
 
 import random
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 from bbsengine6 import database
-
 
 COMPASS_POINTS = ["North", "South", "East", "West"]
 PHONETIC_ALPHABET = [
@@ -30,7 +29,7 @@ async def create_table(
     max_bet: int = 1000,
     moniker: Optional[str] = None,
     hidden: bool = False,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Create a new casino table.
 
     Args:
@@ -85,8 +84,8 @@ async def create_table(
 
     rows = await database.async_query(
         args,
-        """INSERT INTO $casino.__table (moniker, type, minimumbet, maximumbet, ownermoniker, ownersince, accountid, location, status, hidden) 
-           VALUES (:moniker, :game_type, :min_bet, :max_bet, :owner_moniker, NOW(), :account_id, :table_name, 'open', :hidden) 
+        """INSERT INTO $casino.__table (moniker, type, minimumbet, maximumbet, ownermoniker, ownersince, accountid, location, status, hidden)
+           VALUES (:moniker, :game_type, :min_bet, :max_bet, :owner_moniker, NOW(), :account_id, :table_name, 'open', :hidden)
            RETURNING moniker, type, minimumbet, maximumbet, ownermoniker, ownersince, accountid, cheat, cheatpercent, attrs, shoe_cards, shoe_uses, location, status, hidden, dealermodule, playermodule""",
         moniker=moniker, game_type=game_type, min_bet=min_bet, max_bet=max_bet,
         owner_moniker=owner_moniker, account_id=account_id, table_name=table_name, hidden=hidden
@@ -113,11 +112,11 @@ async def create_table(
     }
 
 
-async def get_table(args: Any, moniker: str) -> Optional[Dict[str, Any]]:
+async def get_table(args: Any, moniker: str) -> Optional[dict[str, Any]]:
     """Get table by moniker."""
     rows = await database.async_query(
         args,
-        """SELECT moniker, type, minimumbet, maximumbet, ownermoniker, ownersince, accountid, cheat, cheatpercent, attrs, shoe_cards, shoe_uses, location, status, hidden, dealermodule, playermodule 
+        """SELECT moniker, type, minimumbet, maximumbet, ownermoniker, ownersince, accountid, cheat, cheatpercent, attrs, shoe_cards, shoe_uses, location, status, hidden, dealermodule, playermodule
            FROM $casino.__table WHERE moniker = :moniker""",
         moniker=moniker
     )
@@ -149,14 +148,14 @@ async def list_tables(
     args: Any,
     game_type: Optional[str] = None,
     include_hidden: bool = False,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """List all tables, optionally filtered by game type.
 
     By default, hidden tables are excluded. Set ``include_hidden=True`` to
     include them (e.g. for sysops who need to see every table).
     """
     where_clauses = []
-    params: Dict[str, Any] = {}
+    params: dict[str, Any] = {}
     if game_type:
         where_clauses.append("type = :game_type")
         params["game_type"] = game_type
@@ -194,7 +193,7 @@ async def list_tables(
     ]
 
 
-async def get_table_players(args: Any, moniker: str) -> List[str]:
+async def get_table_players(args: Any, moniker: str) -> list[str]:
     """Get list of player monikers at a table."""
     rows = await database.async_query(
         args,
@@ -204,7 +203,7 @@ async def get_table_players(args: Any, moniker: str) -> List[str]:
     return [row["playermoniker"] for row in rows]
 
 
-async def get_table_spectators(args: Any, moniker: str) -> List[str]:
+async def get_table_spectators(args: Any, moniker: str) -> list[str]:
     """Get list of spectator monikers at a table."""
     rows = await database.async_query(
         args,
@@ -218,8 +217,8 @@ async def add_player_to_table(args: Any, moniker: str, player_moniker: str, role
     """Add a player to a table."""
     rows = await database.async_query(
         args,
-        """INSERT INTO $casino.__map_cardtable_player (tablemoniker, playermoniker, role, joinedat) 
-           VALUES (:moniker, :player_moniker, :role, NOW()) 
+        """INSERT INTO $casino.__map_cardtable_player (tablemoniker, playermoniker, role, joinedat)
+           VALUES (:moniker, :player_moniker, :role, NOW())
            ON CONFLICT DO NOTHING RETURNING tablemoniker""",
         moniker=moniker, player_moniker=player_moniker, role=role
     )
@@ -246,7 +245,7 @@ async def delete_table(args: Any, moniker: str) -> bool:
     return len(rows) > 0
 
 
-async def update_shoe(args: Any, moniker: str, cards: List[str], uses: int) -> None:
+async def update_shoe(args: Any, moniker: str, cards: list[str], uses: int) -> None:
     """Update table shoe."""
     await database.async_query(
         args,
@@ -255,21 +254,21 @@ async def update_shoe(args: Any, moniker: str, cards: List[str], uses: int) -> N
     )
 
 
-async def update_table(args: Any, moniker: str, **updates) -> Optional[Dict[str, Any]]:
+async def update_table(args: Any, moniker: str, **updates) -> Optional[dict[str, Any]]:
     """Update table fields."""
     set_clauses = []
     params = {"moniker": moniker}
-    
+
     for key, value in updates.items():
         set_clauses.append(f"{key} = :{key}")
         params[key] = value
-    
+
     if not set_clauses:
         return await get_table(args, moniker)
-    
+
     sql = f"UPDATE $casino.__table SET {', '.join(set_clauses)} WHERE moniker = :moniker RETURNING *"
     rows = await database.async_query(args, sql, **params)
-    
+
     if rows:
         return await get_table(args, moniker)
     return None
@@ -285,7 +284,7 @@ async def reset_shoe(args: Any, moniker: str) -> bool:
     return len(rows) > 0
 
 
-async def get_player_tables(args: Any, player_moniker: str) -> List[str]:
+async def get_player_tables(args: Any, player_moniker: str) -> list[str]:
     """Get all tables a player is currently at."""
     rows = await database.async_query(
         args,

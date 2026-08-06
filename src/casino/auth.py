@@ -16,7 +16,7 @@ import argparse
 import asyncio
 from typing import TYPE_CHECKING
 
-from bbsengine6 import io, util, bottombar
+from bbsengine6 import bottombar, io, util
 
 from .client.registry import _clients, _current_moniker
 

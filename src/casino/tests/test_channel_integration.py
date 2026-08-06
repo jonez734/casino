@@ -2,11 +2,9 @@
 # casino/tests/test_channel_integration.py
 # Integration tests for channel subscription system
 
-import argparse
-import asyncio
 import sys
 import unittest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, "/home/opencode/data/work/casino/src")
 
@@ -16,8 +14,7 @@ class TestChannelSubscriptionIntegration(unittest.IsolatedAsyncioTestCase):
 
     async def asyncSetUp(self):
         """Set up test fixtures."""
-        from bbsengine6.net import ChannelState
-        from casino.api.handler import MessageRouter, SessionManager
+        from casino.api.handler import MessageRouter
 
         # Create args mock
         self.args = MagicMock()
@@ -32,6 +29,7 @@ class TestChannelSubscriptionIntegration(unittest.IsolatedAsyncioTestCase):
     async def test_auth_auto_subscribes_to_member_channel(self):
         """Auth should auto-subscribe to member:{moniker} channel."""
         from bbsengine6.net import channel_get_session_channels
+
         from casino.api.handler import AuthService
 
         # Create auth service with channel state
@@ -63,6 +61,7 @@ class TestChannelSubscriptionIntegration(unittest.IsolatedAsyncioTestCase):
     async def test_join_table_auto_subscribes_to_table_channel(self):
         """Join table should auto-subscribe to casino:table:{moniker}."""
         from bbsengine6.net import channel_get_session_channels
+
         from casino.api.handler import TableServiceHandler
 
         # Create table service with channel state
@@ -80,7 +79,7 @@ class TestChannelSubscriptionIntegration(unittest.IsolatedAsyncioTestCase):
         self.sessions.register_session(session_id, "alice")
 
         # Handle join table (patch the DAL get_table so we don't hit Postgres)
-        with patch("casino.dal.table.get_table", return_value=None) as mock_get_table:
+        with patch("casino.dal.table.get_table", return_value=None):
             response = await table_service._handle_join_table(
                 session_id, {"moniker": "blackjack-1"}
             )
@@ -95,6 +94,7 @@ class TestChannelSubscriptionIntegration(unittest.IsolatedAsyncioTestCase):
     async def test_watch_table_auto_subscribes_to_table_channel(self):
         """Watch table should auto-subscribe to casino:table:{moniker}."""
         from bbsengine6.net import channel_get_session_channels
+
         from casino.api.handler import TableServiceHandler
 
         # Create table service with channel state
@@ -123,6 +123,7 @@ class TestChannelSubscriptionIntegration(unittest.IsolatedAsyncioTestCase):
     async def test_leave_table_unsubscribes_from_table_channel(self):
         """Leave table should unsubscribe from casino:table:{moniker}."""
         from bbsengine6.net import channel_get_session_channels, channel_subscribe
+
         from casino.api.handler import TableServiceHandler
 
         # Create table service with channel state
@@ -155,6 +156,7 @@ class TestChannelSubscriptionIntegration(unittest.IsolatedAsyncioTestCase):
     async def test_stop_watching_unsubscribes_from_table_channel(self):
         """Stop watching should unsubscribe from casino:table:{moniker}."""
         from bbsengine6.net import channel_get_session_channels, channel_subscribe
+
         from casino.api.handler import TableServiceHandler
 
         # Create table service with channel state
@@ -181,7 +183,7 @@ class TestChannelSubscriptionIntegration(unittest.IsolatedAsyncioTestCase):
     async def test_disconnect_unsubscribes_all_channels(self):
         """Session disconnect should unsubscribe from all channels."""
         from bbsengine6.net import channel_get_session_channels, channel_subscribe
-        from casino.api.handler import SessionManager
+
 
         # Register session and subscribe to multiple channels
         session_id = 12345
@@ -231,6 +233,7 @@ class TestChannelSubscriptionIntegration(unittest.IsolatedAsyncioTestCase):
     async def test_unsubscribe_channel_message_type(self):
         """unsubscribe_channel message type should work."""
         from bbsengine6.net import channel_get_session_channels, channel_subscribe
+
         from casino.api.handler import ChannelServiceHandler
 
         # Pre-subscribe
@@ -258,6 +261,7 @@ class TestChannelSubscriptionIntegration(unittest.IsolatedAsyncioTestCase):
     async def test_get_subscriptions_message_type(self):
         """get_subscriptions message type should work."""
         from bbsengine6.net import channel_subscribe
+
         from casino.api.handler import ChannelServiceHandler
 
         # Pre-subscribe to channels

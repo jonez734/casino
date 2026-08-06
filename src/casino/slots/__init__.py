@@ -1,6 +1,5 @@
 from bbsengine6 import register_module
 
-
 __version__ = "202210010112"
 
 __all__ = ["lib", "dealer", "player", "play", "game"]

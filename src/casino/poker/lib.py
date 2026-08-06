@@ -1,8 +1,7 @@
 import random
 from dataclasses import dataclass
 from enum import IntEnum
-from typing import Any, Optional
-
+from typing import Optional
 
 SUITS = ["hearts", "diamonds", "clubs", "spades"]
 SUIT_SYMBOLS = {"hearts": "{u:heart}", "diamonds": "{u:diamond}", "clubs": "{u:club}", "spades": "{u:spade}"}

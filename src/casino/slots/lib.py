@@ -11,13 +11,12 @@
 
 from __future__ import annotations
 
-import secrets
 import random as _random
+import secrets
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from typing import Iterable, Optional, Sequence, Union
 
 from bbsengine6 import io
-
 
 DEFAULT_NUM_REELS = 5
 DEFAULT_NUM_ROWS = 3
@@ -134,7 +133,7 @@ class RNG:
     ``RNG(random.Random(seed))`` for deterministic behavior.
     """
 
-    def __init__(self, rand: Optional[Union[secrets.SystemRandom, _random.Random]] = None) -> None:
+    def __init__(self, rand: secrets.SystemRandom | _random.Random | None = None) -> None:
         self._rand = rand if rand is not None else secrets.SystemRandom()
 
     def weighted_choice(self, items: Sequence[Symbol]) -> Symbol:
@@ -230,7 +229,7 @@ class SpinResult:
 class Paytable:
     """Maps a winning symbol sequence to a bet multiplier."""
 
-    def __init__(self, payouts: Optional[dict[tuple[str, ...], int]] = None) -> None:
+    def __init__(self, payouts: dict[tuple[str, ...], int] | None = None) -> None:
         if payouts is None:
             self._payouts: dict[tuple[str, ...], int] = dict(DEFAULT_PAYTABLE)
         else:
@@ -246,7 +245,7 @@ class Paytable:
             if not isinstance(mult, int) or mult < 0:
                 raise ValueError(f"paytable multiplier must be a non-negative int, got {mult!r}")
 
-    def get(self, key: tuple[str, ...]) -> Optional[int]:
+    def get(self, key: tuple[str, ...]) -> int | None:
         return self._payouts.get(key)
 
     def items(self) -> Iterable[tuple[tuple[str, ...], int]]:

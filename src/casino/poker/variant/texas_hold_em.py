@@ -1,6 +1,6 @@
-from casino.poker.lib import BettingStructure, BetLimits
-from casino.poker.variant.base import CommunityCardVariant
+from casino.poker.lib import BetLimits, BettingStructure
 from casino.poker.variant import evaluator
+from casino.poker.variant.base import CommunityCardVariant
 
 
 class TexasHoldEm(CommunityCardVariant):

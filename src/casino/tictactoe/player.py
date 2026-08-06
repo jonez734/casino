@@ -9,7 +9,7 @@
 
 from __future__ import annotations
 
-from typing import Optional, Sequence
+from collections.abc import Sequence
 
 
 class TictactoePlayer:
@@ -26,7 +26,7 @@ class TictactoePlayer:
         self.moniker = moniker
         self.mark = mark
 
-    def validate_move(self, cell: object, cells: Sequence[int]) -> Optional[str]:
+    def validate_move(self, cell: object, cells: Sequence[int]) -> str | None:
         """Return None if the move is legal, else a human-readable error.
 
         Does NOT check whose turn it is (the service layer enforces

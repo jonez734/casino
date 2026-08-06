@@ -1,8 +1,7 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any
 
-from casino.poker.lib import BettingStructure, BettingStreet
+from casino.poker.lib import BettingStructure
 
 
 @dataclass

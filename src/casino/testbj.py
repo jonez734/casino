@@ -1,19 +1,17 @@
 import argparse
-
 import tkinter as tk
 import tkinter.font as tkf
 import tkinter.ttk as ttk
 
-from bbsengine6 import io, database, member
-
 import lib
+from bbsengine6 import database, io, member
 
 
 class PlayerHand(lib.tkHand):
     def __init__(self, label, **kwargs):
         super().__init__(label, **kwargs)
 
-        self.frame = kwargs["frame"] if "frame" in kwargs else None
+        self.frame = kwargs.get("frame")
         io.echo(f"playerhand.init.100: self.frame={self.frame!r}", level="debug")
 
         self.label = label
@@ -26,7 +24,7 @@ class DealerHand(lib.tkHand):
     def __init__(self, label, **kwargs):
         super().__init__(label, **kwargs)
 
-        self.frame = kwargs["frame"] if "frame" in kwargs else None
+        self.frame = kwargs.get("frame")
         io.echo(f"dealerhand.init.100: self.frame={self.frame!r}", level="debug")
 
         self.label = label

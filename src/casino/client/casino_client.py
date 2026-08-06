@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import json
 from typing import TYPE_CHECKING, Callable
 
@@ -52,10 +53,8 @@ class CasinoClient:
         """Disconnect from the server."""
         if self._receive_task:
             self._receive_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._receive_task
-            except asyncio.CancelledError:
-                pass
 
         if self.ws:
             await self.ws.close()

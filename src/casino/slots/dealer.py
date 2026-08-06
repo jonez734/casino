@@ -3,13 +3,13 @@
 
 from __future__ import annotations
 
-from typing import Optional, Sequence
+from collections.abc import Sequence
 
 from .lib import (
     DEFAULT_NUM_ROWS,
+    RNG,
     Paytable,
     Reel,
-    RNG,
     SpinResult,
     Symbol,
 )
@@ -26,7 +26,7 @@ class SlotDealer:
         self,
         reels: Sequence[Reel],
         paytable: Paytable,
-        rng: Optional[RNG] = None,
+        rng: RNG | None = None,
     ) -> None:
         if not reels:
             raise ValueError("SlotDealer requires at least one reel")

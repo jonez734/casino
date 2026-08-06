@@ -2,10 +2,9 @@
 # Table data access layer
 
 import random
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 from bbsengine6 import database, io
-
 
 COMPASS_POINTS = ["North", "South", "East", "West"]
 PHONETIC_ALPHABET = [
@@ -30,7 +29,7 @@ def create_table(
     max_bet: int = 1000,
     moniker: Optional[str] = None,
     hidden: bool = False,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Create a new casino table.
 
@@ -51,8 +50,7 @@ def create_table(
 
     table_name = generate_table_name()
 
-    with database.connect(args) as conn:
-        with database.cursor(conn) as cur:
+    with database.connect(args) as conn, database.cursor(conn) as cur:
             cur.execute(
                 database.query(
                     "SELECT moniker FROM engine.__member WHERE moniker = :owner_moniker",
@@ -118,10 +116,9 @@ def create_table(
             }
 
 
-def get_table(args: Any, moniker: str) -> Optional[Dict[str, Any]]:
+def get_table(args: Any, moniker: str) -> Optional[dict[str, Any]]:
     """Get table by moniker."""
-    with database.connect(args) as conn:
-        with database.cursor(conn) as cur:
+    with database.connect(args) as conn, database.cursor(conn) as cur:
             cur.execute(
                 database.query(
                     "SELECT moniker, type, minimumbet, maximumbet, ownermoniker, ownersince, accountid, cheat, cheatpercent, attrs, shoe_cards, shoe_uses, location, status, hidden FROM $casino.__table WHERE moniker = :moniker",
@@ -154,7 +151,7 @@ def list_tables(
     args: Any,
     game_type: Optional[str] = None,
     include_hidden: bool = False,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     List all tables, optionally filtered by game type.
 
@@ -164,10 +161,9 @@ def list_tables(
     Returns:
         List of table dicts
     """
-    with database.connect(args) as conn:
-        with database.cursor(conn) as cur:
+    with database.connect(args) as conn, database.cursor(conn) as cur:
             where_clauses = []
-            params: Dict[str, Any] = {}
+            params: dict[str, Any] = {}
             if game_type:
                 where_clauses.append("type = :game_type")
                 params["game_type"] = game_type
@@ -203,10 +199,9 @@ def list_tables(
             return tables
 
 
-def get_table_players(args: Any, moniker: str) -> List[str]:
+def get_table_players(args: Any, moniker: str) -> list[str]:
     """Get list of player monikers at a table (via active game)."""
-    with database.connect(args) as conn:
-        with database.cursor(conn) as cur:
+    with database.connect(args) as conn, database.cursor(conn) as cur:
             cur.execute(
                 database.query(
                     "SELECT DISTINCT m.playermoniker FROM $casino.map_game_player m JOIN $casino.__game g ON g.id = m.gameid WHERE g.tablemoniker = :moniker AND g.status NOT IN ('settled', 'cancelled')",
@@ -216,10 +211,9 @@ def get_table_players(args: Any, moniker: str) -> List[str]:
             return [row["playermoniker"] for row in cur]
 
 
-def get_table_spectators(args: Any, moniker: str) -> List[str]:
+def get_table_spectators(args: Any, moniker: str) -> list[str]:
     """Get list of spectator monikers watching table."""
-    with database.connect(args) as conn:
-        with database.cursor(conn) as cur:
+    with database.connect(args) as conn, database.cursor(conn) as cur:
             cur.execute(
                 database.query(
                     "SELECT DISTINCT p.playermoniker FROM $casino.map_cardtable_player p WHERE p.cardtablemoniker = :moniker",
@@ -233,8 +227,7 @@ def add_player_to_table(
     args: Any, moniker: str, player_moniker: str
 ) -> bool:
     """Add player to table (sitting down). Player must already be in a game."""
-    with database.connect(args) as conn:
-        with database.cursor(conn) as cur:
+    with database.connect(args) as conn, database.cursor(conn) as cur:
             cur.execute(
                 database.query(
                     "INSERT INTO $casino.map_cardtable_player (cardtablemoniker, playermoniker) VALUES (:moniker, :player_moniker) ON CONFLICT DO NOTHING",
@@ -246,8 +239,7 @@ def add_player_to_table(
 
 def remove_player_from_table(args: Any, moniker: str, player_moniker: str) -> bool:
     """Remove player from table (standing up)."""
-    with database.connect(args) as conn:
-        with database.cursor(conn) as cur:
+    with database.connect(args) as conn, database.cursor(conn) as cur:
             cur.execute(
                 database.query(
                     "DELETE FROM $casino.map_game_player m USING $casino.__game g WHERE m.gameid = g.id AND g.tablemoniker = :moniker AND m.playermoniker = :player_moniker",
@@ -259,26 +251,24 @@ def remove_player_from_table(args: Any, moniker: str, player_moniker: str) -> bo
 
 def delete_table(args: Any, moniker: str) -> bool:
     """Delete a table (owner only)."""
-    with database.connect(args) as conn:
-        with database.cursor(conn) as cur:
-            cur.execute(database.query("DELETE FROM $casino.__game WHERE tablemoniker = :moniker", moniker=moniker))
-            cur.execute(database.query("DELETE FROM $casino.__table WHERE moniker = :moniker", moniker=moniker))
-            return cur.rowcount > 0
+    with database.connect(args) as conn, database.cursor(conn) as cur:
+        cur.execute(database.query("DELETE FROM $casino.__game WHERE tablemoniker = :moniker", moniker=moniker))
+        cur.execute(database.query("DELETE FROM $casino.__table WHERE moniker = :moniker", moniker=moniker))
+        return cur.rowcount > 0
 
 
-def update_shoe(args: Any, moniker: str, cards: List[str], uses: int) -> None:
+def update_shoe(args: Any, moniker: str, cards: list[str], uses: int) -> None:
     """Update shoe state for a table."""
-    with database.connect(args) as conn:
-        with database.cursor(conn) as cur:
-            cur.execute(
-                database.query(
-                    "UPDATE $casino.__table SET shoe_cards = :cards, shoe_uses = :uses WHERE moniker = :moniker",
-                    cards=cards, uses=uses, moniker=moniker
-                )
+    with database.connect(args) as conn, database.cursor(conn) as cur:
+        cur.execute(
+            database.query(
+                "UPDATE $casino.__table SET shoe_cards = :cards, shoe_uses = :uses WHERE moniker = :moniker",
+                cards=cards, uses=uses, moniker=moniker
             )
+        )
 
 
-def update_table(args: Any, moniker: str, **updates) -> Optional[Dict[str, Any]]:
+def update_table(args: Any, moniker: str, **updates) -> Optional[dict[str, Any]]:
     """Update table fields (moniker, minimumbet, maximumbet, status, hidden).
 
     Args:
@@ -313,12 +303,11 @@ def update_table(args: Any, moniker: str, **updates) -> Optional[Dict[str, Any]]
 
     values.append(moniker)
 
-    with database.connect(args) as conn:
-        with database.cursor(conn) as cur:
-            sql = f"UPDATE casino.__table SET {', '.join(set_clauses)} WHERE moniker = %s RETURNING moniker"
-            cur.execute(sql, values)
-            if cur.rowcount == 0:
-                return None
+    with database.connect(args) as conn, database.cursor(conn) as cur:
+        sql = f"UPDATE casino.__table SET {', '.join(set_clauses)} WHERE moniker = %s RETURNING moniker"
+        cur.execute(sql, values)
+        if cur.rowcount == 0:
+            return None
 
     new_moniker = updates.get("new_moniker", moniker)
     return get_table(args, new_moniker)
@@ -326,20 +315,19 @@ def update_table(args: Any, moniker: str, **updates) -> Optional[Dict[str, Any]]
 
 def reset_shoe(args: Any, moniker: str) -> bool:
     """Reset table shoe (clear cards, reset uses to 0).
-    
+
     Args:
         args: Application args
         moniker: Table moniker
-    
+
     Returns:
         True if shoe was reset, False if table not found
     """
-    with database.connect(args) as conn:
-        with database.cursor(conn) as cur:
-            cur.execute(
-                database.query(
-                    "UPDATE $casino.__table SET shoe_cards = NULL, shoe_uses = 0 WHERE moniker = :moniker",
-                    moniker=moniker
-                )
+    with database.connect(args) as conn, database.cursor(conn) as cur:
+        cur.execute(
+            database.query(
+                "UPDATE $casino.__table SET shoe_cards = NULL, shoe_uses = 0 WHERE moniker = :moniker",
+                moniker=moniker
             )
-            return cur.rowcount > 0
+        )
+        return cur.rowcount > 0

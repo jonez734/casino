@@ -1,6 +1,6 @@
-from casino.poker.lib import BettingStructure, BetLimits
-from casino.poker.variant.base import CommunityCardVariant
+from casino.poker.lib import BetLimits, BettingStructure
 from casino.poker.variant import evaluator
+from casino.poker.variant.base import CommunityCardVariant
 
 
 class Omaha(CommunityCardVariant):
@@ -33,12 +33,12 @@ class Omaha(CommunityCardVariant):
         self, hole_cards: list[str], community_cards: list[str]
     ) -> tuple[int, list[str]]:
         """Evaluate best 5-card hand from hole + community.
-        
+
         In Omaha, you MUST use exactly 2 hole cards + 3 community cards.
         """
         if len(hole_cards) < 2:
             return (0, [])
-        
+
         rank, best_hand, used_hole = evaluator.evaluate_best_hand(
             hole_cards, community_cards, required_hole=2
         )
@@ -74,9 +74,9 @@ class Omaha(CommunityCardVariant):
 
 class OmahaHiLo(Omaha):
     """Omaha Hi-Lo (8 or better) - split pot for low hand."""
-    
+
     name = "omaha_hi_lo"
-    
+
     def evaluate_showdown(
         self, hole_cards: list[str], community_cards: list[str]
     ) -> tuple[int, list[str]]:

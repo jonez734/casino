@@ -12,7 +12,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 from bbsengine6 import database
 from bbsengine6.database import Jsonb
@@ -25,41 +25,40 @@ from . import lib
 from .dealer import YahtzeeDealer
 
 
-def _default_find_table(args: Any, player_moniker: str) -> Optional[dict]:
+def _default_find_table(args: Any, player_moniker: str) -> dict | None:
     """Look up the player's existing open yahtzee table, if any.
 
     Uses a direct SQL query because dal_table.list_tables does
     not support owner filtering and we want a fast path.
     """
-    with database.connect(args) as conn:
-        with database.cursor(conn) as cur:
-            cur.execute(
-                database.query(
-                    """SELECT moniker, type, minimumbet, maximumbet, ownermoniker,
+    with database.connect(args) as conn, database.cursor(conn) as cur:
+        cur.execute(
+            database.query(
+                """SELECT moniker, type, minimumbet, maximumbet, ownermoniker,
                               ownersince, accountid, location, status, hidden
                        FROM $casino.__table
                        WHERE type = 'yahtzee'
                          AND ownermoniker = :owner_moniker
                          AND status = 'open'
                        LIMIT 1""",
-                    owner_moniker=player_moniker,
-                )
+                owner_moniker=player_moniker,
             )
-            row = cur.fetchone()
-            if row is None:
-                return None
-            return {
-                "moniker": row["moniker"],
-                "type": row["type"],
-                "minimumbet": row["minimumbet"],
-                "maximumbet": row["maximumbet"],
-                "ownermoniker": row["ownermoniker"],
-                "ownersince": row["ownersince"],
-                "accountid": row["accountid"],
-                "location": row["location"],
-                "status": row["status"],
-                "hidden": row.get("hidden", False),
-            }
+        )
+        row = cur.fetchone()
+        if row is None:
+            return None
+        return {
+            "moniker": row["moniker"],
+            "type": row["type"],
+            "minimumbet": row["minimumbet"],
+            "maximumbet": row["maximumbet"],
+            "ownermoniker": row["ownermoniker"],
+            "ownersince": row["ownersince"],
+            "accountid": row["accountid"],
+            "location": row["location"],
+            "status": row["status"],
+            "hidden": row.get("hidden", False),
+        }
 
 
 @dataclass
@@ -75,7 +74,7 @@ class YahtzeeGame:
     dice: tuple[int, ...] = (0, 0, 0, 0, 0)
     locked: list[bool] = field(default_factory=lambda: [False] * 5)
     rolls_left: int = 2
-    scorecard: dict[str, Optional[int]] = field(
+    scorecard: dict[str, int | None] = field(
         default_factory=lambda: {c: None for c in lib.CATEGORIES}
     )
     last_score: int = 0
@@ -112,9 +111,9 @@ class YahtzeeService:
     def __init__(
         self,
         args: Any,
-        dealer: Optional[YahtzeeDealer] = None,
-        table_service: Optional[TableService] = None,
-        find_table_fn: Optional[Any] = None,
+        dealer: YahtzeeDealer | None = None,
+        table_service: TableService | None = None,
+        find_table_fn: Any | None = None,
     ) -> None:
         self.args = args
         self._games: dict[str, YahtzeeGame] = {}
@@ -144,7 +143,7 @@ class YahtzeeService:
             raise RuntimeError(f"failed to create yahtzee table: {result.get('message')}")
         return result["table"]
 
-    def get_game(self, table_moniker: str) -> Optional[YahtzeeGame]:
+    def get_game(self, table_moniker: str) -> YahtzeeGame | None:
         return self._games.get(table_moniker)
 
     def list_active_tables(self) -> list[str]:
@@ -320,23 +319,22 @@ class YahtzeeService:
             "net": net,
             "rake": 0,
         }
-        with database.connect(self.args) as conn:
-            with database.cursor(conn) as cur:
-                cur.execute(
-                    database.query(
-                        """INSERT INTO $casino.__log
+        with database.connect(self.args) as conn, database.cursor(conn) as cur:
+            cur.execute(
+                database.query(
+                    """INSERT INTO $casino.__log
                            (membermoniker, cardtablemoniker, gameid, accountid,
                             datestamp, message, attrs)
                            VALUES (:member_moniker, :table_moniker, :game_id,
                                    :account_id, NOW(), :message, :attrs)""",
-                        member_moniker=game.player_moniker,
-                        table_moniker=game.table_moniker,
-                        game_id=game.game_id,
-                        account_id=None,
-                        message="yahtzee_turn",
-                        attrs=Jsonb(attrs),
-                    )
+                    member_moniker=game.player_moniker,
+                    table_moniker=game.table_moniker,
+                    game_id=game.game_id,
+                    account_id=None,
+                    message="yahtzee_turn",
+                    attrs=Jsonb(attrs),
                 )
+            )
 
     @staticmethod
     def _error(code: str, message: str) -> dict:

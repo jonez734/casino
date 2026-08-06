@@ -1,6 +1,6 @@
-from bbsengine6 import util, register_module
-from . import lib
+from bbsengine6 import register_module, util
 
+from . import lib
 
 __version__ = "202210010112"
 

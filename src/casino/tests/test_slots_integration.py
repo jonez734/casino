@@ -6,6 +6,7 @@
 
 import argparse
 import asyncio
+import contextlib
 import json
 import os
 import random
@@ -75,32 +76,30 @@ class TestSlotIntegration(unittest.TestCase):
         from bbsengine6 import database
         cls._args = _make_args()
         # Validate the DB connection is reachable
-        with database.connect(cls._args) as conn:
-            with database.cursor(conn) as cur:
-                cur.execute("SELECT 1")
-                cur.fetchone()
+        with database.connect(cls._args) as conn, database.cursor(conn) as cur:
+            cur.execute("SELECT 1")
+            cur.fetchone()
 
     def setUp(self):
         from bbsengine6 import database
+
         from casino.services.slots import invalidate_dealer
         invalidate_dealer("integ-slots")
-        with database.connect(self._args) as conn:
-            with database.cursor(conn) as cur:
-                _delete_table(cur, "integ-slots")
-                _ensure_member(cur, "alice")
-                _ensure_member(cur, "bob")
-                _credit(cur, "alice", 10000)
-                _credit(cur, "bob", 100)
+        with database.connect(self._args) as conn, database.cursor(conn) as cur:
+            _delete_table(cur, "integ-slots")
+            _ensure_member(cur, "alice")
+            _ensure_member(cur, "bob")
+            _credit(cur, "alice", 10000)
+            _credit(cur, "bob", 100)
         self._baseline_alice = 10000
         self._baseline_bob = 100
 
     def tearDown(self):
         from bbsengine6 import database
-        with database.connect(self._args) as conn:
-            with database.cursor(conn) as cur:
-                _delete_table(cur, "integ-slots")
-                _credit(cur, "alice", 0)
-                _credit(cur, "bob", 0)
+        with database.connect(self._args) as conn, database.cursor(conn) as cur:
+            _delete_table(cur, "integ-slots")
+            _credit(cur, "alice", 0)
+            _credit(cur, "bob", 0)
 
     def _create_slots_table(self, min_bet=1, max_bet=1000):
         from casino.dal import table as dal_table
@@ -109,18 +108,18 @@ class TestSlotIntegration(unittest.TestCase):
                                moniker="integ-slots")
 
     def test_full_spin_debits_credits_and_records(self):
-        from casino.services.slots import handle_spin
         from bbsengine6 import database
+
         from casino.dal import slots as dal_slots
+        from casino.services.slots import handle_spin
 
         self._create_slots_table(min_bet=1, max_bet=1000)
         before = self._baseline_alice
         r = handle_spin(self._args, "integ-slots", "alice", 10)
         self.assertTrue(r["success"])
         # Balance changed by net (payout - 10)
-        with database.connect(self._args) as conn:
-            with database.cursor(conn) as cur:
-                after = _balance(cur, "alice")
+        with database.connect(self._args) as conn, database.cursor(conn) as cur:
+            after = _balance(cur, "alice")
         self.assertEqual(after, before + r["spin"]["net"])
         # Spin row exists
         history = dal_slots.get_spin_history(self._args, "alice", limit=5)
@@ -129,9 +128,10 @@ class TestSlotIntegration(unittest.TestCase):
         self.assertEqual(int(history[0]["bet"]), 10)
 
     def test_insufficient_funds_rolls_back(self):
-        from casino.services.slots import handle_spin
         from bbsengine6 import database
+
         from casino.dal import slots as dal_slots
+        from casino.services.slots import handle_spin
 
         self._create_slots_table(min_bet=1, max_bet=1000)
         # bob has only 100, bet 500
@@ -139,9 +139,8 @@ class TestSlotIntegration(unittest.TestCase):
         self.assertFalse(r["success"])
         self.assertEqual(r["code"], "insufficient_funds")
         # bob's balance is unchanged
-        with database.connect(self._args) as conn:
-            with database.cursor(conn) as cur:
-                self.assertEqual(_balance(cur, "bob"), self._baseline_bob)
+        with database.connect(self._args) as conn, database.cursor(conn) as cur:
+            self.assertEqual(_balance(cur, "bob"), self._baseline_bob)
         # No spin row was written
         history = dal_slots.get_spin_history(self._args, "bob", limit=5)
         self.assertEqual(history, [])
@@ -163,8 +162,8 @@ class TestSlotIntegration(unittest.TestCase):
         self.assertEqual(r["code"], "bet_above_max")
 
     def test_stats_track_spins_and_biggest_win(self):
-        from casino.services.slots import handle_spin
         from casino.dal import player as dal_player
+        from casino.services.slots import handle_spin
 
         self._create_slots_table(min_bet=1, max_bet=1000)
         # Run several spins
@@ -180,8 +179,8 @@ class TestSlotIntegration(unittest.TestCase):
             self.assertGreater(stats["slots.biggest_win"], 0)
 
     def test_history_newest_first(self):
-        from casino.services.slots import handle_spin
         from casino.dal import slots as dal_slots
+        from casino.services.slots import handle_spin
 
         self._create_slots_table(min_bet=1, max_bet=1000)
         for i in range(3):
@@ -269,10 +268,8 @@ class _BedWebSocketTestClient:
             async for message in self.ws:
                 if not self._running:
                     break
-                try:
+                with contextlib.suppress(json.JSONDecodeError):
                     await self._message_queue.put(json.loads(message))
-                except json.JSONDecodeError:
-                    pass
         except ConnectionClosed:
             pass
         finally:
@@ -315,15 +312,11 @@ class _BedWebSocketTestClient:
         self._running = False
         if self._receive_task:
             self._receive_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._receive_task
-            except asyncio.CancelledError:
-                pass
         if self.ws:
-            try:
+            with contextlib.suppress(Exception):
                 await self.ws.close(code=1000, reason="Test complete")
-            except Exception:
-                pass
         while not self._message_queue.empty():
             try:
                 self._message_queue.get_nowait()
@@ -339,8 +332,8 @@ def _ensure_test_user(cur, moniker: str) -> None:
         f"ON CONFLICT (moniker) DO UPDATE SET password = crypt('test', gen_salt('md5')), credits = 100000"
     )
     cur.execute(
-        "INSERT INTO bank.__account (moniker, balance) VALUES ('{0}', 100000) "
-        "ON CONFLICT (moniker) DO UPDATE SET balance = 100000".format(moniker)
+        f"INSERT INTO bank.__account (moniker, balance) VALUES ('{moniker}', 100000) "
+        "ON CONFLICT (moniker) DO UPDATE SET balance = 100000"
     )
 
 
@@ -412,6 +405,7 @@ class TestSlotBedIntegration(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
         from bbsengine6 import database
         from bbsengine6.net import WebSocketServer
+
         from casino import lib
         from casino.api.handler import MessageRouter
 
@@ -421,10 +415,9 @@ class TestSlotBedIntegration(unittest.IsolatedAsyncioTestCase):
         self.pool = database.getpool(self.args)
 
         # Create both test users with the standard test password + balance
-        with database.connect(self.args, pool=self.pool) as conn:
-            with database.cursor(conn) as cur:
-                _ensure_test_user(cur, self.PLAYER_MONIKER)
-                _ensure_test_user(cur, self.SPECTATOR_MONIKER)
+        with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
+            _ensure_test_user(cur, self.PLAYER_MONIKER)
+            _ensure_test_user(cur, self.SPECTATOR_MONIKER)
 
         # Start the WebSocket server + router
         self.server = WebSocketServer(host="127.0.0.1", port=self.PORT)
@@ -446,18 +439,17 @@ class TestSlotBedIntegration(unittest.IsolatedAsyncioTestCase):
 
         if hasattr(self, "pool") and self.pool is not None:
             try:
-                with database.connect(self.args, pool=self.pool) as conn:
-                    with database.cursor(conn) as cur:
-                        _cleanup(
-                            cur,
-                            self.TABLE_MONIKER,
-                            [self.PLAYER_MONIKER, self.SPECTATOR_MONIKER],
-                        )
-                        _cleanup(
-                            cur,
-                            self.BJ_TABLE_MONIKER,
-                            [self.PLAYER_MONIKER, self.SPECTATOR_MONIKER],
-                        )
+                with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
+                    _cleanup(
+                        cur,
+                        self.TABLE_MONIKER,
+                        [self.PLAYER_MONIKER, self.SPECTATOR_MONIKER],
+                    )
+                    _cleanup(
+                        cur,
+                        self.BJ_TABLE_MONIKER,
+                        [self.PLAYER_MONIKER, self.SPECTATOR_MONIKER],
+                    )
             except Exception:
                 pass
             self.pool.close()
@@ -517,9 +509,8 @@ class TestSlotBedIntegration(unittest.IsolatedAsyncioTestCase):
         await client.receive_any(expected_type="joined_table", timeout=5.0)
 
         # Snapshot balance before
-        with database.connect(self.args, pool=self.pool) as conn:
-            with database.cursor(conn) as cur:
-                before = _get_balance(cur, self.PLAYER_MONIKER)
+        with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
+            before = _get_balance(cur, self.PLAYER_MONIKER)
 
         await client.send({"type": "slot_spin", "bet": 10})
         msg = await client.receive_any(expected_type="slot_result", timeout=10.0)
@@ -532,9 +523,8 @@ class TestSlotBedIntegration(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(spin["center_row"]), 5)
 
         # Bank balance must reflect net
-        with database.connect(self.args, pool=self.pool) as conn:
-            with database.cursor(conn) as cur:
-                after = _get_balance(cur, self.PLAYER_MONIKER)
+        with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
+            after = _get_balance(cur, self.PLAYER_MONIKER)
         self.assertEqual(after, before + spin["net"])
 
     # -- 2: paytable endpoint -----------------------------------------------
@@ -584,10 +574,8 @@ class TestSlotBedIntegration(unittest.IsolatedAsyncioTestCase):
         await player.receive_any(expected_type="joined_table", timeout=5.0)
         await spectator.send({"type": "watch_table", "moniker": self.TABLE_MONIKER})
         # Drain the watch_table response
-        try:
+        with contextlib.suppress(TimeoutError):
             await spectator.receive(timeout=2.0)
-        except TimeoutError:
-            pass
 
         # Player spins
         await player.send({"type": "slot_spin", "bet": 10})
@@ -711,12 +699,11 @@ class TestSlotBedIntegration(unittest.IsolatedAsyncioTestCase):
         from bbsengine6 import database
 
         # Drain jam-2's balance to 1
-        with database.connect(self.args, pool=self.pool) as conn:
-            with database.cursor(conn) as cur:
-                cur.execute(
-                    "UPDATE bank.__account SET balance = 1 WHERE moniker = %s",
-                    (self.SPECTATOR_MONIKER,),
-                )
+        with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
+            cur.execute(
+                "UPDATE bank.__account SET balance = 1 WHERE moniker = %s",
+                (self.SPECTATOR_MONIKER,),
+            )
 
         client = await self._connect_and_auth(self.SPECTATOR_MONIKER)
         self.clients.append(client)
@@ -789,9 +776,8 @@ class TestSlotBedIntegration(unittest.IsolatedAsyncioTestCase):
             total_payout += msg["spin"]["payout"]
             biggest = max(biggest, msg["spin"]["payout"])
 
-        with database.connect(self.args, pool=self.pool) as conn:
-            with database.cursor(conn) as cur:
-                stats = _stats_for(cur, self.PLAYER_MONIKER)
+        with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
+            stats = _stats_for(cur, self.PLAYER_MONIKER)
 
         self.assertEqual(stats.get("slots.spins"), 5)
         self.assertEqual(stats.get("slots.net"), total_payout - 5 * 5)
@@ -808,16 +794,14 @@ class TestSlotBedIntegration(unittest.IsolatedAsyncioTestCase):
         await client.send({"type": "join_table", "moniker": self.TABLE_MONIKER})
         await client.receive_any(expected_type="joined_table", timeout=5.0)
 
-        with database.connect(self.args, pool=self.pool) as conn:
-            with database.cursor(conn) as cur:
-                before = _spin_row_count(cur, self.PLAYER_MONIKER)
+        with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
+            before = _spin_row_count(cur, self.PLAYER_MONIKER)
 
         await client.send({"type": "slot_spin", "bet": 5})
         await client.receive_any(expected_type="slot_result", timeout=5.0)
 
-        with database.connect(self.args, pool=self.pool) as conn:
-            with database.cursor(conn) as cur:
-                after = _spin_row_count(cur, self.PLAYER_MONIKER)
+        with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
+            after = _spin_row_count(cur, self.PLAYER_MONIKER)
         self.assertEqual(after, before + 1)
 
     # -- 19: balance reconciles across spins --------------------------------
@@ -830,9 +814,8 @@ class TestSlotBedIntegration(unittest.IsolatedAsyncioTestCase):
         await client.send({"type": "join_table", "moniker": self.TABLE_MONIKER})
         await client.receive_any(expected_type="joined_table", timeout=5.0)
 
-        with database.connect(self.args, pool=self.pool) as conn:
-            with database.cursor(conn) as cur:
-                before = _get_balance(cur, self.PLAYER_MONIKER)
+        with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
+            before = _get_balance(cur, self.PLAYER_MONIKER)
 
         net = 0
         for _ in range(10):
@@ -840,9 +823,8 @@ class TestSlotBedIntegration(unittest.IsolatedAsyncioTestCase):
             msg = await client.receive_any(expected_type="slot_result", timeout=5.0)
             net += msg["spin"]["net"]
 
-        with database.connect(self.args, pool=self.pool) as conn:
-            with database.cursor(conn) as cur:
-                after = _get_balance(cur, self.PLAYER_MONIKER)
+        with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
+            after = _get_balance(cur, self.PLAYER_MONIKER)
         self.assertEqual(after, before + net)
 
     # -- 20: re-auth after disconnect ---------------------------------------

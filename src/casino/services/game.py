@@ -2,16 +2,16 @@
 # Game service - blackjack game logic
 
 import random
-from typing import Any, Dict, List, Optional
+from decimal import Decimal
+from typing import Any, Optional
 
 from bbsengine6 import io
-from casino.dal import table as dal_table
+
+from casino.blackjack import Hand
+from casino.dal import bet as dal_bet
 from casino.dal import game as dal_game
 from casino.dal import player as dal_player
-from decimal import Decimal
-from casino.blackjack import Hand
-
-from casino.dal import bet as dal_bet
+from casino.dal import table as dal_table
 
 
 class GameService:
@@ -22,9 +22,9 @@ class GameService:
 
     def __init__(self, args: Any):
         self.args = args
-        self._shoes: Dict[str, Dict[str, Any]] = {}  # table_moniker -> shoe state
+        self._shoes: dict[str, dict[str, Any]] = {}  # table_moniker -> shoe state
 
-    def _create_shoe(self, decks: int = 6) -> List[str]:
+    def _create_shoe(self, decks: int = 6) -> list[str]:
         """Create a shoe with multiple decks."""
         shoe = []
         for _ in range(decks):
@@ -34,7 +34,7 @@ class GameService:
         random.shuffle(shoe)
         return shoe
 
-    def _get_shoe(self, table_moniker: str) -> Dict[str, Any]:
+    def _get_shoe(self, table_moniker: str) -> dict[str, Any]:
         """Get or create shoe for a specific table."""
         if table_moniker in self._shoes:
             shoe = self._shoes[table_moniker]
@@ -97,7 +97,7 @@ class GameService:
             return 11
         return int(pips)
 
-    def _hand_value(self, cards: List[str]) -> int:
+    def _hand_value(self, cards: list[str]) -> int:
         """Calculate hand value with Ace adjustment."""
         total = sum(self._card_value(c) for c in cards)
         aces = sum(1 for c in cards if c.startswith("A"))
@@ -108,7 +108,7 @@ class GameService:
 
         return total
 
-    def start_game(self, table_moniker: str, game_type: str = "blackjack") -> Dict[str, Any]:
+    def start_game(self, table_moniker: str, game_type: str = "blackjack") -> dict[str, Any]:
         """Start a new game at a table."""
         table = dal_table.get_table(self.args, table_moniker)
         if not table:
@@ -127,7 +127,7 @@ class GameService:
         table_moniker: str,
         player_moniker: str,
         amount: int,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Place a bet and create player hand."""
         table = dal_table.get_table(self.args, table_moniker)
         if not table:
@@ -178,7 +178,7 @@ class GameService:
             "message": f"Bet {amount} placed",
         }
 
-    def hit(self, table_moniker: str, player_moniker: str) -> Dict[str, Any]:
+    def hit(self, table_moniker: str, player_moniker: str) -> dict[str, Any]:
         """Player hits (takes another card)."""
         game = dal_game.get_active_game(self.args, table_moniker)
         if not game:
@@ -214,7 +214,7 @@ class GameService:
             "message": "5-card Charlie!" if status == "charlie" else ("Hit" if status != "bust" else "Bust!"),
         }
 
-    def stand(self, table_moniker: str, player_moniker: str) -> Dict[str, Any]:
+    def stand(self, table_moniker: str, player_moniker: str) -> dict[str, Any]:
         """Player stands (ends turn)."""
         game = dal_game.get_active_game(self.args, table_moniker)
         if not game:
@@ -235,7 +235,7 @@ class GameService:
             "message": f"Stood at {total}",
         }
 
-    def surrender(self, table_moniker: str, player_moniker: str) -> Dict[str, Any]:
+    def surrender(self, table_moniker: str, player_moniker: str) -> dict[str, Any]:
         """Player surrenders - forfeit 50% of bet."""
         from casino.dal import bet as dal_bet
 
@@ -287,7 +287,7 @@ class GameService:
             "message": f"Surrendered, returned {surrender_amount}",
         }
 
-    def can_surrender(self, table_moniker: str, player_moniker: str) -> Dict[str, Any]:
+    def can_surrender(self, table_moniker: str, player_moniker: str) -> dict[str, Any]:
         """Check if player can surrender."""
         game = dal_game.get_active_game(self.args, table_moniker)
         if not game:
@@ -318,7 +318,7 @@ class GameService:
 
         return {"success": True, "can_surrender": True}
 
-    def can_split(self, table_moniker: str, player_moniker: str, hand_id: Optional[int] = None) -> Dict[str, Any]:
+    def can_split(self, table_moniker: str, player_moniker: str, hand_id: Optional[int] = None) -> dict[str, Any]:
         """Check if player can split their hand."""
         game = dal_game.get_active_game(self.args, table_moniker)
         if not game:
@@ -330,25 +330,25 @@ class GameService:
             hand = dal_game.get_hand(self.args, hand_id)
             if not hand:
                 return {"success": False, "message": "Hand not found"}
-            
+
             cards = list(hand["cards"]) if hand["cards"] else []
             if len(cards) != 2:
                 return {"success": False, "message": "Can only split with exactly 2 cards"}
-            
+
             card1_rank = cards[0][:-1]
             card2_rank = cards[1][:-1]
             if card1_rank != card2_rank:
                 return {"success": False, "message": "Cards must have same rank to split"}
-            
+
             attrs = hand.get("attrs") or {}
             split_count = attrs.get("split_count", 0)
             if split_count >= 3:
                 return {"success": False, "message": "Maximum splits reached (4 hands max)"}
-            
+
             player_bet = dal_bet.get_bet_for_hand(self.args, hand_id)
             if not player_bet:
                 return {"success": False, "message": "No bet found"}
-            
+
             balance = self._get_player_balance(player_moniker)
             if balance < player_bet["amount"] * 2:
                 return {"success": False, "message": "Insufficient funds to split"}
@@ -391,7 +391,7 @@ class GameService:
             "bet_amount": player_bet["amount"],
         }
 
-    def split(self, table_moniker: str, player_moniker: str, hand_id: Optional[int] = None) -> Dict[str, Any]:
+    def split(self, table_moniker: str, player_moniker: str, hand_id: Optional[int] = None) -> dict[str, Any]:
         """Split player's hand into two hands."""
         can_split = self.can_split(table_moniker, player_moniker, hand_id)
         if not can_split["success"]:
@@ -421,14 +421,13 @@ class GameService:
         bet_amount = player_bet["amount"]
 
         from bbsengine6 import database
-        with database.connect(self.args) as conn:
-            with database.cursor(conn) as cur:
-                cur.execute(
-                    database.query(
-                        "UPDATE $engine.__member SET credits = credits - :amount WHERE moniker = :player_moniker",
-                        amount=bet_amount, player_moniker=player_moniker
-                    )
+        with database.connect(self.args) as conn, database.cursor(conn) as cur:
+            cur.execute(
+                database.query(
+                    "UPDATE $engine.__member SET credits = credits - :amount WHERE moniker = :player_moniker",
+                    amount=bet_amount, player_moniker=player_moniker
                 )
+            )
 
         attrs = hand.get("attrs") or {}
         split_count = attrs.get("split_count", 0)
@@ -483,7 +482,7 @@ class GameService:
             },
         }
 
-    def can_double(self, table_moniker: str, player_moniker: str, hand_id: Optional[int] = None) -> Dict[str, Any]:
+    def can_double(self, table_moniker: str, player_moniker: str, hand_id: Optional[int] = None) -> dict[str, Any]:
         """Check if player can double down."""
         game = dal_game.get_active_game(self.args, table_moniker)
         if not game:
@@ -493,15 +492,15 @@ class GameService:
             player_bet = dal_bet.get_bet_for_hand(self.args, hand_id)
             if not player_bet:
                 return {"success": False, "message": "No bet found for hand"}
-            
+
             hand = dal_game.get_hand(self.args, hand_id)
             if not hand:
                 return {"success": False, "message": "Hand not found"}
-            
+
             cards = list(hand["cards"]) if hand["cards"] else []
             if len(cards) != 2:
                 return {"success": False, "message": "Can only double with exactly 2 cards"}
-            
+
             balance = self._get_player_balance(player_moniker)
             if balance < player_bet["amount"]:
                 return {"success": False, "message": "Insufficient funds to double"}
@@ -541,20 +540,19 @@ class GameService:
     def _get_player_balance(self, player_moniker: str) -> int:
         """Get player's credit balance."""
         from bbsengine6 import database
-        with database.connect(self.args) as conn:
-            with database.cursor(conn) as cur:
-                cur.execute(
-                    database.query(
-                        "SELECT credits FROM $engine.__member WHERE moniker = :player_moniker",
-                        player_moniker=player_moniker
-                    )
+        with database.connect(self.args) as conn, database.cursor(conn) as cur:
+            cur.execute(
+                database.query(
+                    "SELECT credits FROM $engine.__member WHERE moniker = :player_moniker",
+                    player_moniker=player_moniker
                 )
-                row = cur.fetchone()
-                if not row:
-                    return 0
-                return int(row["credits"])
+            )
+            row = cur.fetchone()
+            if not row:
+                return 0
+            return int(row["credits"])
 
-    def double(self, table_moniker: str, player_moniker: str, hand_id: Optional[int] = None) -> Dict[str, Any]:
+    def double(self, table_moniker: str, player_moniker: str, hand_id: Optional[int] = None) -> dict[str, Any]:
         """Double down - double bet and get exactly one more card."""
         can_double = self.can_double(table_moniker, player_moniker, hand_id)
         if not can_double["success"]:
@@ -568,7 +566,7 @@ class GameService:
             player_bet = dal_bet.get_bet_for_hand(self.args, hand_id)
             if not player_bet:
                 return {"success": False, "message": "No bet found for hand"}
-            
+
             hand = dal_game.get_hand(self.args, hand_id)
             if not hand:
                 return {"success": False, "message": "Hand not found"}
@@ -587,14 +585,13 @@ class GameService:
         bet_amount = player_bet["amount"]
 
         from bbsengine6 import database
-        with database.connect(self.args) as conn:
-            with database.cursor(conn) as cur:
-                cur.execute(
-                    database.query(
-                        "UPDATE $engine.__member SET credits = credits - :amount WHERE moniker = :player_moniker",
-                        amount=bet_amount, player_moniker=player_moniker
-                    )
+        with database.connect(self.args) as conn, database.cursor(conn) as cur:
+            cur.execute(
+                database.query(
+                    "UPDATE $engine.__member SET credits = credits - :amount WHERE moniker = :player_moniker",
+                    amount=bet_amount, player_moniker=player_moniker
                 )
+            )
 
         dal_bet.double_bet(self.args, player_bet["id"], bet_amount * 2)
 
@@ -623,7 +620,7 @@ class GameService:
             "bet_amount": bet_amount * 2,
         }
 
-    def get_game_state(self, table_moniker: str, player_moniker: str) -> Dict[str, Any]:
+    def get_game_state(self, table_moniker: str, player_moniker: str) -> dict[str, Any]:
         """Get current game state for a player."""
         io.echo(f"get_game_state: table_moniker={table_moniker}, player={player_moniker}", level="info")
         table = dal_table.get_table(self.args, table_moniker)
@@ -656,7 +653,7 @@ class GameService:
             if len(dealer_cards) >= 2:
                 dal_game.set_dealer_hole_card(self.args, game["id"], dealer_cards[1])
 
-        dealer_total = self._hand_value(dealer_cards) if dealer_cards else 0
+        self._hand_value(dealer_cards) if dealer_cards else 0
 
         player_hands = []
         insurance_available = False
@@ -693,11 +690,10 @@ class GameService:
                 "can_surrender": can_surrender,
             })
 
-            if len(cards) == 2:
-                if self._is_dealer_showing_ace(table_moniker):
-                    insurance_available = True
-                    if hand_bet:
-                        insurance_taken = dal_bet.get_insurance(self.args, hand_bet["id"])
+            if len(cards) == 2 and self._is_dealer_showing_ace(table_moniker):
+                insurance_available = True
+                if hand_bet:
+                    insurance_taken = dal_bet.get_insurance(self.args, hand_bet["id"])
 
         dealer_hand_for_client = self._hide_hole_card(dealer_cards, game["id"])
 
@@ -749,7 +745,7 @@ class GameService:
         upcard = dealer_cards[0]
         return upcard.startswith("A")
 
-    def can_take_insurance(self, table_moniker: str, player_moniker: str) -> Dict[str, Any]:
+    def can_take_insurance(self, table_moniker: str, player_moniker: str) -> dict[str, Any]:
         """Check if player can take insurance."""
         if not self._is_dealer_showing_ace(table_moniker):
             return {"success": False, "message": "Insurance not available"}
@@ -772,7 +768,7 @@ class GameService:
             "message": "Insurance available",
         }
 
-    def take_insurance(self, table_moniker: str, player_moniker: str, amount: int) -> Dict[str, Any]:
+    def take_insurance(self, table_moniker: str, player_moniker: str, amount: int) -> dict[str, Any]:
         """Place an insurance bet."""
         can_insure = self.can_take_insurance(table_moniker, player_moniker)
         if not can_insure["success"]:
@@ -837,7 +833,7 @@ class GameService:
 
         return dealer_cards
 
-    def settle_game(self, table_moniker: str) -> Dict[str, Any]:
+    def settle_game(self, table_moniker: str) -> dict[str, Any]:
         """Settle all bets for a game."""
         game = dal_game.get_active_game(self.args, table_moniker)
         if not game:
@@ -898,17 +894,7 @@ class GameService:
                 dal_bet.settle_bet(self.args, bet["id"], False, 0)
                 net_change = -original_bet
                 outcome = "bust"
-            elif hand_status == "charlie":
-                payout = bet["amount"] * 2
-                dal_bet.settle_bet(self.args, bet["id"], True, payout)
-                net_change = int(payout) - original_bet
-                outcome = "win"
-            elif dealer_total > 21:
-                payout = bet["amount"] * 2
-                dal_bet.settle_bet(self.args, bet["id"], True, payout)
-                net_change = int(payout) - original_bet
-                outcome = "win"
-            elif player_total > dealer_total:
+            elif hand_status == "charlie" or dealer_total > 21 or player_total > dealer_total:
                 payout = bet["amount"] * 2
                 dal_bet.settle_bet(self.args, bet["id"], True, payout)
                 net_change = int(payout) - original_bet

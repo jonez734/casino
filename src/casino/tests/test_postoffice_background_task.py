@@ -5,7 +5,7 @@
 import asyncio
 import sys
 import unittest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -75,7 +75,7 @@ class TestPostofficeBackgroundTask(unittest.IsolatedAsyncioTestCase):
 
     async def test_poll_all_mailboxes_calls_check(self):
         """Test polling iterates through all mailboxes."""
-        from casino.services.postoffice import PostofficeService, MailboxConfig
+        from casino.services.postoffice import MailboxConfig, PostofficeService
 
         mailboxes = [
             MailboxConfig(host="mail1.example.com", username="u1", password="p1"),
@@ -94,7 +94,7 @@ class TestPostofficeBackgroundTask(unittest.IsolatedAsyncioTestCase):
 
     async def test_check_mailbox_runs_in_executor(self):
         """Test _check_mailbox runs sync IMAP in executor."""
-        from casino.services.postoffice import PostofficeService, MailboxConfig
+        from casino.services.postoffice import MailboxConfig, PostofficeService
 
         mb = MailboxConfig(host="mail.example.com", username="user", password="pass")
         service = PostofficeService(config={
@@ -115,14 +115,14 @@ class TestStartStopFunctions(unittest.IsolatedAsyncioTestCase):
 
     async def test_start_postoffice_service(self):
         """Test start_postoffice_service function."""
-        from casino.services.postoffice import start_postoffice_service, get_postoffice_service, PostofficeService
         import casino.services.postoffice as postoffice_module
+        from casino.services.postoffice import get_postoffice_service, start_postoffice_service
 
         postoffice_module._service_instance = None
 
         test_config = {"enabled": True, "poll_interval": 30, "mailboxes": []}
-        service = get_postoffice_service(test_config)
-        
+        get_postoffice_service(test_config)
+
         start_postoffice_service()
         self.assertIsNotNone(postoffice_module._service_instance)
         self.assertTrue(postoffice_module._service_instance.is_enabled)
@@ -132,12 +132,8 @@ class TestStartStopFunctions(unittest.IsolatedAsyncioTestCase):
 
     async def test_stop_postoffice_service(self):
         """Test stop_postoffice_service function."""
-        from casino.services.postoffice import (
-            start_postoffice_service,
-            stop_postoffice_service,
-            PostofficeService
-        )
         import casino.services.postoffice as postoffice_module
+        from casino.services.postoffice import PostofficeService, stop_postoffice_service
 
         postoffice_module._service_instance = PostofficeService(config={
             "enabled": True,
@@ -166,7 +162,6 @@ class TestServiceLifecycle(unittest.IsolatedAsyncioTestCase):
 
         service.start()
         self.assertTrue(service._running)
-        task1 = service._task
 
         service.stop()
         self.assertFalse(service._running)

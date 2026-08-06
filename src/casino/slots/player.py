@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
 from .dealer import SlotDealer
 from .lib import SpinResult
@@ -32,7 +31,7 @@ class SlotPlayer:
         if self.credits < 0:
             raise ValueError(f"credits must be >= 0, got {self.credits}")
 
-    def validate_bet(self, bet: int) -> Optional[str]:
+    def validate_bet(self, bet: int) -> str | None:
         """Return None if bet is valid, else a human-readable error."""
         if not isinstance(bet, int) or isinstance(bet, bool):
             return "Bet must be an integer"

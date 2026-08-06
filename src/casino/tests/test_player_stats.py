@@ -64,16 +64,16 @@ class TestStatsExtensibility(unittest.TestCase):
     def test_can_add_new_stat_to_allowed_list(self):
         """New stats can be added to ALLOWED_STATS easily."""
         original_count = len(dal_player.ALLOWED_STATS)
-        
+
         self.assertGreaterEqual(original_count, 8, "Should have at least 8 stats")
-        
+
         self.assertTrue(True, "JSONB design allows adding new stats without migration")
 
     def test_game_type_prefix_format(self):
         """Game-specific stats should use game_type.stat_name format."""
         prefixed_stats = [s for s in dal_player.ALLOWED_STATS if "." in s]
         self.assertTrue(len(prefixed_stats) > 0, "Should have prefixed stats")
-        
+
         for stat in prefixed_stats:
             game_type, stat_name = stat.split(".", 1)
             self.assertIn(

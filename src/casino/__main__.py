@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import argparse
-import time
 import locale
+import time
 from argparse import Namespace
 
-from bbsengine6 import io, screen, session, database
+from bbsengine6 import database, io, screen, session
+
 from . import lib
 
 

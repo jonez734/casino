@@ -1,17 +1,15 @@
 # casino/tests/test_poker_integration.py
 # Integration tests for poker service
 
-import pytest
-import sys
 import os
-from unittest.mock import Mock, MagicMock, patch
+import sys
+
+import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from casino.services.poker import PokerService, PokerTableState, PlayerAction
-from casino.poker.variant.texas_hold_em import TexasHoldEm
-from casino.poker.variant.omaha import Omaha
 from casino.poker.lib import BettingStructure
+from casino.services.poker import PokerService
 
 
 class MockArgs:
@@ -499,7 +497,7 @@ class TestOmahaIntegration:
         service.start_hand("omaha")
 
         table = service._tables["omaha"]
-        alice = table.players["Alice"]
+        table.players["Alice"]
 
         rank, best = table.variant.evaluate_showdown(
             ["AH", "KD", "QS", "JC"],

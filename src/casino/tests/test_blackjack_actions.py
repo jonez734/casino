@@ -8,7 +8,6 @@ from decimal import Decimal
 
 sys.path.insert(0, "/home/opencode/data/work/casino/src")
 
-from casino.cards import Card
 from casino.blackjack import Hand
 
 
@@ -256,10 +255,7 @@ class TestInsuranceEdgeCases(unittest.TestCase):
         insurance_amount = 50
         dealer_blackjack = False
 
-        if dealer_blackjack:
-            payout = insurance_amount * 2
-        else:
-            payout = 0
+        payout = insurance_amount * 2 if dealer_blackjack else 0
 
         self.assertEqual(payout, 0)
 

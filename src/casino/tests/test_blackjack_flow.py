@@ -12,12 +12,13 @@ import pytest
 
 sys.path.insert(0, "/home/opencode/data/work/casino/src")
 
+import contextlib
+
 import websockets
-from websockets.exceptions import ConnectionClosed, ConnectionClosedOK
+from websockets.exceptions import ConnectionClosed
 
 from casino import lib
 from casino.api.handler import MessageRouter
-
 
 DEFAULT_TIMEOUT = 10.0
 PING_INTERVAL = 30.0
@@ -159,23 +160,17 @@ class WebSocketTestClient:
 
         if self._receive_task:
             self._receive_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._receive_task
-            except asyncio.CancelledError:
-                pass
 
         if self._ping_task:
             self._ping_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._ping_task
-            except asyncio.CancelledError:
-                pass
 
         if self.ws:
-            try:
+            with contextlib.suppress(Exception):
                 await self.ws.close(code=1000, reason="Test complete")
-            except Exception:
-                pass
 
         # Drain remaining messages
         while not self._message_queue.empty():
@@ -201,8 +196,8 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
 
     async def asyncSetUp(self):
         """Set up test server and database."""
-        from bbsengine6.net import WebSocketServer
         from bbsengine6 import database
+        from bbsengine6.net import WebSocketServer
 
         # Build args with test database
         parser = lib.buildargs()
@@ -213,18 +208,17 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
 
         # Set password for test user if needed (insert if not exists)
         # Also ensure user has a bank account with funds and casino credits
-        with database.connect(self.args, pool=self.pool) as conn:
-            with database.cursor(conn) as cur:
-                cur.execute(
-                    "INSERT INTO engine.__member (moniker, loginid, password, email, credits) "
-                    "VALUES ('jam', 'jam', crypt('test', gen_salt('md5')), 'jam@test.local', 100000) "
-                    "ON CONFLICT (moniker) DO UPDATE SET password = crypt('test', gen_salt('md5')), credits = 100000"
-                )
-                # Ensure user has a bank account with funds
-                cur.execute(
-                    "INSERT INTO bank.__account (moniker, balance) VALUES ('jam', 100000) "
-                    "ON CONFLICT (moniker) DO UPDATE SET balance = 100000"
-                )
+        with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
+            cur.execute(
+                "INSERT INTO engine.__member (moniker, loginid, password, email, credits) "
+                "VALUES ('jam', 'jam', crypt('test', gen_salt('md5')), 'jam@test.local', 100000) "
+                "ON CONFLICT (moniker) DO UPDATE SET password = crypt('test', gen_salt('md5')), credits = 100000"
+            )
+            # Ensure user has a bank account with funds
+            cur.execute(
+                "INSERT INTO bank.__account (moniker, balance) VALUES ('jam', 100000) "
+                "ON CONFLICT (moniker) DO UPDATE SET balance = 100000"
+            )
 
         # Create server
         self.server = WebSocketServer(host="127.0.0.1", port=8766)
@@ -253,19 +247,18 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
         # Clean up test data from previous runs
         if hasattr(self, "pool") and self.pool is not None:
             try:
-                with database.connect(self.args, pool=self.pool) as conn:
-                    with database.cursor(conn) as cur:
-                        # Reset jam's credits and bank balance for next test
-                        cur.execute("UPDATE engine.__member SET credits = 100000 WHERE moniker = 'jam'")
-                        cur.execute("UPDATE bank.__account SET balance = 100000 WHERE moniker = 'jam'")
-                        # Clean up test tables (blackjack-jam)
-                        cur.execute("DELETE FROM casino.__bank_table WHERE table_moniker = 'blackjack-jam'")
-                        cur.execute("DELETE FROM casino.__table WHERE moniker = 'blackjack-jam'")
-                        # Clean up test games
-                        cur.execute("DELETE FROM casino.__game WHERE tablemoniker = 'blackjack-jam'")
-                        cur.execute("DELETE FROM casino.map_cardtable_player WHERE cardtablemoniker = 'blackjack-jam'")
-                        # Clean up betlog entries for test tables
-                        cur.execute("DELETE FROM casino.__betlog WHERE cardtablemoniker LIKE 'blackjack-%'")
+                with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
+                    # Reset jam's credits and bank balance for next test
+                    cur.execute("UPDATE engine.__member SET credits = 100000 WHERE moniker = 'jam'")
+                    cur.execute("UPDATE bank.__account SET balance = 100000 WHERE moniker = 'jam'")
+                    # Clean up test tables (blackjack-jam)
+                    cur.execute("DELETE FROM casino.__bank_table WHERE table_moniker = 'blackjack-jam'")
+                    cur.execute("DELETE FROM casino.__table WHERE moniker = 'blackjack-jam'")
+                    # Clean up test games
+                    cur.execute("DELETE FROM casino.__game WHERE tablemoniker = 'blackjack-jam'")
+                    cur.execute("DELETE FROM casino.map_cardtable_player WHERE cardtablemoniker = 'blackjack-jam'")
+                    # Clean up betlog entries for test tables
+                    cur.execute("DELETE FROM casino.__betlog WHERE cardtablemoniker LIKE 'blackjack-%'")
             except Exception:
                 pass  # Ignore cleanup errors
 
@@ -277,17 +270,16 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
         """Verify that a bet was logged to casino.__betlog with correct data."""
         from bbsengine6 import database
 
-        with database.connect(self.args, pool=self.pool) as conn:
-            with database.cursor(conn) as cur:
+        with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
                 # Check which columns exist (notes/new, currenthand, or old description)
                 cur.execute(
                     database.query(
-                        """SELECT column_name FROM information_schema.columns 
+                        """SELECT column_name FROM information_schema.columns
                            WHERE table_name = '__betlog' AND column_name IN ('notes', 'currenthand', 'description')"""
                     )
                 )
                 existing_cols = {r["column_name"] for r in cur.fetchall()}
-                
+
                 # Build query with only existing columns
                 cols = ["playermoniker", "cardtablemoniker", "amount", "status"]
                 if "notes" in existing_cols:
@@ -296,7 +288,7 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
                     cols.append("description")
                 if "currenthand" in existing_cols:
                     cols.append("currenthand")
-                
+
                 col_str = ", ".join(cols)
                 cur.execute(
                     database.query(
@@ -377,14 +369,14 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
             response = await self.client.receive()
             self.assertEqual(response["type"], "pong")
             self.assertIn("timestamp", response)
-            print(f"✓ Ping/Pong successful")
+            print("✓ Ping/Pong successful")
 
             # Step 5: Multiple ping/pongs to test stability
             for i in range(3):
                 await self.client.send({"type": "ping"})
                 response = await self.client.receive()
                 self.assertEqual(response["type"], "pong")
-            print(f"✓ Multiple ping/pongs successful")
+            print("✓ Multiple ping/pongs successful")
 
             # Step 6: Join the table
             await self.client.send({"type": "join_table", "moniker": table_id})
@@ -420,7 +412,7 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
             player_total = game_state.get("player_total", 0)
             self.assertGreater(player_total, 0, "Player total should be > 0")
 
-            print(f"✓ Received game state:")
+            print("✓ Received game state:")
             print(f"  - Player hand: {' '.join(player_hand)} [{player_total}]")
             print(
                 f"  - Dealer hand: {' '.join(game_state.get('dealer_hand', []))} [{game_state.get('dealer_total', 0)}]"
@@ -453,7 +445,7 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
             await self.client.send({"type": "ping"})
             response = await self.client.receive()
             self.assertEqual(response["type"], "pong")
-            print(f"✓ Connection still stable after game actions")
+            print("✓ Connection still stable after game actions")
 
             print("\n✓ Full blackjack flow completed successfully!")
 
@@ -751,7 +743,7 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
                 if msg.get("type") == "game_state":
                     game_state = msg
                     break
-            
+
             self.assertIsNotNone(game_state, "Valid bet should return game_state")
             self.assertEqual(len(game_state.get("player_hand", [])), 2)
             print(f"  ✓ Valid bet 50 accepted: {game_state.get('player_hand')}")
@@ -774,22 +766,21 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
         """Verify that a bet was settled in casino.__betlog."""
         from bbsengine6 import database
 
-        with database.connect(self.args, pool=self.pool) as conn:
-            with database.cursor(conn) as cur:
+        with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
                 # Check which columns exist
                 cur.execute(
                     database.query(
-                        """SELECT column_name FROM information_schema.columns 
+                        """SELECT column_name FROM information_schema.columns
                            WHERE table_name = '__betlog' AND column_name = 'currenthand'"""
                     )
                 )
                 has_currenthand = cur.fetchone() is not None
-                
+
                 # Build query with only existing columns
                 cols = ["playermoniker", "cardtablemoniker", "amount", "status"]
                 if has_currenthand:
                     cols.append("currenthand")
-                
+
                 col_str = ", ".join(cols)
                 cur.execute(
                     database.query(
@@ -892,17 +883,16 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
         from bbsengine6 import database
 
         # Check if notes column exists, skip test if not
-        with database.connect(self.args, pool=self.pool) as conn:
-            with database.cursor(conn) as cur:
-                cur.execute(
-                    database.query(
-                        """SELECT 1 FROM information_schema.columns 
+        with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
+            cur.execute(
+                database.query(
+                    """SELECT 1 FROM information_schema.columns
                            WHERE table_name = '__betlog' AND column_name = 'notes'"""
-                    )
                 )
-                if not cur.fetchone():
-                    print("  ⚠ Skipping test: 'notes' column does not exist in __betlog")
-                    return
+            )
+            if not cur.fetchone():
+                print("  ⚠ Skipping test: 'notes' column does not exist in __betlog")
+                return
 
         uri = "ws://127.0.0.1:8765/"
 
@@ -950,19 +940,18 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
 
             # Get the bet ID from betlog
             from bbsengine6 import database
-            with database.connect(self.args, pool=self.pool) as conn:
-                with database.cursor(conn) as cur:
-                    cur.execute(
-                        database.query(
-                            """SELECT id FROM casino.__betlog 
-                               WHERE cardtablemoniker = :table_moniker 
+            with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
+                cur.execute(
+                    database.query(
+                        """SELECT id FROM casino.__betlog
+                               WHERE cardtablemoniker = :table_moniker
                                ORDER BY dateposted DESC LIMIT 1""",
-                            table_moniker=table_id
-                        )
+                        table_moniker=table_id
                     )
-                    row = cur.fetchone()
-                    self.assertIsNotNone(row, "No bet found in betlog")
-                    bet_id = row["id"]
+                )
+                row = cur.fetchone()
+                self.assertIsNotNone(row, "No bet found in betlog")
+                bet_id = row["id"]
 
             # Add a note to the bet
             test_note = "Player requested comp - VIP customer"
@@ -970,18 +959,17 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
             dal_bet.update_bet_notes(self.args, bet_id, test_note)
 
             # Verify the note was added
-            with database.connect(self.args, pool=self.pool) as conn:
-                with database.cursor(conn) as cur:
-                    cur.execute(
-                        database.query(
-                            """SELECT notes FROM casino.__betlog WHERE id = :bet_id""",
-                            bet_id=bet_id
-                        )
+            with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
+                cur.execute(
+                    database.query(
+                        """SELECT notes FROM casino.__betlog WHERE id = :bet_id""",
+                        bet_id=bet_id
                     )
-                    row = cur.fetchone()
-                    self.assertIsNotNone(row, "Bet not found")
-                    self.assertEqual(row["notes"], test_note, 
-                        f"Notes should be '{test_note}', got '{row['notes']}'")
+                )
+                row = cur.fetchone()
+                self.assertIsNotNone(row, "Bet not found")
+                self.assertEqual(row["notes"], test_note,
+                    f"Notes should be '{test_note}', got '{row['notes']}'")
 
             print(f"  ✓ Notes test passed: '{test_note}'")
 
@@ -1001,17 +989,16 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
         from bbsengine6 import database
 
         # Check if currenthand column exists, skip test if not
-        with database.connect(self.args, pool=self.pool) as conn:
-            with database.cursor(conn) as cur:
-                cur.execute(
-                    database.query(
-                        """SELECT 1 FROM information_schema.columns 
+        with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
+            cur.execute(
+                database.query(
+                    """SELECT 1 FROM information_schema.columns
                            WHERE table_name = '__betlog' AND column_name = 'currenthand'"""
-                    )
                 )
-                if not cur.fetchone():
-                    print("  ⚠ Skipping test: 'currenthand' column does not exist in __betlog")
-                    return
+            )
+            if not cur.fetchone():
+                print("  ⚠ Skipping test: 'currenthand' column does not exist in __betlog")
+                return
 
         uri = "ws://127.0.0.1:8765/"
 
@@ -1060,35 +1047,34 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
 
             # Query the betlog VIEW (not the table directly)
             from bbsengine6 import database
-            with database.connect(self.args, pool=self.pool) as conn:
-                with database.cursor(conn) as cur:
-                    cur.execute(
-                        database.query(
-                            """SELECT playermoniker, cardtablemoniker, amount, status, currenthand, 
+            with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
+                cur.execute(
+                    database.query(
+                        """SELECT playermoniker, cardtablemoniker, amount, status, currenthand,
                                       datepostedepoch, datepostedlocal
-                               FROM casino.betlog 
-                               WHERE cardtablemoniker = :table_moniker 
+                               FROM casino.betlog
+                               WHERE cardtablemoniker = :table_moniker
                                ORDER BY dateposted DESC LIMIT 1""",
-                            table_moniker=table_id
-                        )
+                        table_moniker=table_id
                     )
-                    row = cur.fetchone()
-                    self.assertIsNotNone(row, "No bet found in betlog view")
+                )
+                row = cur.fetchone()
+                self.assertIsNotNone(row, "No bet found in betlog view")
 
-                    # Verify base columns
-                    self.assertEqual(row["playermoniker"], "jam")
-                    self.assertEqual(row["cardtablemoniker"], table_id)
-                    self.assertEqual(row["amount"], 50)
-                    self.assertEqual(row["status"], "pending")
+                # Verify base columns
+                self.assertEqual(row["playermoniker"], "jam")
+                self.assertEqual(row["cardtablemoniker"], table_id)
+                self.assertEqual(row["amount"], 50)
+                self.assertEqual(row["status"], "pending")
 
-                    # Verify computed columns exist
-                    self.assertIsNotNone(row["datepostedepoch"], "datepostedepoch should be set")
-                    self.assertIsNotNone(row["datepostedlocal"], "datepostedlocal should be set")
+                # Verify computed columns exist
+                self.assertIsNotNone(row["datepostedepoch"], "datepostedepoch should be set")
+                self.assertIsNotNone(row["datepostedlocal"], "datepostedlocal should be set")
 
-                    # Verify currenthand in view
-                    currenthand = row["currenthand"] or ""
-                    for card in player_hand:
-                        self.assertIn(card, currenthand, f"Card {card} should be in currenthand")
+                # Verify currenthand in view
+                currenthand = row["currenthand"] or ""
+                for card in player_hand:
+                    self.assertIn(card, currenthand, f"Card {card} should be in currenthand")
 
             print("  ✓ Betlog view test passed: base cols + datepostedepoch + datepostedlocal")
 
@@ -1108,14 +1094,13 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
         from bbsengine6 import database
 
         # Get count of bets before
-        with database.connect(self.args, pool=self.pool) as conn:
-            with database.cursor(conn) as cur:
-                cur.execute(
-                    database.query(
-                        """SELECT COUNT(*) as cnt FROM casino.__betlog WHERE playermoniker = 'jam'"""
-                    )
+        with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
+            cur.execute(
+                database.query(
+                    """SELECT COUNT(*) as cnt FROM casino.__betlog WHERE playermoniker = 'jam'"""
                 )
-                initial_count = cur.fetchone()["cnt"]
+            )
+            initial_count = cur.fetchone()["cnt"]
 
         uri = "ws://127.0.0.1:8765/"
 
@@ -1149,22 +1134,20 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(response["type"], "joined_table")
 
             await self.client.send({"type": "bet", "amount": 25})
-            messages = await self.client.receive_messages(max_count=10, timeout=5.0)
+            await self.client.receive_messages(max_count=10, timeout=5.0)
 
             # Check betlog after first bet
-            with database.connect(self.args, pool=self.pool) as conn:
-                with database.cursor(conn) as cur:
-                    cur.execute(
-                        database.query(
-                            """SELECT COUNT(*) as cnt FROM casino.__betlog WHERE playermoniker = 'jam'"""
-                        )
+            with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
+                cur.execute(
+                    database.query(
+                        """SELECT COUNT(*) as cnt FROM casino.__betlog WHERE playermoniker = 'jam'"""
                     )
-                    count_after_first = cur.fetchone()["cnt"]
-                    self.assertEqual(count_after_first, initial_count + 1, "Should have 1 more bet after first bet")
+                )
+                count_after_first = cur.fetchone()["cnt"]
+                self.assertEqual(count_after_first, initial_count + 1, "Should have 1 more bet after first bet")
 
             # Query the bet to verify amount
-            with database.connect(self.args, pool=self.pool) as conn:
-                with database.cursor(conn) as cur:
+            with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
                     cur.execute(
                         database.query(
                             """SELECT amount FROM casino.__betlog WHERE playermoniker = 'jam' ORDER BY dateposted DESC LIMIT 1"""

@@ -1,7 +1,7 @@
 # casino/dal/async/player.py
 # Async player data access layer
 
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 from bbsengine6 import database
 
@@ -9,13 +9,13 @@ from bbsengine6 import database
 async def get_or_create_player(
     args: Any,
     moniker: str,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Get or create a player."""
     rows = await database.async_query(
         args,
-        """INSERT INTO $casino.__player (moniker, balance, createdat, lastplayed) 
-           VALUES (:moniker, 1000, NOW(), NOW()) 
-           ON CONFLICT (moniker) DO UPDATE SET lastplayed = NOW() 
+        """INSERT INTO $casino.__player (moniker, balance, createdat, lastplayed)
+           VALUES (:moniker, 1000, NOW(), NOW())
+           ON CONFLICT (moniker) DO UPDATE SET lastplayed = NOW()
            RETURNING moniker, balance, createdat, lastplayed""",
         moniker=moniker
     )
@@ -28,12 +28,12 @@ async def get_or_create_player(
     }
 
 
-async def get_player_by_moniker(args: Any, moniker: str) -> Optional[Dict[str, Any]]:
+async def get_player_by_moniker(args: Any, moniker: str) -> Optional[dict[str, Any]]:
     """Get a player by moniker."""
     rows = await database.async_query(
         args,
-        """SELECT moniker, balance, createdat, lastplayed 
-           FROM $casino.__player 
+        """SELECT moniker, balance, createdat, lastplayed
+           FROM $casino.__player
            WHERE moniker = :moniker""",
         moniker=moniker
     )

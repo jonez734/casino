@@ -2,25 +2,23 @@
 # WebSocket message handler - routes messages to services using bbsengine6.net service registry
 
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
-from bbsengine6 import io, member, database
+from bbsengine6 import database, io, member
+from bbsengine6.message import MessageUrgency as NotificationUrgency
 from bbsengine6.message import deliver_pending_on_connect, get_unread_count
+from bbsengine6.message import send as notify_send
 from bbsengine6.net import (
     ChannelState,
     channel_subscribe,
     channel_unsubscribe,
     channel_unsubscribe_all,
 )
-from bbsengine6.message import MessageUrgency as NotificationUrgency
-from bbsengine6.message import send as notify_send
-from casino.dal import player as dal_player
-from casino.dal.aiosql import table as async_dal_table
-from casino.yahtzee.api_handler import YahtzeeServiceHandler
-from casino.tictactoe.api_handler import TictactoeServiceHandler
-
-
 from bbsengine6.session import SessionManager
+
+from casino.dal.aiosql import table as async_dal_table
+from casino.tictactoe.api_handler import TictactoeServiceHandler
+from casino.yahtzee.api_handler import YahtzeeServiceHandler
 
 
 class CasinoSessionManager(SessionManager):
@@ -28,7 +26,7 @@ class CasinoSessionManager(SessionManager):
 
     def __init__(self):
         super().__init__()
-        self._spectators: Dict[str, set] = {}
+        self._spectators: dict[str, set] = {}
 
     def register_session(self, session_id: int, moniker: str, is_sysop: bool = False) -> None:
         super().register_session(session_id, moniker, is_sysop)
@@ -76,8 +74,8 @@ class BaseService:
         self.sessions = session_manager
 
     async def handle_message(
-        self, server: Any, websocket: Any, path: str, message: Dict[str, Any]
-    ) -> Optional[Dict[str, Any]]:
+        self, server: Any, websocket: Any, path: str, message: dict[str, Any]
+    ) -> Optional[dict[str, Any]]:
         raise NotImplementedError
 
 
@@ -92,8 +90,8 @@ class AuthService(BaseService):
         self.channel_state = channel_state
 
     async def handle_message(
-        self, server: Any, websocket: Any, path: str, message: Dict[str, Any]
-    ) -> Optional[Dict[str, Any]]:
+        self, server: Any, websocket: Any, path: str, message: dict[str, Any]
+    ) -> Optional[dict[str, Any]]:
         msg_type = message.get("type")
 
         if msg_type == "auth":
@@ -103,7 +101,7 @@ class AuthService(BaseService):
 
         return None
 
-    async def _handle_auth(self, websocket: Any, message: Dict[str, Any]) -> Dict[str, Any]:
+    async def _handle_auth(self, websocket: Any, message: dict[str, Any]) -> dict[str, Any]:
         moniker = message.get("moniker", "")
         password = message.get("password", "")
 
@@ -165,8 +163,8 @@ class TableServiceHandler(BaseService):
         self.channel_state = channel_state
 
     async def handle_message(
-        self, server: Any, websocket: Any, path: str, message: Dict[str, Any]
-    ) -> Optional[Dict[str, Any]]:
+        self, server: Any, websocket: Any, path: str, message: dict[str, Any]
+    ) -> Optional[dict[str, Any]]:
         msg_type = message.get("type")
 
         if msg_type == "list_tables":
@@ -188,13 +186,13 @@ class TableServiceHandler(BaseService):
 
         return None
 
-    async def _handle_list_tables(self, session_id: int, message: Dict[str, Any]) -> Dict[str, Any]:
+    async def _handle_list_tables(self, session_id: int, message: dict[str, Any]) -> dict[str, Any]:
         game_type = message.get("game_type")
         is_sysop = self.sessions.get_is_sysop(session_id)
         tables = self.table_service.list_tables(game_type, is_sysop=is_sysop)
         return {"type": "table_list", "tables": tables}
 
-    async def _handle_create_table(self, session_id: int, message: Dict[str, Any]) -> Dict[str, Any]:
+    async def _handle_create_table(self, session_id: int, message: dict[str, Any]) -> dict[str, Any]:
         session_moniker = self.sessions.get_moniker(session_id)
         if not session_moniker:
             return {"type": "error", "code": "not_authenticated"}
@@ -220,7 +218,7 @@ class TableServiceHandler(BaseService):
         else:
             return {"type": "error", "code": "create_failed", "message": result["message"]}
 
-    async def _handle_update_table(self, session_id: int, message: Dict[str, Any]) -> Dict[str, Any]:
+    async def _handle_update_table(self, session_id: int, message: dict[str, Any]) -> dict[str, Any]:
         session_moniker = self.sessions.get_moniker(session_id)
         if not session_moniker:
             return {"type": "error", "code": "not_authenticated"}
@@ -258,7 +256,7 @@ class TableServiceHandler(BaseService):
         else:
             return {"type": "error", "code": "update_failed", "message": result["message"]}
 
-    async def _handle_join_table(self, session_id: int, message: Dict[str, Any]) -> Dict[str, Any]:
+    async def _handle_join_table(self, session_id: int, message: dict[str, Any]) -> dict[str, Any]:
         session_moniker = self.sessions.get_moniker(session_id)
         if not session_moniker:
             return {"type": "error", "code": "not_authenticated"}
@@ -278,23 +276,22 @@ class TableServiceHandler(BaseService):
         table = dal_table_join.get_table(self.args, table_moniker)
         if table and table.get("type") == "slots":
             try:
-                with database.connect(self.args) as conn:
-                    with database.cursor(conn) as cur:
-                        cur.execute(
-                            database.query(
-                                "SELECT COUNT(DISTINCT playermoniker) AS n "
-                                "FROM $casino.map_cardtable_player "
-                                "WHERE cardtablemoniker = :m",
-                                m=table_moniker,
-                            )
+                with database.connect(self.args) as conn, database.cursor(conn) as cur:
+                    cur.execute(
+                        database.query(
+                            "SELECT COUNT(DISTINCT playermoniker) AS n "
+                            "FROM $casino.map_cardtable_player "
+                            "WHERE cardtablemoniker = :m",
+                            m=table_moniker,
                         )
-                        row = cur.fetchone()
-                        if row and int(row["n"]) >= 1:
-                            return {
-                                "type": "error",
-                                "code": "join_failed",
-                                "message": "Slots tables have a single seat; another player is already seated",
-                            }
+                    )
+                    row = cur.fetchone()
+                    if row and int(row["n"]) >= 1:
+                        return {
+                            "type": "error",
+                            "code": "join_failed",
+                            "message": "Slots tables have a single seat; another player is already seated",
+                        }
             except Exception as e:
                 io.echo(f"slots single-seater check failed: {e}", level="warning")
 
@@ -319,7 +316,7 @@ class TableServiceHandler(BaseService):
         else:
             return {"type": "error", "code": "join_failed", "message": result["message"]}
 
-    async def _handle_leave_table(self, session_id: int, message: Dict[str, Any]) -> Dict[str, Any]:
+    async def _handle_leave_table(self, session_id: int, message: dict[str, Any]) -> dict[str, Any]:
         session_moniker = self.sessions.get_moniker(session_id)
         if not session_moniker:
             return {"type": "error", "code": "not_authenticated"}
@@ -343,7 +340,7 @@ class TableServiceHandler(BaseService):
             "message": result["message"],
         }
 
-    async def _handle_kick_player(self, session_id: int, message: Dict[str, Any]) -> Dict[str, Any]:
+    async def _handle_kick_player(self, session_id: int, message: dict[str, Any]) -> dict[str, Any]:
         session_moniker = self.sessions.get_moniker(session_id)
         if not session_moniker:
             return {"type": "error", "code": "not_authenticated"}
@@ -407,7 +404,7 @@ class TableServiceHandler(BaseService):
                 "message": "; ".join(errors) if errors else "Player not found at any specified table",
             }
 
-    async def _handle_watch_table(self, session_id: int, message: Dict[str, Any]) -> Dict[str, Any]:
+    async def _handle_watch_table(self, session_id: int, message: dict[str, Any]) -> dict[str, Any]:
         table_moniker = message.get("moniker")
 
         if not table_moniker:
@@ -434,7 +431,7 @@ class TableServiceHandler(BaseService):
             "message": f"Now watching table {table_moniker}",
         }
 
-    async def _handle_stop_watching(self, session_id: int, message: Dict[str, Any]) -> Dict[str, Any]:
+    async def _handle_stop_watching(self, session_id: int, message: dict[str, Any]) -> dict[str, Any]:
         table_moniker = message.get("moniker")
         if table_moniker:
             self.sessions.remove_spectator(table_moniker, session_id)
@@ -455,8 +452,8 @@ class GameServiceHandler(BaseService):
         self.game_service = self.GameService(args)
 
     async def handle_message(
-        self, server: Any, websocket: Any, path: str, message: Dict[str, Any]
-    ) -> Optional[Dict[str, Any]]:
+        self, server: Any, websocket: Any, path: str, message: dict[str, Any]
+    ) -> Optional[dict[str, Any]]:
         msg_type = message.get("type")
 
         if msg_type in ("hit", "stand", "double", "split", "surrender"):
@@ -465,8 +462,8 @@ class GameServiceHandler(BaseService):
         return None
 
     async def _handle_game_action(
-        self, session_id: int, action: str, message: Optional[Dict[str, Any]] = None, server: Optional[Any] = None
-    ) -> Optional[Dict[str, Any]]:
+        self, session_id: int, action: str, message: Optional[dict[str, Any]] = None, server: Optional[Any] = None
+    ) -> Optional[dict[str, Any]]:
         moniker = self.sessions.get_moniker(session_id)
         if not moniker:
             return {"type": "error", "code": "not_authenticated"}
@@ -534,8 +531,8 @@ class BetServiceHandler(BaseService):
         self.game_service = self.GameService(args)
 
     async def handle_message(
-        self, server: Any, websocket: Any, path: str, message: Dict[str, Any]
-    ) -> Optional[Dict[str, Any]]:
+        self, server: Any, websocket: Any, path: str, message: dict[str, Any]
+    ) -> Optional[dict[str, Any]]:
         msg_type = message.get("type")
 
         if msg_type == "bet":
@@ -544,8 +541,8 @@ class BetServiceHandler(BaseService):
         return None
 
     async def _handle_bet(
-        self, session_id: int, message: Dict[str, Any], server: Optional[Any] = None
-    ) -> Optional[Dict[str, Any]]:
+        self, session_id: int, message: dict[str, Any], server: Optional[Any] = None
+    ) -> Optional[dict[str, Any]]:
         moniker = self.sessions.get_moniker(session_id)
         if not moniker:
             return {"type": "error", "code": "not_authenticated"}
@@ -599,8 +596,8 @@ class ChatServiceHandler(BaseService):
     """Handle chat messages."""
 
     async def handle_message(
-        self, server: Any, websocket: Any, path: str, message: Dict[str, Any]
-    ) -> Optional[Dict[str, Any]]:
+        self, server: Any, websocket: Any, path: str, message: dict[str, Any]
+    ) -> Optional[dict[str, Any]]:
         msg_type = message.get("type")
 
         if msg_type in ("chat_table", "chat_global", "emote"):
@@ -608,7 +605,7 @@ class ChatServiceHandler(BaseService):
 
         return None
 
-    async def _handle_chat(self, session_id: int, msg_type: str, message: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    async def _handle_chat(self, session_id: int, msg_type: str, message: dict[str, Any]) -> Optional[dict[str, Any]]:
         moniker = self.sessions.get_moniker(session_id)
         if not moniker:
             return {"type": "error", "code": "not_authenticated"}
@@ -665,9 +662,13 @@ class SlotServiceHandler(BaseService):
         super().__init__(args, session_manager)
         self.channel_state = channel_state
         from casino.services.slots import (
-            handle_spin as _handle_spin,
-            handle_get_paytable as _handle_paytable,
             handle_get_history as _handle_history,
+        )
+        from casino.services.slots import (
+            handle_get_paytable as _handle_paytable,
+        )
+        from casino.services.slots import (
+            handle_spin as _handle_spin,
         )
 
         self._handle_spin = _handle_spin
@@ -675,8 +676,8 @@ class SlotServiceHandler(BaseService):
         self._handle_history = _handle_history
 
     async def handle_message(
-        self, server: Any, websocket: Any, path: str, message: Dict[str, Any]
-    ) -> Optional[Dict[str, Any]]:
+        self, server: Any, websocket: Any, path: str, message: dict[str, Any]
+    ) -> Optional[dict[str, Any]]:
         msg_type = message.get("type")
         if msg_type == "slot_spin":
             return await self._handle_spin_msg(id(websocket), message, server)
@@ -689,9 +690,9 @@ class SlotServiceHandler(BaseService):
     async def _handle_spin_msg(
         self,
         session_id: int,
-        message: Dict[str, Any],
+        message: dict[str, Any],
         server: Optional[Any] = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         moniker = self.sessions.get_moniker(session_id)
         if not moniker:
             return {"type": "error", "code": "not_authenticated"}
@@ -741,8 +742,8 @@ class SlotServiceHandler(BaseService):
     async def _handle_paytable_msg(
         self,
         session_id: int,
-        message: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        message: dict[str, Any],
+    ) -> dict[str, Any]:
         moniker = self.sessions.get_moniker(session_id)
         if not moniker:
             return {"type": "error", "code": "not_authenticated"}
@@ -765,8 +766,8 @@ class SlotServiceHandler(BaseService):
     async def _handle_history_msg(
         self,
         session_id: int,
-        message: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        message: dict[str, Any],
+    ) -> dict[str, Any]:
         moniker = self.sessions.get_moniker(session_id)
         if not moniker:
             return {"type": "error", "code": "not_authenticated"}
@@ -839,7 +840,7 @@ class MessageRouter:
             ["tictactoe_quick_play", "tictactoe_move", "tictactoe_resign", "tictactoe_join"],
         )
 
-    async def handle_broadcast(self, server: Any, websocket: Any, path: str, message: Dict[str, Any]) -> None:
+    async def handle_broadcast(self, server: Any, websocket: Any, path: str, message: dict[str, Any]) -> None:
         """Handle message that should be broadcast."""
         msg_type = message.get("type")
 
@@ -884,8 +885,8 @@ class MessageHandler(MessageRouter):
         self.game_service_obj = self.game_service.game_service
 
     async def handle_message(
-        self, server: Any, websocket: Any, path: str, message: Dict[str, Any]
-    ) -> Optional[Dict[str, Any]]:
+        self, server: Any, websocket: Any, path: str, message: dict[str, Any]
+    ) -> Optional[dict[str, Any]]:
         """Handle message - dispatches to services."""
         msg_type = message.get("type")
         session_id = id(websocket)

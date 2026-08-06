@@ -1,5 +1,5 @@
 import os
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 
 def get_package_data_path(filename: str) -> str:
@@ -12,34 +12,34 @@ def load_config(
     config_file: Optional[str] = None,
     env_prefix: str = "CASINO_",
     **overrides: Any,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Load casino configuration with priority order:
     1. Command line / overrides (highest)
     2. Config file (if provided)
     3. Environment variables
     4. Empty defaults (lowest)
-    
+
     Environment variables override defaults.
     Variable format: CASINO_POSTOFFICE_ENABLED=true
     """
-    config: Dict[str, Any] = {}
-    
+    config: dict[str, Any] = {}
+
     if config_file and os.path.exists(config_file):
         import json
         with open(config_file) as f:
             file_config = json.load(f)
             config = _merge_config(config, file_config)
-    
+
     env_config = _load_from_env(env_prefix)
     config = _merge_config(config, env_config)
-    
+
     config = _merge_config(config, overrides)
-    
+
     return config
 
 
-def _merge_config(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
+def _merge_config(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
     """Deep merge override into base config."""
     result = base.copy()
     for key, value in override.items():
@@ -50,27 +50,27 @@ def _merge_config(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, A
     return result
 
 
-def _load_from_env(prefix: str) -> Dict[str, Any]:
+def _load_from_env(prefix: str) -> dict[str, Any]:
     """Load configuration from environment variables.
-    
+
     Variable format: CASINO_<SECTION>_<KEY>=value or CASINO_KEY=value
     Example: CASINO_POSTOFFICE_ENABLED=true, CASINO_DEBUG=true
     """
-    config: Dict[str, Any] = {}
+    config: dict[str, Any] = {}
     for key, value in os.environ.items():
         if not key.startswith(prefix):
             continue
-        
+
         config_key = key[len(prefix):]
-        
+
         if "_" in config_key:
             parts = config_key.split("_", 1)
             section = parts[0].lower()
             key_name = parts[1].lower()
-            
+
             if section not in config:
                 config[section] = {}
-            
+
             if value.lower() in ("true", "false"):
                 config[section][key_name] = value.lower() == "true"
             elif value.isdigit():
@@ -85,11 +85,11 @@ def _load_from_env(prefix: str) -> Dict[str, Any]:
                 config[key_name] = int(value)
             else:
                 config[key_name] = value
-    
+
     return config
 
 
-def get_postoffice_config(config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+def get_postoffice_config(config: Optional[dict[str, Any]] = None) -> dict[str, Any]:
     """Get postoffice configuration, loading defaults if not provided."""
     if config is None:
         config = load_config()

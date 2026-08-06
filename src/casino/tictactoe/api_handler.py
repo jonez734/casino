@@ -13,7 +13,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 from bbsengine6 import io
 
@@ -39,7 +39,7 @@ class TictactoeServiceHandler:
         self,
         args: Any,
         sessions: Any,
-        service: Optional[TictactoeService] = None,
+        service: TictactoeService | None = None,
     ) -> None:
         self.args = args
         self.sessions = sessions
@@ -55,7 +55,7 @@ class TictactoeServiceHandler:
         websocket: Any,
         path: str,
         message: dict,
-    ) -> Optional[dict]:
+    ) -> dict | None:
         msg_type = message.get("type")
         if msg_type not in self.TICTACTOE_MSG_TYPES:
             return None
@@ -117,7 +117,7 @@ class TictactoeServiceHandler:
         except Exception as e:
             io.echo(f"tictactoe broadcast failed: {e}", level="warning")
 
-    def finalize_on_disconnect(self, table_moniker: str, leaving_moniker: Optional[str] = None) -> bool:
+    def finalize_on_disconnect(self, table_moniker: str, leaving_moniker: str | None = None) -> bool:
         """Hook called by MessageRouter.unregister_session when a
         player disconnects mid-game."""
         return self._service.finalize_on_disconnect(table_moniker, leaving_moniker)

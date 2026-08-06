@@ -1,7 +1,8 @@
-import time
 import locale
+import time
 
 from bbsengine6 import io, screen, session
+
 from . import lib
 
 parser = lib.buildargs()
@@ -23,4 +24,4 @@ except KeyboardInterrupt:
 except EOFError:
     io.echo("{/all}{bold}EOF{/bold}")
 finally:
-    io.echo("{decsc}{curpos:%d,0}{el}{decrc}{reset}{/all}" % (io.getterminalheight()))
+    io.echo(f"{{decsc}}{{curpos:{io.getterminalheight()},0}}{{el}}{{decrc}}{{reset}}{{/all}}")

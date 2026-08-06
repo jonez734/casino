@@ -14,34 +14,32 @@
 from __future__ import annotations
 
 import uuid
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from bbsengine6 import database, io
 
 from casino.dal import slots as dal_slots
 from casino.dal import table as dal_table
-
 from casino.slots.dealer import SlotDealer
 from casino.slots.lib import (
     DEFAULT_SYMBOLS,
-    Paytable,
     RNG,
+    Paytable,
     default_reels,
 )
-
 
 # Per-table dealer cache. Key: table_moniker. Value: SlotDealer.
 # A dealer is built lazily from the table's reel/paytable config and
 # pinned for the life of the table.
-_dealers: Dict[str, SlotDealer] = {}
+_dealers: dict[str, SlotDealer] = {}
 
 
-def _resolve_rtp_floor_ceil() -> Tuple[float, float]:
+def _resolve_rtp_floor_ceil() -> tuple[float, float]:
     from casino.slots.lib import RTP_CEIL, RTP_FLOOR
     return RTP_FLOOR, RTP_CEIL
 
 
-def _build_paytable_from_config(config: Dict[str, Any]) -> Paytable:
+def _build_paytable_from_config(config: dict[str, Any]) -> Paytable:
     """Build a Paytable from the table's SlotsConfig dict.
 
     For v1, the only config that affects the Paytable is
@@ -55,7 +53,7 @@ def _build_paytable_from_config(config: Dict[str, Any]) -> Paytable:
     if not isinstance(override, dict):
         io.echo(f"slots: paytable_override rejected: not a dict (got {type(override).__name__})", level="error")
         raise ValueError("paytable_override must be a dict of {symbol_tuple: multiplier}")
-    parsed: Dict[Tuple[str, ...], int] = {}
+    parsed: dict[tuple[str, ...], int] = {}
     for key, mult in override.items():
         if not isinstance(key, (list, tuple)):
             io.echo(f"slots: paytable_override rejected: key not list/tuple: {key!r}", level="error")
@@ -70,7 +68,7 @@ def _build_paytable_from_config(config: Dict[str, Any]) -> Paytable:
     return Paytable(parsed)
 
 
-def _build_dealer_for_table(args: Any, table_moniker: str) -> Optional[SlotDealer]:
+def _build_dealer_for_table(args: Any, table_moniker: str) -> SlotDealer | None:
     table = dal_table.get_table(args, table_moniker)
     if not table:
         return None
@@ -85,7 +83,7 @@ def _build_dealer_for_table(args: Any, table_moniker: str) -> Optional[SlotDeale
     return SlotDealer(reels=reels, paytable=paytable, rng=rng)
 
 
-def get_dealer(args: Any, table_moniker: str) -> Optional[SlotDealer]:
+def get_dealer(args: Any, table_moniker: str) -> SlotDealer | None:
     """Return the cached dealer for a table, building it on first access."""
     dealer = _dealers.get(table_moniker)
     if dealer is not None:
@@ -104,11 +102,10 @@ def invalidate_dealer(table_moniker: str) -> None:
 
 
 def _get_player_credits(args: Any, moniker: str) -> int:
-    with database.connect(args) as conn:
-        with database.cursor(conn) as cur:
-            cur.execute(database.query("SELECT balance FROM bank.__account WHERE moniker = :moniker", moniker=moniker))
-            row = cur.fetchone()
-            return int(row["balance"]) if row else 0
+    with database.connect(args) as conn, database.cursor(conn) as cur:
+        cur.execute(database.query("SELECT balance FROM bank.__account WHERE moniker = :moniker", moniker=moniker))
+        row = cur.fetchone()
+        return int(row["balance"]) if row else 0
 
 
 def handle_spin(
@@ -116,7 +113,7 @@ def handle_spin(
     table_moniker: str,
     player_moniker: str,
     bet: int,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """End-to-end spin: validate, debit, spin, credit, record, stats.
 
     Returns ``{"success": True, "spin": {...}}`` on success or
@@ -163,8 +160,7 @@ def handle_spin(
     # write the spin row, bump stats. If anything fails, the whole spin
     # is rolled back and the player keeps their credits.
     try:
-        with database.connect(args) as conn:
-            with database.cursor(conn) as cur:
+        with database.connect(args) as conn, database.cursor(conn) as cur:
                 # Check & lock the player account
                 cur.execute(
                     database.query(
@@ -271,7 +267,7 @@ def handle_spin(
         return {"success": False, "code": "service_error", "message": str(e)}
 
 
-def handle_get_paytable(args: Any, table_moniker: str) -> Dict[str, Any]:
+def handle_get_paytable(args: Any, table_moniker: str) -> dict[str, Any]:
     table = dal_table.get_table(args, table_moniker)
     if not table:
         return {"success": False, "code": "table_not_found"}
@@ -294,7 +290,7 @@ def handle_get_history(
     args: Any,
     player_moniker: str,
     limit: int = 50,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     return dal_slots.get_spin_history(args, player_moniker, limit=limit)
 
 
@@ -302,5 +298,5 @@ def handle_get_table_history(
     args: Any,
     table_moniker: str,
     limit: int = 50,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     return dal_slots.get_table_history(args, table_moniker, limit=limit)

@@ -22,9 +22,9 @@ DB_NAME = "zoid6test"
 
 def main():
     conn = psycopg.connect(f"dbname={DB_NAME} user=opencode")
-    
+
     print("Setting up test database for casino...")
-    
+
     # Step 1: Add CHECK constraint to engine.__member (if not exists)
     print("\n1. Adding CHECK constraint to engine.__member...")
     try:
@@ -35,7 +35,7 @@ def main():
     except Exception as e:
         conn.rollback()
         print(f"   ✗ Error: {e}")
-    
+
     # Step 2: Remove FK constraint from bank.__account and add CHECK
     print("\n2. Setting up bank.__account constraints...")
     try:
@@ -46,7 +46,7 @@ def main():
     except Exception as e:
         conn.rollback()
         print(f"   ✗ Error: {e}")
-    
+
     # Step 4: Add overdraft_limit column to bank.__account if not exists
     print("\n4. Adding overdraft_limit column to bank.__account...")
     try:
@@ -57,13 +57,13 @@ def main():
     except Exception as e:
         conn.rollback()
         print(f"   ✗ Error: {e}")
-    
+
     # Step 5: Create casino:house account
     print("\n5. Creating casino:house account...")
     try:
         with conn.cursor() as cur:
             cur.execute("""
-                INSERT INTO bank.__account (moniker, balance, maxtransfer, overdraft_limit) 
+                INSERT INTO bank.__account (moniker, balance, maxtransfer, overdraft_limit)
                 VALUES ('casino:house', 0, 1000000, 100000)
                 ON CONFLICT (moniker) DO NOTHING
             """)
@@ -72,7 +72,7 @@ def main():
     except Exception as e:
         conn.rollback()
         print(f"   ✗ Error: {e}")
-    
+
     # Step 5: Verify
     print("\n5. Verifying setup...")
     with conn.cursor() as cur:
@@ -82,7 +82,7 @@ def main():
             print(f"   ✓ casino:house exists with balance: {row[1]}")
         else:
             print("   ✗ casino:house not found!")
-    
+
     conn.close()
     print("\n✓ Setup complete!")
 

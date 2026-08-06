@@ -3,10 +3,9 @@
 # Mock tests for casino client
 
 import argparse
-import asyncio
 import sys
 import unittest
-from unittest.mock import AsyncMock, MagicMock, patch, call
+from unittest.mock import patch
 
 sys.path.insert(0, "/home/opencode/data/work/casino/src")
 
@@ -81,7 +80,6 @@ class TestClientMenuFlow(unittest.TestCase):
 
     def test_casino_client_play_function_has_defaults(self):
         """Test that play function has default host/port."""
-        from casino import auth
 
         args = argparse.Namespace()
         host = getattr(args, "casino_host", "localhost")
@@ -99,7 +97,7 @@ class TestClientServerIO(unittest.TestCase):
         from casino.client import CasinoClient
 
         args = argparse.Namespace(casino_host="localhost", casino_port=8765)
-        client = CasinoClient(args)
+        CasinoClient(args)
 
         auth_msg = {"type": "auth", "moniker": "jam", "password": "test"}
 
@@ -165,8 +163,8 @@ class TestClientServerIO(unittest.TestCase):
         print(f"  Passes validation: {is_valid}")
 
         if is_valid:
-            print(f"  WARNING: Negative bet would pass validation!")
-            print(f"  This would deduct -1 from balance, ADDING to it!")
+            print("  WARNING: Negative bet would pass validation!")
+            print("  This would deduct -1 from balance, ADDING to it!")
 
         self.assertFalse(is_valid, "Negative bet should be rejected")
 
@@ -210,7 +208,7 @@ class TestClientServerIO(unittest.TestCase):
             ([], False, "list"),
         ]
 
-        print(f"\n  Type validation:")
+        print("\n  Type validation:")
         for amount, expected_valid, desc in test_cases:
             try:
                 if amount is None:
@@ -224,7 +222,7 @@ class TestClientServerIO(unittest.TestCase):
 
                 status = "PASS" if is_valid == expected_valid else "FAIL"
                 print(f"    {desc}: {amount!r} -> valid={is_valid} [{status}]")
-                
+
                 self.assertEqual(is_valid, expected_valid, f"Amount {amount!r} ({desc}) should be {'valid' if expected_valid else 'invalid'}")
             except TypeError as e:
                 print(f"    {desc}: {amount!r} -> TypeError: {e}")
@@ -249,7 +247,7 @@ class TestClientServerIO(unittest.TestCase):
         self.assertEqual(game_state["player_total"], 21)
 
         hand_str = " ".join(game_state["player_hand"])
-        print(f"\n← Game state received:")
+        print("\n← Game state received:")
         print(f"  Player hand: {hand_str} [{game_state['player_total']}]")
         print(f"  Dealer hand: {' '.join(game_state['dealer_hand'])} [{game_state['dealer_total']}]")
         print(f"  Phase: {game_state['phase']}")
@@ -288,7 +286,7 @@ class TestClientServerIO(unittest.TestCase):
         }
 
         self.assertEqual(len(table_list["tables"]), 2)
-        print(f"\n← Table list received:")
+        print("\n← Table list received:")
         for t in table_list["tables"]:
             print(f"  {t['moniker']}: {t['type']} ({t['players']} players) ${t['min_bet']}-${t['max_bet']}")
 
@@ -304,7 +302,7 @@ class TestClientServerIO(unittest.TestCase):
         """Test that menu options are properly formatted for display."""
         menu_options = {
             "B": "Blackjack",
-            "P": "Poker", 
+            "P": "Poker",
             "S": "Slots",
             "C": "Connect",
             "L": "List tables",
@@ -414,7 +412,6 @@ class TestCasinoMenuDisplay(unittest.TestCase):
 
     def test_inputchoice_options_format(self):
         """Test that inputchoice options string is uppercase without commas."""
-        from bbsengine6.io import inputchoice
 
         options = "QBXCAHLTJP"
         self.assertEqual(options, options.upper())

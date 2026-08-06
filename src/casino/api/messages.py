@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 
 
 class MessageType(str, Enum):
@@ -138,10 +138,10 @@ class CreateTableMessage:
 class UpdateTableMessage:
     type: str = MessageType.UPDATE_TABLE
     moniker: str = ""
-    new_moniker: Optional[str] = None
-    min_bet: Optional[int] = None
-    max_bet: Optional[int] = None
-    status: Optional[str] = None
+    new_moniker: str | None = None
+    min_bet: int | None = None
+    max_bet: int | None = None
+    status: str | None = None
 
 
 @dataclass
@@ -153,7 +153,7 @@ class JoinTableMessage:
 @dataclass
 class LeaveTableMessage:
     type: str = MessageType.LEAVE_TABLE
-    moniker: Optional[str] = None
+    moniker: str | None = None
 
 
 @dataclass
@@ -165,7 +165,7 @@ class WatchTableMessage:
 @dataclass
 class StopWatchingMessage:
     type: str = MessageType.STOP_WATCHING
-    table_id: Optional[int] = None
+    table_id: int | None = None
 
 
 @dataclass
@@ -227,7 +227,7 @@ class PingMessage:
 class AuthResultMessage:
     type: str = MessageType.AUTH_RESULT
     success: bool = False
-    player_id: Optional[int] = None
+    player_id: int | None = None
     moniker: str = ""
     balance: int = 0
     message: str = ""
@@ -294,7 +294,7 @@ class ChatMessageMessage:
     from_moniker: str = ""
     message: str = ""
     scope: str = ChatScope.GLOBAL
-    table_id: Optional[int] = None
+    table_id: int | None = None
     timestamp: str = ""
 
 
@@ -320,11 +320,11 @@ def parse_message(data: dict[str, Any]) -> dict[str, Any]:
     """Parse incoming JSON message, returning a standardized dict."""
     if not isinstance(data, dict):
         raise ValueError("Message must be a JSON object")
-    
+
     msg_type = data.get("type")
     if not msg_type:
         raise ValueError("Message must have a 'type' field")
-    
+
     return data
 
 

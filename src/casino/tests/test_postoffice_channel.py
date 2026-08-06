@@ -55,8 +55,9 @@ class TestMessageRouterChannelRegistration(unittest.TestCase):
 
     def test_postoffice_service_registered(self):
         """Test postoffice service is registered for check_mail message type."""
-        from casino.api.handler import MessageRouter
         from bbsengine6.net import WebSocketServer
+
+        from casino.api.handler import MessageRouter
 
         args = MagicMock()
         args.databasename = "test"
@@ -75,6 +76,7 @@ class TestServiceHandlerIntegration(unittest.TestCase):
     def test_handler_handles_check_mail_message(self):
         """Test PostofficeServiceHandler handles check_mail message type."""
         import asyncio
+
         from casino.api.handler import PostofficeServiceHandler
 
         handler = PostofficeServiceHandler(MagicMock(), MagicMock())
@@ -90,6 +92,7 @@ class TestServiceHandlerIntegration(unittest.TestCase):
     def test_handler_returns_none_for_unknown_message(self):
         """Test handler returns None for unknown message types."""
         import asyncio
+
         from casino.api.handler import PostofficeServiceHandler
 
         handler = PostofficeServiceHandler(MagicMock(), MagicMock())

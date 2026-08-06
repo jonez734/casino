@@ -1,7 +1,8 @@
-from bbsengine6 import io, util, member
+from bbsengine6 import io, member, util
+
 from casino.dal import table as dal_table
-from casino.services import table as table_service
 from casino.services import bank as bank_service
+from casino.services import table as table_service
 
 
 def init(args, **kwargs):

@@ -1,12 +1,6 @@
-from importlib import import_module
 from importlib.metadata import entry_points
-from typing import TYPE_CHECKING
 
 from .base import BaseVariant, BetLimits
-
-if TYPE_CHECKING:
-    from typing import Any
-
 
 _VARIANT_MODULES = {
     "texas_hold_em": "casino.poker.variant.texas_hold_em",

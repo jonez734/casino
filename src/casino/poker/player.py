@@ -1,4 +1,3 @@
-from typing import Any, List, Optional
 
 
 class PokerPlayer:
@@ -13,7 +12,7 @@ class PokerPlayer:
         self.moniker: str = moniker
         self.seat: int = seat
         self.credits: int = credits
-        self.hole_cards: List[str] = []
+        self.hole_cards: list[str] = []
         self.current_bet: int = 0
         self.total_in_pot: int = 0
         self.has_acted: bool = False
@@ -23,23 +22,23 @@ class PokerPlayer:
 
     def receive_card(self, card_str: str) -> None:
         """Receive a hole card.
-        
+
         Args:
             card_str: Card in string format (e.g., 'AH', 'KD', '7S')
         """
         self.hole_cards.append(card_str)
 
-    def receive_cards(self, cards: List[str]) -> None:
+    def receive_cards(self, cards: list[str]) -> None:
         """Receive multiple hole cards.
-        
+
         Args:
             cards: List of card strings
         """
         self.hole_cards.extend(cards)
 
-    def clear_hand(self) -> List[str]:
+    def clear_hand(self) -> list[str]:
         """Clear the player's hand and return the cards.
-        
+
         Returns:
             List of card strings that were in hand
         """
@@ -55,10 +54,10 @@ class PokerPlayer:
 
     def post_bet(self, amount: int) -> int:
         """Post a bet, deducting from credits.
-        
+
         Args:
             amount: Amount to bet
-            
+
         Returns:
             Actual amount bet (may be less than requested if all-in)
         """
@@ -73,7 +72,7 @@ class PokerPlayer:
 
     def collect_winnings(self, amount: int) -> None:
         """Add winnings to player's credits.
-        
+
         Args:
             amount: Amount to add to credits
         """
@@ -81,7 +80,7 @@ class PokerPlayer:
 
     def can_act(self) -> bool:
         """Check if player can take an action.
-        
+
         Returns:
             True if player can act (not folded, not all-in)
         """
@@ -89,10 +88,10 @@ class PokerPlayer:
 
     def can_check(self, current_bet: int) -> bool:
         """Check if player can check.
-        
+
         Args:
             current_bet: Current highest bet on the table
-            
+
         Returns:
             True if player can check (no bet to call)
         """
@@ -100,10 +99,10 @@ class PokerPlayer:
 
     def can_call(self, current_bet: int) -> bool:
         """Check if player can call the current bet.
-        
+
         Args:
             current_bet: Current highest bet on the table
-            
+
         Returns:
             True if player can call (has enough credits)
         """
@@ -114,10 +113,10 @@ class PokerPlayer:
 
     def can_bet(self, min_bet: int) -> bool:
         """Check if player can bet.
-        
+
         Args:
             min_bet: Minimum bet amount
-            
+
         Returns:
             True if player has enough credits to bet
         """
@@ -125,10 +124,10 @@ class PokerPlayer:
 
     def get_call_amount(self, current_bet: int) -> int:
         """Get the amount needed to call.
-        
+
         Args:
             current_bet: Current highest bet on the table
-            
+
         Returns:
             Amount needed to call
         """
@@ -136,21 +135,21 @@ class PokerPlayer:
 
     def get_bet_to_pot(self, current_bet: int) -> int:
         """Get total chips that would be in pot after calling.
-        
+
         Args:
             current_bet: Current highest bet on the table
-            
+
         Returns:
             Total chips in pot after calling
         """
         return self.total_in_pot + self.get_call_amount(current_bet)
 
-    def get_visible_cards(self, opponent_moniker: str = "") -> List[str]:
+    def get_visible_cards(self, opponent_moniker: str = "") -> list[str]:
         """Get cards visible to another player (for Stud variants).
-        
+
         Args:
             opponent_moniker: The opponent viewing the cards (unused for hold'em)
-            
+
         Returns:
             List of visible card strings (for hold'em, returns hole cards)
         """
@@ -164,15 +163,15 @@ class PokerPlayer:
         """Check if player is still in the hand."""
         return not self.has_folded and not self.is_all_in
 
-    def has_best_hand(self, other_players: List["PokerPlayer"]) -> bool:
+    def has_best_hand(self, other_players: list["PokerPlayer"]) -> bool:
         """Check if this player has the best hand against opponents.
-        
+
         Note: This is a placeholder - actual comparison requires
         the evaluator from poker.variant.evaluator.
-        
+
         Args:
             other_players: List of other active players
-            
+
         Returns:
             True if player appears to win (placeholder)
         """

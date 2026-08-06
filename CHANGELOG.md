@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### lint: ruff cleanup across the tree
+
+Drop unused imports, combine nested `with` statements, convert `%`
+formatting to f-strings, and tidy import blocks so `ruff check` passes
+clean (1113 errors at the start of the pass, 0 after).
+
+### casino: install into the shared zoid6 venv
+
+`deploy-tui` now runs `pip install .` into the active venv instead of
+just building a wheel, so `deploytool casino.tui` installs casino into
+the shared `/var/lib/zoid6/venv` alongside the other bbsengine6 services.
+
 ### casino: use `bottombar.registry_for('casino')` for the per-package registry
 
 Each package now owns its own fragment registry, keyed by package

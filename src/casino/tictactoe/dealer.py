@@ -9,12 +9,12 @@
 from __future__ import annotations
 
 import secrets
-from typing import Optional, Sequence, Union
+from collections.abc import Sequence
 
 from . import lib
 
 
-def _default_rng() -> Union[secrets.SystemRandom, object]:
+def _default_rng() -> secrets.SystemRandom | object:
     return secrets.SystemRandom()
 
 
@@ -23,7 +23,7 @@ class TictactoeDealer:
     random-fallback difficulty modes.
     """
 
-    def __init__(self, rng: Optional[Union[secrets.SystemRandom, object]] = None) -> None:
+    def __init__(self, rng: secrets.SystemRandom | object | None = None) -> None:
         self._rng = rng if rng is not None else _default_rng()
 
     def best_move(self, cells: Sequence[int], to_move: int) -> int:

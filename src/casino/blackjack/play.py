@@ -1,4 +1,5 @@
-from bbsengine6 import util, io
+from bbsengine6 import io, util
+
 from .. import lib as libcasino
 
 

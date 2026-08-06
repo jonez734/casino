@@ -2,10 +2,11 @@
 # casino/tests/test_postoffice_manual_check.py
 # Tests for manual mail check via message type
 
-import pytest
 import sys
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 sys.path.insert(0, "/home/opencode/data/work/mistermcfeely/src")
 sys.path.insert(0, "/home/opencode/data/work/casino/src")
@@ -102,7 +103,7 @@ class TestCheckMailboxCount(unittest.IsolatedAsyncioTestCase):
 
     async def test_check_mailbox_count_returns_zero_on_error(self):
         """Test _check_mailbox_count returns 0 on error."""
-        from postoffice.service import PostofficeService, MailboxConfig
+        from postoffice.service import MailboxConfig, PostofficeService
 
         mb = MailboxConfig(host="invalid.test.com", username="user", password="pass")
         service = PostofficeService(config={"enabled": False, "poll_interval": 30, "mailboxes": []})
@@ -114,7 +115,7 @@ class TestCheckMailboxCount(unittest.IsolatedAsyncioTestCase):
 
     async def test_check_mailbox_count_parses_unseen(self):
         """Test _check_mailbox_count correctly counts unseen messages."""
-        from postoffice.service import PostofficeService, MailboxConfig
+        from postoffice.service import MailboxConfig, PostofficeService
 
         mb = MailboxConfig(host="mail.test.com", username="user", password="pass")
         service = PostofficeService(config={"enabled": False, "poll_interval": 30, "mailboxes": []})
@@ -129,7 +130,7 @@ class TestCheckMailboxCount(unittest.IsolatedAsyncioTestCase):
 
     async def test_check_mailbox_count_no_unseen(self):
         """Test _check_mailbox_count with no unseen messages."""
-        from postoffice.service import PostofficeService, MailboxConfig
+        from postoffice.service import MailboxConfig, PostofficeService
 
         mb = MailboxConfig(host="mail.test.com", username="user", password="pass")
         service = PostofficeService(config={"enabled": False, "poll_interval": 30, "mailboxes": []})

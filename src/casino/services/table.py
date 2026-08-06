@@ -1,7 +1,7 @@
 # casino/services/table.py
 # Table service - table management
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 from casino.dal import table as dal_table
 
@@ -20,7 +20,7 @@ class TableService:
         max_bet: int = 1000,
         moniker: Optional[str] = None,
         hidden: bool = False,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Create a new casino table.
 
         Args:
@@ -40,7 +40,7 @@ class TableService:
             "message": f"Table {table['moniker']} created",
         }
 
-    def get_table(self, moniker: str) -> Optional[Dict[str, Any]]:
+    def get_table(self, moniker: str) -> Optional[dict[str, Any]]:
         """Get table by moniker."""
         return dal_table.get_table(self.args, moniker)
 
@@ -48,7 +48,7 @@ class TableService:
         self,
         game_type: Optional[str] = None,
         is_sysop: bool = False,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """List all tables, optionally filtered by game type.
 
         Hidden tables are excluded unless the caller is a sysop (sysops
@@ -81,7 +81,7 @@ class TableService:
         moniker: str,
         player_moniker: str = "",
         is_sysop: bool = False,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Player joins a table (sits down).
 
         Hidden tables are not discoverable via list_tables for non-sysop
@@ -104,7 +104,7 @@ class TableService:
             "message": f"Sat down at table {moniker}",
         }
 
-    def leave_table(self, moniker: str, player_moniker: str) -> Dict[str, Any]:
+    def leave_table(self, moniker: str, player_moniker: str) -> dict[str, Any]:
         """Player leaves a table (stands up)."""
         success = dal_table.remove_player_from_table(self.args, moniker, player_moniker)
 
@@ -113,7 +113,7 @@ class TableService:
             "message": "Left table" if success else "Not at table",
         }
 
-    def delete_table(self, moniker: str, current_moniker: str, is_sysop: bool = False) -> Dict[str, Any]:
+    def delete_table(self, moniker: str, current_moniker: str, is_sysop: bool = False) -> dict[str, Any]:
         """Delete a table (owner or sysop)."""
         table = dal_table.get_table(self.args, moniker)
         if not table:
@@ -135,7 +135,7 @@ class TableService:
             "message": f"Table {moniker} deleted",
         }
 
-    def update_table(self, moniker: str, current_moniker: str, is_sysop: bool = False, **updates) -> Dict[str, Any]:
+    def update_table(self, moniker: str, current_moniker: str, is_sysop: bool = False, **updates) -> dict[str, Any]:
         """Update table fields (owner or sysop only).
 
         Args:
@@ -181,7 +181,7 @@ class TableService:
             "message": "Failed to update table",
         }
 
-    def reset_shoe(self, moniker: str, current_moniker: str, is_sysop: bool = False) -> Dict[str, Any]:
+    def reset_shoe(self, moniker: str, current_moniker: str, is_sysop: bool = False) -> dict[str, Any]:
         """Reset table shoe (owner or sysop only)."""
         table = dal_table.get_table(self.args, moniker)
         if not table:

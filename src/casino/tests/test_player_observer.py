@@ -10,12 +10,13 @@ from typing import Optional
 
 sys.path.insert(0, "/home/opencode/data/work/casino/src")
 
+import contextlib
+
 import websockets
-from websockets.exceptions import ConnectionClosed, ConnectionClosedOK
+from websockets.exceptions import ConnectionClosed
 
 from casino import lib
 from casino.api.handler import MessageRouter
-
 
 DEFAULT_TIMEOUT = 10.0
 PING_INTERVAL = 30.0
@@ -155,23 +156,17 @@ class WebSocketTestClient:
 
         if self._receive_task:
             self._receive_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._receive_task
-            except asyncio.CancelledError:
-                pass
 
         if self._ping_task:
             self._ping_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._ping_task
-            except asyncio.CancelledError:
-                pass
 
         if self.ws:
-            try:
+            with contextlib.suppress(Exception):
                 await self.ws.close(code=1000, reason="Test complete")
-            except Exception:
-                pass
 
         while not self._message_queue.empty():
             try:
@@ -194,40 +189,36 @@ class TestPlayerAndObserver(unittest.IsolatedAsyncioTestCase):
 
     async def asyncSetUp(self):
         """Set up test server and database."""
-        import asyncio
-        from bbsengine6.net import WebSocketServer
         from bbsengine6 import database
+        from bbsengine6.net import WebSocketServer
 
-        try:
+        with contextlib.suppress(Exception):
             await database.reset_async_pool_cache()
-        except Exception:
-            pass
 
         parser = lib.buildargs()
         self.args = parser.parse_args(["--databasename", "zoid6test"])
 
         self.pool = database.getpool(self.args)
 
-        with database.connect(self.args, pool=self.pool) as conn:
-            with database.cursor(conn) as cur:
-                cur.execute(
-                    "INSERT INTO engine.__member (moniker, loginid, password, email, credits) "
-                    "VALUES ('jam', 'jam', crypt('test', gen_salt('md5')), 'jam@test.local', 100000) "
-                    "ON CONFLICT (moniker) DO UPDATE SET password = crypt('test', gen_salt('md5')), credits = 100000"
-                )
-                cur.execute(
-                    "INSERT INTO bank.__account (moniker, balance) VALUES ('jam', 100000) "
-                    "ON CONFLICT (moniker) DO UPDATE SET balance = 100000"
-                )
-                cur.execute(
-                    "INSERT INTO engine.__member (moniker, loginid, password, email, credits) "
-                    "VALUES ('viewer', 'viewer', crypt('test', gen_salt('md5')), 'viewer@test.local', 100000) "
-                    "ON CONFLICT (moniker) DO UPDATE SET password = crypt('test', gen_salt('md5')), credits = 100000"
-                )
-                cur.execute(
-                    "INSERT INTO bank.__account (moniker, balance) VALUES ('viewer', 100000) "
-                    "ON CONFLICT (moniker) DO UPDATE SET balance = 100000"
-                )
+        with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
+            cur.execute(
+                "INSERT INTO engine.__member (moniker, loginid, password, email, credits) "
+                "VALUES ('jam', 'jam', crypt('test', gen_salt('md5')), 'jam@test.local', 100000) "
+                "ON CONFLICT (moniker) DO UPDATE SET password = crypt('test', gen_salt('md5')), credits = 100000"
+            )
+            cur.execute(
+                "INSERT INTO bank.__account (moniker, balance) VALUES ('jam', 100000) "
+                "ON CONFLICT (moniker) DO UPDATE SET balance = 100000"
+            )
+            cur.execute(
+                "INSERT INTO engine.__member (moniker, loginid, password, email, credits) "
+                "VALUES ('viewer', 'viewer', crypt('test', gen_salt('md5')), 'viewer@test.local', 100000) "
+                "ON CONFLICT (moniker) DO UPDATE SET password = crypt('test', gen_salt('md5')), credits = 100000"
+            )
+            cur.execute(
+                "INSERT INTO bank.__account (moniker, balance) VALUES ('viewer', 100000) "
+                "ON CONFLICT (moniker) DO UPDATE SET balance = 100000"
+            )
 
         self.server = WebSocketServer(host="127.0.0.1", port=8765)
         self.router = MessageRouter(self.args)
@@ -240,7 +231,6 @@ class TestPlayerAndObserver(unittest.IsolatedAsyncioTestCase):
 
     async def asyncTearDown(self):
         """Clean up after test."""
-        import asyncio
         from bbsengine6 import database
 
         if self.player_client:
@@ -253,17 +243,16 @@ class TestPlayerAndObserver(unittest.IsolatedAsyncioTestCase):
 
         if hasattr(self, "pool") and self.pool is not None:
             try:
-                with database.connect(self.args, pool=self.pool) as conn:
-                    with database.cursor(conn) as cur:
-                        cur.execute("UPDATE engine.__member SET credits = 100000 WHERE moniker = 'jam'")
-                        cur.execute("UPDATE bank.__account SET balance = 100000 WHERE moniker = 'jam'")
-                        cur.execute("UPDATE engine.__member SET credits = 100000 WHERE moniker = 'viewer'")
-                        cur.execute("UPDATE bank.__account SET balance = 100000 WHERE moniker = 'viewer'")
-                        cur.execute("DELETE FROM casino.__bank_table WHERE table_moniker LIKE 'blackjack-%'")
-                        cur.execute("DELETE FROM casino.__table WHERE moniker LIKE 'blackjack-%'")
-                        cur.execute("DELETE FROM casino.__game WHERE tablemoniker LIKE 'blackjack-%'")
-                        cur.execute("DELETE FROM casino.map_cardtable_player WHERE cardtablemoniker LIKE 'blackjack-%'")
-                        cur.execute("DELETE FROM casino.__betlog WHERE cardtablemoniker LIKE 'blackjack-%'")
+                with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
+                    cur.execute("UPDATE engine.__member SET credits = 100000 WHERE moniker = 'jam'")
+                    cur.execute("UPDATE bank.__account SET balance = 100000 WHERE moniker = 'jam'")
+                    cur.execute("UPDATE engine.__member SET credits = 100000 WHERE moniker = 'viewer'")
+                    cur.execute("UPDATE bank.__account SET balance = 100000 WHERE moniker = 'viewer'")
+                    cur.execute("DELETE FROM casino.__bank_table WHERE table_moniker LIKE 'blackjack-%'")
+                    cur.execute("DELETE FROM casino.__table WHERE moniker LIKE 'blackjack-%'")
+                    cur.execute("DELETE FROM casino.__game WHERE tablemoniker LIKE 'blackjack-%'")
+                    cur.execute("DELETE FROM casino.map_cardtable_player WHERE cardtablemoniker LIKE 'blackjack-%'")
+                    cur.execute("DELETE FROM casino.__betlog WHERE cardtablemoniker LIKE 'blackjack-%'")
             except Exception:
                 pass
 
@@ -271,10 +260,8 @@ class TestPlayerAndObserver(unittest.IsolatedAsyncioTestCase):
             self.pool.close()
             self.pool = None
 
-        try:
+        with contextlib.suppress(Exception):
             await database.reset_async_pool_cache()
-        except Exception:
-            pass
 
     async def test_player_and_observer(self):
         """Test blackjack player and observer watching the table simultaneously."""
@@ -469,7 +456,7 @@ class TestPlayerAndObserver(unittest.IsolatedAsyncioTestCase):
             await self.observer_client.send({"type": "stop_watching", "moniker": table_id})
             response = await self.observer_client.receive()
             self.assertEqual(response["type"], "stopped_watching")
-            print(f"✓ Observer stopped watching")
+            print("✓ Observer stopped watching")
 
             print("\n✓ Player and observer test passed!")
 

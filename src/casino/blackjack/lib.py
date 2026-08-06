@@ -1,6 +1,7 @@
 import argparse
 
 from bbsengine6 import database
+
 from .. import lib as libcasino
 
 PACKAGENAME = "blackjack"

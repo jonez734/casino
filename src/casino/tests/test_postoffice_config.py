@@ -7,7 +7,6 @@ import os
 import sys
 import tempfile
 import unittest
-from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -44,7 +43,7 @@ class TestPostofficeConfig(unittest.TestCase):
         os.environ["CASINO_POSTOFFICE_ENABLED"] = "true"
         os.environ["CASINO_POSTOFFICE_POLL_INTERVAL"] = "60"
 
-        from casino.config import load_config, get_postoffice_config
+        from casino.config import get_postoffice_config, load_config
 
         config = load_config()
         self.assertTrue(config["postoffice"]["enabled"])
@@ -190,7 +189,7 @@ class TestPostofficeServiceConfig(unittest.TestCase):
 
     def test_mailboxes_loaded_from_config(self):
         """Test mailboxes are loaded from config into service."""
-        from casino.services.postoffice import PostofficeService, MailboxConfig
+        from casino.services.postoffice import MailboxConfig, PostofficeService
 
         mailboxes = [
             {"host": "imap.test.com", "username": "user", "password": "pass", "use_ssl": True}

@@ -5,7 +5,7 @@
 import argparse
 import sys
 import unittest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, "/home/opencode/data/work/casino/src")
 
@@ -438,8 +438,7 @@ class TestHiddenTableService(unittest.TestCase):
             "hidden": True,
         }
 
-        with patch("casino.dal.table.get_table") as mock_get:
-            with patch("casino.dal.table.update_table") as mock_update:
+        with patch("casino.dal.table.get_table") as mock_get, patch("casino.dal.table.update_table") as mock_update:
                 mock_get.return_value = mock_table
                 mock_update.return_value = {**mock_table, "hidden": True}
 
@@ -486,8 +485,7 @@ class TestHiddenTableService(unittest.TestCase):
             "hidden": True,
         }
 
-        with patch("casino.dal.table.get_table") as mock_get:
-            with patch("casino.dal.table.add_player_to_table") as mock_add:
+        with patch("casino.dal.table.get_table") as mock_get, patch("casino.dal.table.add_player_to_table") as mock_add:
                 mock_get.return_value = mock_table
                 mock_add.return_value = True
 
@@ -513,8 +511,7 @@ class TestHiddenTableService(unittest.TestCase):
             "hidden": True,
         }
 
-        with patch("casino.dal.table.get_table") as mock_get:
-            with patch("casino.dal.table.add_player_to_table") as mock_add:
+        with patch("casino.dal.table.get_table") as mock_get, patch("casino.dal.table.add_player_to_table") as mock_add:
                 mock_get.return_value = mock_table
                 mock_add.return_value = True
 

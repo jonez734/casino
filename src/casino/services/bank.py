@@ -2,12 +2,13 @@
 # Casino table bank management - uses bbsengine6 bank module
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 from bbsengine6 import database
 from bbsengine6.bank import BankService as BankModule
 from bbsengine6.message import MessageUrgency as NotificationUrgency
 from bbsengine6.message import send as notify_send
+
 from casino.dal import table as dal_table
 
 logger = logging.getLogger(__name__)
@@ -26,14 +27,13 @@ class BankService:
 
     def _get_bank_account_id(self, table_moniker: str) -> Optional[int]:
         """Get the bank account ID for a table from casino.__bank_table mapping."""
-        with database.connect(self.args) as conn:
-            with database.cursor(conn) as cur:
-                cur.execute(
-                    "SELECT bank_account_id FROM casino.__bank_table WHERE table_moniker = %s",
-                    (table_moniker,)
-                )
-                row = cur.fetchone()
-                return row["bank_account_id"] if row else None
+        with database.connect(self.args) as conn, database.cursor(conn) as cur:
+            cur.execute(
+                "SELECT bank_account_id FROM casino.__bank_table WHERE table_moniker = %s",
+                (table_moniker,)
+            )
+            row = cur.fetchone()
+            return row["bank_account_id"] if row else None
 
     def _get_or_create_account(self, table_moniker: str) -> Optional[int]:
         """Get or create a bank account for a table."""
@@ -49,47 +49,45 @@ class BankService:
         if not owner_moniker:
             return None
 
-        with database.connect(self.args) as conn:
-            with database.cursor(conn) as cur:
+        with database.connect(self.args) as conn, database.cursor(conn) as cur:
+            cur.execute(
+                "SELECT id FROM bank.__account WHERE moniker = %s",
+                (owner_moniker,)
+            )
+            row = cur.fetchone()
+            if row:
+                account_id = row["id"]
+            else:
                 cur.execute(
-                    "SELECT id FROM bank.__account WHERE moniker = %s",
+                    "INSERT INTO bank.__account (moniker, balance) VALUES (%s, 0) RETURNING id",
                     (owner_moniker,)
                 )
-                row = cur.fetchone()
-                if row:
-                    account_id = row["id"]
-                else:
-                    cur.execute(
-                        "INSERT INTO bank.__account (moniker, balance) VALUES (%s, 0) RETURNING id",
-                        (owner_moniker,)
-                    )
-                    account_id = cur.fetchone()["id"]
+                account_id = cur.fetchone()["id"]
 
-                cur.execute(
-                    "INSERT INTO casino.__bank_table (table_moniker, bank_account_id) VALUES (%s, %s)",
-                    (table_moniker, account_id)
-                )
+            cur.execute(
+                "INSERT INTO casino.__bank_table (table_moniker, bank_account_id) VALUES (%s, %s)",
+                (table_moniker, account_id)
+            )
 
-                cur.execute(
-                    "UPDATE casino.__table SET accountid = %s WHERE moniker = %s",
-                    (account_id, table_moniker)
-                )
+            cur.execute(
+                "UPDATE casino.__table SET accountid = %s WHERE moniker = %s",
+                (account_id, table_moniker)
+            )
 
         return account_id
 
     def _get_house_account_id(self) -> int:
         """Get or create the house bank account ID."""
-        with database.connect(self.args) as conn:
-            with database.cursor(conn) as cur:
-                cur.execute("SELECT id FROM bank.__account WHERE moniker = %s", (HOUSE_MONIKER,))
-                row = cur.fetchone()
-                if row:
-                    return row["id"]
-                cur.execute(
-                    "INSERT INTO bank.__account (moniker, balance, maxtransfer) VALUES (%s, 0, 1000000) RETURNING id",
-                    (HOUSE_MONIKER,)
-                )
-                return cur.fetchone()["id"]
+        with database.connect(self.args) as conn, database.cursor(conn) as cur:
+            cur.execute("SELECT id FROM bank.__account WHERE moniker = %s", (HOUSE_MONIKER,))
+            row = cur.fetchone()
+            if row:
+                return row["id"]
+            cur.execute(
+                "INSERT INTO bank.__account (moniker, balance, maxtransfer) VALUES (%s, 0, 1000000) RETURNING id",
+                (HOUSE_MONIKER,)
+            )
+            return cur.fetchone()["id"]
 
     def _get_house_balance(self) -> int:
         """Get house account balance."""
@@ -104,7 +102,7 @@ class BankService:
         transaction_type: str,
         description: str,
         member_moniker: str = "",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Transfer funds between two accounts. Both accounts must exist."""
         if amount <= 0:
             return {"success": False, "message": "Amount must be positive"}
@@ -127,26 +125,25 @@ class BankService:
             if from_account["balance"] < amount:
                 return {"success": False, "message": f"Insufficient funds. Balance: {from_account['balance']}"}
 
-        with database.connect(self.args) as conn:
-            with database.cursor(conn) as cur:
-                cur.execute(
-                    "UPDATE bank.__account SET balance = balance - %s WHERE moniker = %s",
-                    (amount, from_moniker)
-                )
-                cur.execute(
-                    "UPDATE bank.__account SET balance = balance + %s WHERE moniker = %s",
-                    (amount, to_moniker)
-                )
-                cur.execute(
-                    """INSERT INTO bank.__transaction (accountid, amount, transactiontype, description, membermoniker)
+        with database.connect(self.args) as conn, database.cursor(conn) as cur:
+            cur.execute(
+                "UPDATE bank.__account SET balance = balance - %s WHERE moniker = %s",
+                (amount, from_moniker)
+            )
+            cur.execute(
+                "UPDATE bank.__account SET balance = balance + %s WHERE moniker = %s",
+                (amount, to_moniker)
+            )
+            cur.execute(
+                """INSERT INTO bank.__transaction (accountid, amount, transactiontype, description, membermoniker)
                        SELECT id, %s, %s, %s, %s FROM bank.__account WHERE moniker = %s""",
-                    (amount, f"{transaction_type}_debit", description, member_moniker, from_moniker)
-                )
-                cur.execute(
-                    """INSERT INTO bank.__transaction (accountid, amount, transactiontype, description, membermoniker)
+                (amount, f"{transaction_type}_debit", description, member_moniker, from_moniker)
+            )
+            cur.execute(
+                """INSERT INTO bank.__transaction (accountid, amount, transactiontype, description, membermoniker)
                        SELECT id, %s, %s, %s, %s FROM bank.__account WHERE moniker = %s""",
-                    (amount, f"{transaction_type}_credit", description, member_moniker, to_moniker)
-                )
+                (amount, f"{transaction_type}_credit", description, member_moniker, to_moniker)
+            )
 
         return {
             "success": True,
@@ -166,16 +163,15 @@ class BankService:
         description: str,
     ) -> None:
         """Record a casino bank transaction."""
-        with database.connect(self.args) as conn:
-            with database.cursor(conn) as cur:
+        with database.connect(self.args) as conn, database.cursor(conn) as cur:
                 cur.execute(
-                    """INSERT INTO casino.__banktransaction 
+                    """INSERT INTO casino.__banktransaction
                        (tablemoniker, amount, transactiontype, source, destination, relatedmoniker, description, membermoniker)
                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
                     (table_moniker, amount, transaction_type, source, destination, member_moniker, description, member_moniker)
                 )
 
-    def _get_house_settings(self) -> Dict[str, Any]:
+    def _get_house_settings(self) -> dict[str, Any]:
         """Get house account settings including overdraft limit."""
         account = self.bank.account.get(HOUSE_MONIKER)
         if not account:
@@ -185,7 +181,7 @@ class BankService:
             "overdraft_limit": account.get("overdraft_limit", 0),
         }
 
-    def get_house_balance_with_status(self) -> Dict[str, Any]:
+    def get_house_balance_with_status(self) -> dict[str, Any]:
         """Get house balance with status information."""
         settings = self._get_house_settings()
         balance = settings["balance"]
@@ -207,9 +203,9 @@ class BankService:
             "status": status,
         }
 
-    def _check_house_balance(self, amount: int, operation: str) -> Dict[str, Any]:
+    def _check_house_balance(self, amount: int, operation: str) -> dict[str, Any]:
         """Check if house can afford a transaction.
-        
+
         Returns dict with:
             allowed: bool - whether transaction can proceed
             new_balance: int - balance after transaction
@@ -293,16 +289,16 @@ class BankService:
         account = self.bank.account.get_by_id(account_id)
         return int(account["balance"]) if account else 0
 
-    def get_table(self, table_moniker: str) -> Optional[Dict[str, Any]]:
+    def get_table(self, table_moniker: str) -> Optional[dict[str, Any]]:
         """Get table info including bank settings."""
         table = dal_table.get_table(self.args, table_moniker)
         if not table:
             return None
-        
+
         if not table.get("accountid"):
             self._get_or_create_account(table_moniker)
             table = dal_table.get_table(self.args, table_moniker)
-        
+
         if table and table.get("accountid"):
             account = self.bank.account.get_by_id(table["accountid"])
             if account:
@@ -326,7 +322,7 @@ class BankService:
         source: str = "house",
         member_moniker: str = "",
         description: str = "",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Add funds to a table bank (buy-in, house funding, transfer_in)."""
         if amount <= 0:
             return {"success": False, "message": "Amount must be positive"}
@@ -382,7 +378,7 @@ class BankService:
 
         if result["success"]:
             result["message"] = f"Added {amount} to table {table_moniker} bank"
-        
+
         return result
 
     def remove_funds(
@@ -392,7 +388,7 @@ class BankService:
         reason: str = "adjustment",
         member_moniker: str = "",
         description: str = "",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Remove funds from a table bank (payout, transfer_out, house withdrawal)."""
         if amount <= 0:
             return {"success": False, "message": "Amount must be positive"}
@@ -446,7 +442,7 @@ class BankService:
 
         if result["success"]:
             result["message"] = f"Removed {amount} from table {table_moniker} bank"
-        
+
         return result
 
     def record_win(
@@ -454,7 +450,7 @@ class BankService:
         table_moniker: str,
         amount: int,
         player_moniker: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Record a player win (pay from house account to player)."""
         if amount <= 0:
             return {"success": False, "message": "Amount must be positive"}
@@ -474,7 +470,7 @@ class BankService:
 
         if result["success"]:
             result["message"] = f"Paid {amount} to {player_moniker}"
-        
+
         return result
 
     def record_loss(
@@ -482,7 +478,7 @@ class BankService:
         table_moniker: str,
         amount: int,
         player_moniker: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Record a player loss (debit player, credit house)."""
         if amount <= 0:
             return {"success": False, "message": "Amount must be positive"}
@@ -502,7 +498,7 @@ class BankService:
 
         if result["success"]:
             result["message"] = f"House won {amount} from {player_moniker}"
-        
+
         return result
 
     def get_max_transfer(self, table_moniker: str) -> int:
@@ -512,7 +508,7 @@ class BankService:
             return 1000
         return int(table.get("maxtransfer", 1000))
 
-    def check_transfer_limit(self, table_moniker: str, amount: int) -> Dict[str, Any]:
+    def check_transfer_limit(self, table_moniker: str, amount: int) -> dict[str, Any]:
         """Check if transfer amount is within limit."""
         max_transfer = self.get_max_transfer(table_moniker)
         if amount > max_transfer:
@@ -528,7 +524,7 @@ class BankService:
         to_table: str,
         amount: int,
         requested_by: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Request a transfer between tables (requires approval)."""
         if from_table == to_table:
             return {"success": False, "message": "Cannot transfer to the same table"}
@@ -562,19 +558,19 @@ class BankService:
             requested_by,
         )
 
-    def approve_transfer(self, transfer_id: int, responded_by: str) -> Dict[str, Any]:
+    def approve_transfer(self, transfer_id: int, responded_by: str) -> dict[str, Any]:
         """Approve a pending transfer."""
         return self.bank.approve_transfer(transfer_id, responded_by)
 
-    def reject_transfer(self, transfer_id: int, responded_by: str) -> Dict[str, Any]:
+    def reject_transfer(self, transfer_id: int, responded_by: str) -> dict[str, Any]:
         """Reject a pending transfer."""
         return self.bank.reject_transfer(transfer_id, responded_by)
 
-    def list_pending_transfers(self, moniker: str = "", is_sysop: bool = False) -> List[Dict[str, Any]]:
+    def list_pending_transfers(self, moniker: str = "", is_sysop: bool = False) -> list[dict[str, Any]]:
         """List pending transfers for tables owned by user."""
         return self.bank.get_pending_transfers(moniker, is_sysop)
 
-    def get_history(self, table_moniker: str, limit: int = 50) -> List[Dict[str, Any]]:
+    def get_history(self, table_moniker: str, limit: int = 50) -> list[dict[str, Any]]:
         """Get transaction history for a table."""
         table = dal_table.get_table(self.args, table_moniker)
         if not table:
@@ -584,7 +580,7 @@ class BankService:
             return []
         return self.bank.get_history(owner_moniker, limit)
 
-    def get_all_balances(self) -> List[Dict[str, Any]]:
+    def get_all_balances(self) -> list[dict[str, Any]]:
         """Get all table balances (sysop only)."""
         tables = dal_table.list_tables(self.args)
         result = []

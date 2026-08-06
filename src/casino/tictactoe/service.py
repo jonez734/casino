@@ -18,7 +18,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 from bbsengine6 import database
 from bbsengine6.database import Jsonb
@@ -30,47 +30,45 @@ from casino.services.table import TableService
 from . import lib
 from .dealer import TictactoeDealer
 
-
 AI_X = "AI_X"
 AI_O = "AI_O"
 
 
-def _default_find_table(args: Any, player_moniker: str) -> Optional[dict]:
+def _default_find_table(args: Any, player_moniker: str) -> dict | None:
     """Look up the player's existing open tictactoe table, if any.
 
     Mirrors yahtzee/service.py:_default_find_table: a direct SQL
     query because dal_table.list_tables does not support owner
     filtering and we want a fast path.
     """
-    with database.connect(args) as conn:
-        with database.cursor(conn) as cur:
-            cur.execute(
-                database.query(
-                    """SELECT moniker, type, minimumbet, maximumbet, ownermoniker,
+    with database.connect(args) as conn, database.cursor(conn) as cur:
+        cur.execute(
+            database.query(
+                """SELECT moniker, type, minimumbet, maximumbet, ownermoniker,
                               ownersince, accountid, location, status, hidden
                        FROM $casino.__table
                        WHERE type = 'tictactoe'
                          AND ownermoniker = :owner_moniker
                          AND status = 'open'
                        LIMIT 1""",
-                    owner_moniker=player_moniker,
-                )
+                owner_moniker=player_moniker,
             )
-            row = cur.fetchone()
-            if row is None:
-                return None
-            return {
-                "moniker": row["moniker"],
-                "type": row["type"],
-                "minimumbet": row["minimumbet"],
-                "maximumbet": row["maximumbet"],
-                "ownermoniker": row["ownermoniker"],
-                "ownersince": row["ownersince"],
-                "accountid": row["accountid"],
-                "location": row["location"],
-                "status": row["status"],
-                "hidden": row.get("hidden", False),
-            }
+        )
+        row = cur.fetchone()
+        if row is None:
+            return None
+        return {
+            "moniker": row["moniker"],
+            "type": row["type"],
+            "minimumbet": row["minimumbet"],
+            "maximumbet": row["maximumbet"],
+            "ownermoniker": row["ownermoniker"],
+            "ownersince": row["ownersince"],
+            "accountid": row["accountid"],
+            "location": row["location"],
+            "status": row["status"],
+            "hidden": row.get("hidden", False),
+        }
 
 
 @dataclass
@@ -90,7 +88,7 @@ class TictactoeGame:
     bet_amount: int
     board: lib.Board = field(default_factory=lib.Board.empty)
     moves_played: int = 0
-    last_move: Optional[dict] = None
+    last_move: dict | None = None
     is_over: bool = False
 
     def __post_init__(self) -> None:
@@ -153,9 +151,9 @@ class TictactoeService:
     def __init__(
         self,
         args: Any,
-        dealer: Optional[TictactoeDealer] = None,
-        table_service: Optional[TableService] = None,
-        find_table_fn: Optional[Any] = None,
+        dealer: TictactoeDealer | None = None,
+        table_service: TableService | None = None,
+        find_table_fn: Any | None = None,
     ) -> None:
         self.args = args
         self._games: dict[str, TictactoeGame] = {}
@@ -178,7 +176,7 @@ class TictactoeService:
             raise RuntimeError(f"failed to create tictactoe table: {result.get('message')}")
         return result["table"]
 
-    def get_game(self, table_moniker: str) -> Optional[TictactoeGame]:
+    def get_game(self, table_moniker: str) -> TictactoeGame | None:
         return self._games.get(table_moniker)
 
     def list_active_tables(self) -> list[str]:
@@ -293,12 +291,7 @@ class TictactoeService:
 
         err = self._validate_human_move(cell, game.board.cells)
         if err is not None:
-            if "must be an integer" in err:
-                code = "cell_out_of_range"
-            elif "must be in [0, 8]" in err:
-                code = "cell_out_of_range"
-            else:
-                code = "cell_occupied"
+            code = "cell_out_of_range" if "must be an integer" in err or "must be in [0, 8]" in err else "cell_occupied"
             return self._error(code, err)
 
         game.board = game.board.with_move(cell, game.board.to_move)
@@ -387,7 +380,7 @@ class TictactoeService:
                 states.append(sd)
         return states
 
-    def finalize_on_disconnect(self, table_moniker: str, leaving_moniker: Optional[str] = None) -> bool:
+    def finalize_on_disconnect(self, table_moniker: str, leaving_moniker: str | None = None) -> bool:
         """Hook called by MessageRouter.unregister_session when a
         player disconnects mid-game.
 
@@ -456,16 +449,15 @@ class TictactoeService:
         # Look up the new balance; if the player row is missing in the
         # test mock, return 0.
         try:
-            with database.connect(self.args) as conn:
-                with database.cursor(conn) as cur:
-                    cur.execute(
-                        database.query(
-                            "SELECT credits FROM $engine.__member WHERE moniker = :m",
-                            m=game.players[0],
-                        )
+            with database.connect(self.args) as conn, database.cursor(conn) as cur:
+                cur.execute(
+                    database.query(
+                        "SELECT credits FROM $engine.__member WHERE moniker = :m",
+                        m=game.players[0],
                     )
-                    row = cur.fetchone()
-                    return int(row["credits"]) if row else 0
+                )
+                row = cur.fetchone()
+                return int(row["credits"]) if row else 0
         except Exception:
             return 0
 
@@ -481,29 +473,28 @@ class TictactoeService:
             "moves_played": game.moves_played,
         }
         try:
-            with database.connect(self.args) as conn:
-                with database.cursor(conn) as cur:
-                    cur.execute(
-                        database.query(
-                            """INSERT INTO $casino.__log
+            with database.connect(self.args) as conn, database.cursor(conn) as cur:
+                cur.execute(
+                    database.query(
+                        """INSERT INTO $casino.__log
                                (membermoniker, cardtablemoniker, gameid, accountid,
                                 datestamp, message, attrs)
                                VALUES (:member_moniker, :table_moniker, :game_id,
                                        :account_id, NOW(), :message, :attrs)""",
-                            member_moniker=game.players[0] if not by.startswith("AI_") else by,
-                            table_moniker=game.table_moniker,
-                            game_id=game.game_id,
-                            account_id=None,
-                            message="tictactoe_turn",
-                            attrs=Jsonb(attrs),
-                        )
+                        member_moniker=game.players[0] if not by.startswith("AI_") else by,
+                        table_moniker=game.table_moniker,
+                        game_id=game.game_id,
+                        account_id=None,
+                        message="tictactoe_turn",
+                        attrs=Jsonb(attrs),
                     )
+                )
         except Exception:
             # Logging is best-effort; never fail the move on log error.
             return
 
     @staticmethod
-    def _validate_human_move(cell: object, cells) -> Optional[str]:
+    def _validate_human_move(cell: object, cells) -> str | None:
         if not isinstance(cell, int) or isinstance(cell, bool):
             return "cell must be an integer in [0, 8]"
         if not (0 <= cell < 9):

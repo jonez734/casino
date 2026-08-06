@@ -7,8 +7,8 @@ import unittest
 
 sys.path.insert(0, "/home/opencode/data/work/casino/src")
 
-from casino.cards import Card, Pips, Suit
-from casino.blackjack import Hand, GamePhase
+from casino.blackjack import GamePhase, Hand
+from casino.cards import Card
 
 
 class TestCard(unittest.TestCase):

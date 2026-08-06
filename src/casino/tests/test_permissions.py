@@ -8,7 +8,8 @@ import sys
 
 sys.path.insert(0, "/home/opencode/data/work/casino/src")
 
-from bbsengine6 import database, io
+from bbsengine6 import database
+
 from casino.dal import player
 
 
@@ -34,12 +35,11 @@ def main():
 
     print(f"Testing permissions on database: {args.databasename} as {args.databaseuser}")
 
-    with database.getpool(args, database=args.databasename) as pool:
-        with database.connect(args, pool=pool) as conn:
-            results = player.test_schema_permissions(args)
-            print("\n=== Results ===")
-            for table, status in results.items():
-                print(f"{table}: {status}")
+    with database.getpool(args, database=args.databasename) as pool, database.connect(args, pool=pool):
+        results = player.test_schema_permissions(args)
+        print("\n=== Results ===")
+        for table, status in results.items():
+            print(f"{table}: {status}")
 
 
 if __name__ == "__main__":

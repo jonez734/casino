@@ -1,13 +1,10 @@
 from __future__ import annotations
 
-import argparse
 from argparse import Namespace
 
-from bbsengine6 import io, util, member, database, session
+from bbsengine6 import database, io, member, session, util
 
-from . import lib
-from . import _version
-from . import auth
+from . import _version, auth, lib
 
 
 def parse_module_path(path: str) -> tuple[str, str | None]:

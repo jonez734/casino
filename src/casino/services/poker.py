@@ -1,19 +1,14 @@
-import random
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
 from enum import Enum
+from typing import Any, Optional
 
 from bbsengine6 import io
-from casino.dal import table as dal_table
-from casino.dal import game as dal_game
-from casino.dal import player as dal_player
+
 from casino.poker import (
-    PokerDeck,
-    SUITS,
-    RANKS,
-    BettingStructure,
-    get_variant,
     BaseVariant,
+    BettingStructure,
+    PokerDeck,
+    get_variant,
 )
 from casino.poker.variant import evaluator
 
@@ -31,7 +26,7 @@ class PlayerAction(Enum):
 class PokerPlayer:
     moniker: str
     seat: int
-    hole_cards: List[str] = field(default_factory=list)
+    hole_cards: list[str] = field(default_factory=list)
     current_bet: int = 0
     total_in_pot: int = 0
     has_acted: bool = False
@@ -44,7 +39,7 @@ class PokerPlayer:
 @dataclass
 class PokerPot:
     amount: int
-    eligible_players: List[str] = field(default_factory=list)
+    eligible_players: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -58,30 +53,30 @@ class PokerTableState:
     max_buy_in: int
     min_players: int
     max_players: int
-    
-    players: Dict[str, PokerPlayer] = field(default_factory=dict)
+
+    players: dict[str, PokerPlayer] = field(default_factory=dict)
     dealer_position: int = 0
     current_street: str = "preflop"
     current_player: Optional[str] = None
     current_bet: int = 0
     pot: int = 0
-    side_pots: List[PokerPot] = field(default_factory=list)
-    community_cards: List[str] = field(default_factory=list)
+    side_pots: list[PokerPot] = field(default_factory=list)
+    community_cards: list[str] = field(default_factory=list)
     deck: Optional[PokerDeck] = None
     game_stage: str = "waiting"  # waiting, preflop, flop, turn, river, showdown
     last_aggressor: Optional[str] = None
-    
-    def get_active_players(self) -> List[PokerPlayer]:
+
+    def get_active_players(self) -> list[PokerPlayer]:
         return [p for p in self.players.values() if not p.has_folded]
-    
-    def get_players_in_order(self) -> List[PokerPlayer]:
+
+    def get_players_in_order(self) -> list[PokerPlayer]:
         seats = sorted(self.players.keys(), key=lambda k: self.players[k].seat)
         return [self.players[s] for s in seats if s in self.players]
-    
+
     def get_next_player(self, from_moniker: str) -> Optional[PokerPlayer]:
-        players = self.get_players_in_order()
+        self.get_players_in_order()
         active_monikers = [p.moniker for p in self.get_active_players()]
-        
+
         for i, pm in enumerate(active_monikers):
             if pm == from_moniker:
                 next_idx = (i + 1) % len(active_monikers)
@@ -96,8 +91,8 @@ class PokerService:
 
     def __init__(self, args: Any):
         self.args = args
-        self._tables: Dict[str, PokerTableState] = {}
-        self._decks: Dict[str, PokerDeck] = {}
+        self._tables: dict[str, PokerTableState] = {}
+        self._decks: dict[str, PokerDeck] = {}
 
     def create_table(
         self,
@@ -110,7 +105,7 @@ class PokerService:
         max_players: int = 10,
         min_buy_in: int = 100,
         max_buy_in: int = 10000,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Create a new poker table."""
         try:
             variant = get_variant(variant_name)
@@ -155,7 +150,7 @@ class PokerService:
 
     def join_table(
         self, table_moniker: str, player_moniker: str, buy_in: int
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Player joins a poker table."""
         if table_moniker not in self._tables:
             return {"success": False, "message": "Table not found"}
@@ -194,7 +189,7 @@ class PokerService:
             "message": f"Seated at {seat} with ${buy_in}",
         }
 
-    def leave_table(self, table_moniker: str, player_moniker: str) -> Dict[str, Any]:
+    def leave_table(self, table_moniker: str, player_moniker: str) -> dict[str, Any]:
         """Player leaves a poker table."""
         if table_moniker not in self._tables:
             return {"success": False, "message": "Table not found"}
@@ -219,7 +214,7 @@ class PokerService:
                 return i
         return len(table.players) + 1
 
-    def start_hand(self, table_moniker: str) -> Dict[str, Any]:
+    def start_hand(self, table_moniker: str) -> dict[str, Any]:
         """Start a new hand at the table."""
         if table_moniker not in self._tables:
             return {"success": False, "message": "Table not found"}
@@ -247,7 +242,7 @@ class PokerService:
         table.community_cards = []
         table.pot = 0
         table.side_pots = []
-        
+
         streets = table.variant.get_betting_streets()
         first_street = streets[0] if streets else "preflop"
         table.game_stage = first_street
@@ -259,11 +254,11 @@ class PokerService:
 
         table.dealer_position = (table.dealer_position + 1) % len(table.players)
 
-        sb_pos = (table.dealer_position + 1) % len(table.players)
+        (table.dealer_position + 1) % len(table.players)
         bb_pos = (table.dealer_position + 2) % len(table.players)
 
         players_ordered = table.get_players_in_order()
-        
+
         utg_pos = (bb_pos + 1) % len(players_ordered)
         table.current_player = players_ordered[utg_pos].moniker
 
@@ -279,7 +274,7 @@ class PokerService:
     def _post_blinds(self, table: PokerTableState):
         """Post small and big blinds."""
         players_ordered = table.get_players_in_order()
-        
+
         if len(players_ordered) < 2:
             return
 
@@ -308,10 +303,10 @@ class PokerService:
         """Deal hole cards to all players based on variant rules and current street."""
         variant = table.variant
         street = table.current_street
-        
+
         street_before_deal = variant.get_street_before_deal()
         cards_for_street = street_before_deal.get(street, 0)
-        
+
         if cards_for_street == 0:
             cards_for_street = variant.hole_cards_per_player
 
@@ -327,20 +322,20 @@ class PokerService:
         """Deal cards for the current street (community cards or additional hole cards)."""
         variant = table.variant
         street = table.current_street
-        
+
         community_per_street = variant.get_community_cards_per_street()
         hole_per_street = variant.get_street_before_deal()
-        
+
         comm_cards = community_per_street.get(street, 0)
         hole_cards = hole_per_street.get(street, 0)
-        
+
         if comm_cards > 0:
             for _ in range(comm_cards):
                 if deck.remaining() > 0:
                     card = deck.deal(1)[0]
                     table.community_cards.append(card.to_string())
             io.echo(f"Dealt {comm_cards} community cards: {table.community_cards}")
-        
+
         if hole_cards > 0:
             for _ in range(hole_cards):
                 for player in table.players.values():
@@ -351,7 +346,7 @@ class PokerService:
 
     def player_action(
         self, table_moniker: str, player_moniker: str, action: str, amount: int = 0
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Process a player's action."""
         if table_moniker not in self._tables:
             return {"success": False, "message": "Table not found"}
@@ -384,11 +379,11 @@ class PokerService:
         else:
             return {"success": False, "message": f"Unknown action: {action}"}
 
-    def _handle_fold(self, table: PokerTableState, player: PokerPlayer) -> Dict[str, Any]:
+    def _handle_fold(self, table: PokerTableState, player: PokerPlayer) -> dict[str, Any]:
         """Handle fold action."""
         player.has_folded = True
         player.showing_cards = False
-        
+
         active = table.get_active_players()
         if len(active) == 1:
             winner = active[0]
@@ -399,10 +394,10 @@ class PokerService:
             return {"success": True, "action": "fold", "winner": winner.moniker, "pot": 0}
 
         self._advance_to_next_player(table)
-        
+
         return {"success": True, "action": "fold", "message": f"{player.moniker} folds"}
 
-    def _handle_check(self, table: PokerTableState, player: PokerPlayer) -> Dict[str, Any]:
+    def _handle_check(self, table: PokerTableState, player: PokerPlayer) -> dict[str, Any]:
         """Handle check action."""
         if table.current_bet > player.current_bet:
             return {"success": False, "message": "Cannot check - there's a bet to call"}
@@ -412,10 +407,10 @@ class PokerService:
 
         return {"success": True, "action": "check", "message": f"{player.moniker} checks"}
 
-    def _handle_call(self, table: PokerTableState, player: PokerPlayer) -> Dict[str, Any]:
+    def _handle_call(self, table: PokerTableState, player: PokerPlayer) -> dict[str, Any]:
         """Handle call action."""
         call_amount = table.current_bet - player.current_bet
-        
+
         if call_amount > player.credits:
             return {"success": False, "message": "Not enough credits to call"}
 
@@ -441,10 +436,10 @@ class PokerService:
 
     def _handle_bet_raise(
         self, table: PokerTableState, player: PokerPlayer, action: str, amount: int
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Handle bet or raise action."""
         min_bet = table.big_blind if table.current_bet == 0 else table.current_bet
-        
+
         if amount < min_bet:
             return {"success": False, "message": f"Minimum bet is ${min_bet}"}
 
@@ -475,14 +470,14 @@ class PokerService:
             "message": f"{player.moniker} {action}s ${amount}",
         }
 
-    def _handle_all_in(self, table: PokerTableState, player: PokerPlayer) -> Dict[str, Any]:
+    def _handle_all_in(self, table: PokerTableState, player: PokerPlayer) -> dict[str, Any]:
         """Handle all-in action."""
         all_in_amount = player.credits
         player.credits = 0
         player.is_all_in = True
         player.current_bet = player.total_in_pot + all_in_amount
         player.total_in_pot = player.current_bet
-        
+
         if player.current_bet > table.current_bet:
             table.current_bet = player.current_bet
             table.last_aggressor = player.moniker
@@ -505,7 +500,7 @@ class PokerService:
     def _advance_to_next_player(self, table: PokerTableState):
         """Advance to next player in turn."""
         active = table.get_active_players()
-        
+
         if len(active) <= 1:
             return
 
@@ -600,7 +595,7 @@ class PokerService:
 
         table.pot = 0
 
-    def get_table_state(self, table_moniker: str, player_moniker: str) -> Dict[str, Any]:
+    def get_table_state(self, table_moniker: str, player_moniker: str) -> dict[str, Any]:
         """Get current state of a poker table for a player."""
         if table_moniker not in self._tables:
             return {"error": "Table not found"}
@@ -644,7 +639,7 @@ class PokerService:
             ],
         }
 
-    def list_tables(self) -> List[Dict[str, Any]]:
+    def list_tables(self) -> list[dict[str, Any]]:
         """List all active poker tables."""
         return [
             {

@@ -15,7 +15,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 from bbsengine6 import io
 
@@ -49,7 +49,7 @@ class YahtzeeServiceHandler:
         self,
         args: Any,
         sessions: Any,
-        service: Optional[YahtzeeService] = None,
+        service: YahtzeeService | None = None,
     ) -> None:
         self.args = args
         self.sessions = sessions
@@ -65,7 +65,7 @@ class YahtzeeServiceHandler:
         websocket: Any,
         path: str,
         message: dict,
-    ) -> Optional[dict]:
+    ) -> dict | None:
         msg_type = message.get("type")
         if msg_type not in self.YAHTZEE_MSG_TYPES:
             return None

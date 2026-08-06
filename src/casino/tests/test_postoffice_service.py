@@ -2,10 +2,8 @@
 # casino/tests/test_postoffice_service.py
 # Tests for PostofficeService class
 
-import asyncio
 import sys
 import unittest
-from unittest.mock import AsyncMock, MagicMock, patch
 
 sys.path.insert(0, "/home/opencode/data/work/mistermcfeely/src")
 sys.path.insert(0, "/home/opencode/data/work/casino/src")
@@ -78,7 +76,8 @@ class TestPostofficeService(unittest.IsolatedAsyncioTestCase):
 
     def test_service_loads_mailboxes(self):
         """Test service loads mailbox configurations."""
-        from postoffice.services import MailboxPoller as PostofficeService, MailboxConfig
+        from postoffice.services import MailboxConfig
+        from postoffice.services import MailboxPoller as PostofficeService
 
         mailboxes = [
             {"host": "imap.gmail.com", "username": "user", "password": "pass", "use_ssl": True},
@@ -187,7 +186,7 @@ class TestPostofficeSingleton(unittest.IsolatedAsyncioTestCase):
 
     async def test_get_postoffice_service_singleton(self):
         """Test get_postoffice_service returns singleton."""
-        from postoffice.services import get_service as get_postoffice_service, MailboxPoller as PostofficeService
+        from postoffice.services import get_service as get_postoffice_service
         from postoffice.services import reset_service
 
         reset_service()

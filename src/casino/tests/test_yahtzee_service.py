@@ -172,9 +172,8 @@ class TestQuickPlay:
         db.place_bet.side_effect = ValueError("Insufficient funds")
         with patch("casino.yahtzee.service.dal_bet", db), \
              patch("casino.yahtzee.service.dal_game", dg), \
-             patch("casino.yahtzee.service.database", dbconn):
-            with pytest.raises(ValueError):
-                s.quick_play("alice")
+             patch("casino.yahtzee.service.database", dbconn), pytest.raises(ValueError):
+            s.quick_play("alice")
         dg.update_game_status.assert_called_once_with(s.args, 42, "cancelled")
         assert s.get_game("yahtzee-alice") is None
 

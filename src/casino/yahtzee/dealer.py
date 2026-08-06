@@ -6,10 +6,10 @@ from __future__ import annotations
 
 import random
 import secrets
-from typing import Optional, Sequence, Union
+from collections.abc import Sequence
 
 
-def _default_rng() -> Union[secrets.SystemRandom, random.Random]:
+def _default_rng() -> secrets.SystemRandom | random.Random:
     return secrets.SystemRandom()
 
 
@@ -22,7 +22,7 @@ class YahtzeeDealer:
     dealer for individual rolls.
     """
 
-    def __init__(self, rng: Optional[Union[secrets.SystemRandom, random.Random]] = None) -> None:
+    def __init__(self, rng: secrets.SystemRandom | random.Random | None = None) -> None:
         self._rng = rng if rng is not None else _default_rng()
 
     def roll_dice(self, n: int) -> tuple[int, ...]:

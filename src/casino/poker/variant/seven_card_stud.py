@@ -1,6 +1,6 @@
-from casino.poker.lib import BettingStructure, BetLimits, HandRank
-from casino.poker.variant.base import StudVariant
+from casino.poker.lib import BetLimits, BettingStructure
 from casino.poker.variant import evaluator
+from casino.poker.variant.base import StudVariant
 
 
 class SevenCardStud(StudVariant):
@@ -40,13 +40,13 @@ class SevenCardStud(StudVariant):
         self, hole_cards: list[str], community_cards: list[str]
     ) -> tuple[int, list[str]]:
         """Evaluate best 5-card hand from 7 hole cards.
-        
+
         7-Card Stud: use any 5 of the 7 cards.
         Community cards are empty for stud.
         """
         if len(hole_cards) < 5:
             return (0, [])
-        
+
         rank, best_hand, _ = evaluator.evaluate_best_hand(hole_cards, [])
         return (rank, best_hand)
 

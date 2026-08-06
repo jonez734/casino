@@ -10,7 +10,6 @@ from casino.tictactoe import lib
 from casino.tictactoe.dealer import TictactoeDealer
 from casino.tictactoe.service import AI_O, AI_X, TictactoeGame, TictactoeService
 
-
 # ---------- helpers ----------
 
 def _make_args():
@@ -263,9 +262,8 @@ class TestQuickPlay:
         db.place_bet.side_effect = ValueError("Insufficient funds")
         with patch("casino.tictactoe.service.dal_bet", db), \
              patch("casino.tictactoe.service.dal_game", dg), \
-             patch("casino.tictactoe.service.database", dbconn):
-            with pytest.raises(ValueError):
-                s.quick_play("alice", mode=1)
+             patch("casino.tictactoe.service.database", dbconn), pytest.raises(ValueError):
+            s.quick_play("alice", mode=1)
         dg.update_game_status.assert_called_once_with(s.args, 42, "cancelled")
         assert s.get_game("ttt-alice") is None
 

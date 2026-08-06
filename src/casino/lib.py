@@ -2,22 +2,21 @@ from __future__ import annotations
 
 import argparse
 import random
+import tkinter as tk
 from argparse import Namespace
 from typing import Any
 
 # import ttyio5 as ttyio
 # import bbsengine5 as bbsengine
-from bbsengine6 import io, database, screen, module, member, util, bottombar
-
-import tkinter as tk
-from PIL import Image, ImageTk, ImageOps
+from bbsengine6 import bottombar, database, io, member, module, util
+from PIL import Image, ImageOps, ImageTk
 
 PACKAGENAME = "casino"
 
 suits = {"H": "{u:heart}", "D": "{u:diamond}", "S": "{u:spade}", "C": "{u:club}"}
 
 
-class Card(object):
+class Card:
     def __init__(self, shorthand: str = "", facedown: bool = True, **kwargs: Any) -> None:
         self.shorthand = shorthand
         if shorthand is not None and shorthand != "":
@@ -55,9 +54,7 @@ class Card(object):
         return v
 
     def isace(self) -> bool:
-        if self.pips == "A":
-            return True
-        return False
+        return self.pips == "A"
 
 
 class tkCard(Card):
@@ -105,18 +102,18 @@ class tkCard(Card):
         return self.tkart
 
 
-class Hand(object):
+class Hand:
     def __init__(self, label, **kwargs):
         self.id = None
         self.label = label
         #        self.shoe = shoe
-        self.playerid = kwargs.get("playerid", None)
+        self.playerid = kwargs.get("playerid")
         #        self.cards = []
         self.value = 0
         self.index = 0
         self.cards = []
         self.status_override = None
-        for i in range(0, 5):
+        for _i in range(0, 5):
             self.cards.append(Card(facedown=False))
         io.echo("hand initialized, blank cards added")
 
@@ -163,8 +160,7 @@ class Hand(object):
 
     def show(self, hide=True):
         io.echo(f"{self.label}: ", end="")
-        counter = 0
-        for c in self.cards:
+        for counter, c in enumerate(self.cards):
             if (
                 len(self.cards) == 2
                 and counter == 1
@@ -174,7 +170,6 @@ class Hand(object):
                 io.echo("{u:solidblock:2} ", end="")
             else:
                 io.echo(f"{c.pips}{suits[c.suit]} ", end="")
-            counter += 1
 
         io.echo(f" [{self.calcvalue()}]", level="debug")
 
@@ -205,12 +200,12 @@ class tkHand(Hand):
         #    self.tklabels = []
         #    self.images = []
 
-        self.frame = kwargs["frame"] if "frame" in kwargs else None
+        self.frame = kwargs.get("frame")
 
         #    ttyio.echo(f"--> tkhand.init: self.frame={self.frame!r}", level="debug")
 
-        self.row = kwargs["row"] if "row" in kwargs else 0
-        self.paddings = kwargs["paddings"] if "paddings" in kwargs else {}
+        self.row = kwargs.get("row", 0)
+        self.paddings = kwargs.get("paddings", {})
 
         self.card_labels = []
         self.points_labels = []
@@ -333,7 +328,7 @@ class Shoe:
         if decks is None:
             return
 
-        for d in range(0, decks):
+        for _d in range(0, decks):
             for suit in [
                 "S",
                 "D",
@@ -360,7 +355,7 @@ class Shoe:
                     )
 
     def shuffle(self, rounds=1):
-        for x in range(0, rounds):
+        for _x in range(0, rounds):
             io.echo("Shoe.shuffle.100: running..", level="debug")
             random.shuffle(self.cards)
         return
@@ -409,7 +404,7 @@ def getcardtablelocations():
     return cardtablelocations
 
 
-class Casino(object):
+class Casino:
     def __init__(self, args: Namespace | None = None, location: str | None = None, bank: int | None = None, ui: str = "tk") -> None:
         self.location: str | None = location
         self.bank: int | None = bank
@@ -478,8 +473,8 @@ def _unregister_casino_fragments() -> None:
 
 def setbottombar(args, buf, **kwargs) -> None:
     global _current_args, _current_player
-    player = kwargs.get("player", None)
-    pool = kwargs.get("pool", None)
+    player = kwargs.get("player")
+    pool = kwargs.get("pool")
     # Stash on the per-package registry and on the legacy module globals
     # so any code that still reads `_current_player` / `_current_args`
     # continues to work.
@@ -505,7 +500,7 @@ def setarea(args: Namespace, left: str, player: Any = None) -> None:
     io.screen.setbottombar(left, right)
 
 
-class Player(object):
+class Player:
     def __init__(self):
         self.memberid = None
         self.status = "active"

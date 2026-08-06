@@ -1,10 +1,9 @@
 import argparse
-
 import tkinter as tk
 import tkinter.font as tkf
 from tkinter import ttk
 
-from bbsengine6 import io, database, member
+from bbsengine6 import database, io, member
 
 
 class App(tk.Tk):
@@ -69,7 +68,7 @@ class App(tk.Tk):
             },
         }
 
-        for n, v in self.fields.items():
+        for n, _v in self.fields.items():
             self.tkfields.append(tk.Label(self, text=n))
 
 

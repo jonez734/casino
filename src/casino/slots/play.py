@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 from bbsengine6 import io, util
 
@@ -53,8 +53,8 @@ def run_one_spin(player: SlotPlayer) -> dict:
 
 
 def main(args: Any, **kw: dict) -> bool:
-    player: Optional[SlotPlayer] = kw.get("player")
-    dealer: Optional[SlotDealer] = kw.get("dealer")
+    player: SlotPlayer | None = kw.get("player")
+    dealer: SlotDealer | None = kw.get("dealer")
     if player is None or dealer is None:
         io.echo(
             "{error}Error: missing required arguments (player, dealer){normal}"

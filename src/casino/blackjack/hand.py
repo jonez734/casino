@@ -1,12 +1,11 @@
 from dataclasses import dataclass, field
-from typing import List, Optional
 
 from casino.cards import Card
 
 
 @dataclass
 class Hand:
-    cards: List[Card] = field(default_factory=list)
+    cards: list[Card] = field(default_factory=list)
     is_split: bool = False
 
     def total(self) -> int:
@@ -40,9 +39,7 @@ class Hand:
     def can_surrender(self) -> bool:
         if len(self.cards) != 2:
             return False
-        if self.is_bust():
-            return False
-        return True
+        return not self.is_bust()
 
     def is_soft(self) -> bool:
         if len(self.cards) < 2:
@@ -63,9 +60,9 @@ class Hand:
         return len(self.cards) == 5 and not self.is_bust()
 
     @classmethod
-    def from_strings(cls, card_strings: List[str], is_split: bool = False) -> "Hand":
+    def from_strings(cls, card_strings: list[str], is_split: bool = False) -> "Hand":
         cards = [Card.from_string(s) for s in card_strings]
         return cls(cards=cards, is_split=is_split)
 
-    def to_strings(self) -> List[str]:
+    def to_strings(self) -> list[str]:
         return [str(c) for c in self.cards]

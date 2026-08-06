@@ -1,9 +1,6 @@
 # casino/dal/aiosql/__init__.py
 # Async database access layer
 
-from . import table
-from . import game
-from . import bet
-from . import player
+from . import bet, game, player, table
 
 __all__ = ["table", "game", "bet", "player"]

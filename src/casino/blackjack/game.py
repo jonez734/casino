@@ -1,7 +1,7 @@
 from bbsengine6 import io, member, register_module
+
 from .. import lib as libcasino
 from . import lib
-
 
 __version__ = "202210010112"
 

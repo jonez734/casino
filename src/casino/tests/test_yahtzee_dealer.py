@@ -2,6 +2,7 @@
 # Tests for yahtzee/dealer.py: dice rolls, lock preservation, RNG.
 
 import random
+
 import pytest
 
 from casino.yahtzee.dealer import YahtzeeDealer

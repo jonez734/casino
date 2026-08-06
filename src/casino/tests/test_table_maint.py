@@ -5,7 +5,7 @@
 import argparse
 import sys
 import unittest
-from unittest.mock import AsyncMock, MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, "/home/opencode/data/work/casino/src")
 
@@ -63,8 +63,7 @@ class TestTableService(unittest.TestCase):
             "status": "open",
         }
 
-        with patch("casino.dal.table.get_table") as mock_get:
-            with patch("casino.dal.table.update_table") as mock_update:
+        with patch("casino.dal.table.get_table") as mock_get, patch("casino.dal.table.update_table") as mock_update:
                 mock_get.return_value = mock_table
                 mock_update.return_value = {**mock_table, "minimumbet": 20}
 
@@ -89,8 +88,7 @@ class TestTableService(unittest.TestCase):
             "status": "open",
         }
 
-        with patch("casino.dal.table.get_table") as mock_get:
-            with patch("casino.dal.table.update_table") as mock_update:
+        with patch("casino.dal.table.get_table") as mock_get, patch("casino.dal.table.update_table") as mock_update:
                 mock_get.return_value = mock_table
                 mock_update.return_value = {**mock_table, "status": "closed"}
 
@@ -157,8 +155,7 @@ class TestTableService(unittest.TestCase):
             "status": "open",
         }
 
-        with patch("casino.dal.table.get_table") as mock_get:
-            with patch("casino.dal.table.update_table") as mock_update:
+        with patch("casino.dal.table.get_table") as mock_get, patch("casino.dal.table.update_table") as mock_update:
                 mock_get.return_value = mock_table
                 mock_update.return_value = {**mock_table, "moniker": "blackjack-newname"}
 
@@ -181,8 +178,7 @@ class TestTableService(unittest.TestCase):
             "shoe_uses": 2,
         }
 
-        with patch("casino.dal.table.get_table") as mock_get:
-            with patch("casino.dal.table.reset_shoe") as mock_reset:
+        with patch("casino.dal.table.get_table") as mock_get, patch("casino.dal.table.reset_shoe") as mock_reset:
                 mock_get.return_value = mock_table
                 mock_reset.return_value = True
 
@@ -202,8 +198,7 @@ class TestTableService(unittest.TestCase):
             "ownermoniker": "otherowner",
         }
 
-        with patch("casino.dal.table.get_table") as mock_get:
-            with patch("casino.dal.table.reset_shoe") as mock_reset:
+        with patch("casino.dal.table.get_table") as mock_get, patch("casino.dal.table.reset_shoe") as mock_reset:
                 mock_get.return_value = mock_table
                 mock_reset.return_value = True
 
@@ -241,8 +236,7 @@ class TestTableService(unittest.TestCase):
             "ownermoniker": "testowner",
         }
 
-        with patch("casino.dal.table.get_table") as mock_get:
-            with patch("casino.dal.table.delete_table") as mock_delete:
+        with patch("casino.dal.table.get_table") as mock_get, patch("casino.dal.table.delete_table") as mock_delete:
                 mock_get.return_value = mock_table
                 mock_delete.return_value = True
 
@@ -261,8 +255,7 @@ class TestTableService(unittest.TestCase):
             "ownermoniker": "otherowner",
         }
 
-        with patch("casino.dal.table.get_table") as mock_get:
-            with patch("casino.dal.table.delete_table") as mock_delete:
+        with patch("casino.dal.table.get_table") as mock_get, patch("casino.dal.table.delete_table") as mock_delete:
                 mock_get.return_value = mock_table
                 mock_delete.return_value = True
 

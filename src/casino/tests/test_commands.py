@@ -14,12 +14,8 @@ class TestCommandExports(unittest.TestCase):
 
     def test_table_exports(self):
         from casino.commands.table.lib import (
-            list_tables,
             create_table,
-            update_table,
-            join_table,
-            leave_table,
-            view_table,
+            list_tables,
             menu,
         )
 
@@ -31,10 +27,7 @@ class TestCommandExports(unittest.TestCase):
         from casino.commands.game.lib import (
             bet,
             hit,
-            stand,
-            game_action,
             play,
-            menu,
         )
 
         self.assertTrue(callable(bet))
@@ -42,7 +35,7 @@ class TestCommandExports(unittest.TestCase):
         self.assertTrue(callable(play))
 
     def test_chat_exports(self):
-        from casino.commands.chat.lib import chat, table_chat, menu
+        from casino.commands.chat.lib import chat, table_chat
 
         self.assertTrue(callable(chat))
         self.assertTrue(callable(table_chat))
@@ -50,14 +43,6 @@ class TestCommandExports(unittest.TestCase):
     def test_bank_exports(self):
         from casino.commands.bank.lib import (
             bank_balance,
-            bank_add,
-            bank_remove,
-            bank_transfer,
-            bank_approve,
-            bank_reject,
-            bank_pending,
-            bank_history,
-            bank_list_all,
             menu,
         )
 
@@ -65,7 +50,7 @@ class TestCommandExports(unittest.TestCase):
         self.assertTrue(callable(bank_balance))
 
     def test_admin_exports(self):
-        from casino.commands.admin.lib import watch_table, unwatch_table, menu
+        from casino.commands.admin.lib import unwatch_table, watch_table
 
         self.assertTrue(callable(watch_table))
         self.assertTrue(callable(unwatch_table))

@@ -6,7 +6,6 @@ import pytest
 
 from casino.tictactoe import lib
 
-
 # ---------- constants ----------
 
 class TestConstants:

@@ -1,7 +1,7 @@
 # casino/dal/player.py
 # Player data access layer
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 from bbsengine6 import database, io
 from bbsengine6.database import Jsonb
@@ -9,7 +9,7 @@ from bbsengine6.database import Jsonb
 
 def get_or_create_player(
     args: Any, moniker: str
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Get existing player or create new one for BBS member.
 
@@ -52,58 +52,54 @@ def get_or_create_player(
             "attrs": {},
         }
 
-    with database.connect(args) as conn:
-        with database.cursor(conn) as cur:
-            return _work(cur)
+    with database.connect(args) as conn, database.cursor(conn) as cur:
+        return _work(cur)
 
 
-def get_player_by_moniker(args: Any, moniker: str) -> Optional[Dict[str, Any]]:
+def get_player_by_moniker(args: Any, moniker: str) -> Optional[dict[str, Any]]:
     """Get player by moniker."""
-    with database.connect(args) as conn:
-        with database.cursor(conn) as cur:
-            cur.execute(
-                database.query(
-                    "SELECT membermoniker, location, lastplayed, attrs FROM $casino.player WHERE membermoniker = :moniker",
-                    moniker=moniker
-                )
+    with database.connect(args) as conn, database.cursor(conn) as cur:
+        cur.execute(
+            database.query(
+                "SELECT membermoniker, location, lastplayed, attrs FROM $casino.player WHERE membermoniker = :moniker",
+                moniker=moniker
             )
-            row = cur.fetchone()
-            if row:
-                return {
-                    "membermoniker": row["membermoniker"],
-                    "location": row["location"],
-                    "lastplayed": row["lastplayed"],
-                    "attrs": row["attrs"] or {},
-                }
-            return None
+        )
+        row = cur.fetchone()
+        if row:
+            return {
+                "membermoniker": row["membermoniker"],
+                "location": row["location"],
+                "lastplayed": row["lastplayed"],
+                "attrs": row["attrs"] or {},
+            }
+        return None
 
 
 def get_player_balance(args: Any, moniker: str) -> int:
     """Get player's casino balance (from member.credits)."""
-    with database.connect(args) as conn:
-        with database.cursor(conn) as cur:
-            cur.execute(
-                database.query(
-                    "SELECT credits FROM $engine.__member WHERE moniker = :moniker",
-                    moniker=moniker
-                )
+    with database.connect(args) as conn, database.cursor(conn) as cur:
+        cur.execute(
+            database.query(
+                "SELECT credits FROM $engine.__member WHERE moniker = :moniker",
+                moniker=moniker
             )
-            row = cur.fetchone()
-            if row and row["credits"] is not None:
-                return int(row["credits"])
-            return 0
+        )
+        row = cur.fetchone()
+        if row and row["credits"] is not None:
+            return int(row["credits"])
+        return 0
 
 
 def update_player_lastplayed(args: Any, moniker: str) -> None:
     """Update player's last played timestamp."""
-    with database.connect(args) as conn:
-        with database.cursor(conn) as cur:
-            cur.execute(
-                database.query(
-                    "UPDATE $casino.__player SET lastplayed = NOW() WHERE membermoniker = :moniker",
-                    moniker=moniker
-                )
+    with database.connect(args) as conn, database.cursor(conn) as cur:
+        cur.execute(
+            database.query(
+                "UPDATE $casino.__player SET lastplayed = NOW() WHERE membermoniker = :moniker",
+                moniker=moniker
             )
+        )
 
 
 def test_schema_permissions(args: Any) -> dict:
@@ -128,15 +124,14 @@ def test_schema_permissions(args: Any) -> dict:
 
     for table in tables_and_views:
         table_name = table[0]
-        is_view = table[1]
+        table[1]
         query = f"SELECT 1 FROM {table_name} LIMIT 1"
         try:
-            with database.connect(args) as conn:
-                with database.cursor(conn) as cur:
-                    cur.execute(query)
-                    cur.fetchone()
-                    results[table_name] = "OK"
-                    io.echo(f"test_schema_permissions: {table_name} - OK", level="info")
+            with database.connect(args) as conn, database.cursor(conn) as cur:
+                cur.execute(query)
+                cur.fetchone()
+                results[table_name] = "OK"
+                io.echo(f"test_schema_permissions: {table_name} - OK", level="info")
         except Exception as e:
             error_msg = str(e)
             results[table_name] = f"ERROR: {error_msg}"
@@ -152,33 +147,32 @@ ALLOWED_STATS = {
 }
 
 
-def get_player_stats(args: Any, moniker: str) -> Dict[str, Any]:
+def get_player_stats(args: Any, moniker: str) -> dict[str, Any]:
     """Get player statistics from database.
-    
+
     Args:
         args: Application args (for database connection)
         moniker: BBS member moniker
-        
+
     Returns:
         Dict of stat_name -> value (e.g. {"wins": 10, "losses": 5, "net": 500})
     """
-    with database.connect(args) as conn:
-        with database.cursor(conn) as cur:
-            cur.execute(
-                database.query(
-                    "SELECT stats FROM $casino.__player WHERE membermoniker = :moniker",
-                    moniker=moniker
-                )
+    with database.connect(args) as conn, database.cursor(conn) as cur:
+        cur.execute(
+            database.query(
+                "SELECT stats FROM $casino.__player WHERE membermoniker = :moniker",
+                moniker=moniker
             )
-            row = cur.fetchone()
-            if row and row["stats"]:
-                return dict(row["stats"])
-            return {}
+        )
+        row = cur.fetchone()
+        if row and row["stats"]:
+            return dict(row["stats"])
+        return {}
 
 
-def update_player_stats(args: Any, moniker: str, stats: Dict[str, Any]) -> None:
+def update_player_stats(args: Any, moniker: str, stats: dict[str, Any]) -> None:
     """Replace player statistics entirely.
-    
+
     Args:
         args: Application args (for database connection)
         moniker: BBS member moniker
@@ -187,26 +181,25 @@ def update_player_stats(args: Any, moniker: str, stats: Dict[str, Any]) -> None:
     invalid_stats = set(stats.keys()) - ALLOWED_STATS
     if invalid_stats:
         raise ValueError(f"Invalid stat names: {invalid_stats}. Allowed: {ALLOWED_STATS}")
-    
-    with database.connect(args) as conn:
-        with database.cursor(conn) as cur:
-            cur.execute(
-                database.query(
-                    "UPDATE $casino.__player SET stats = :stats WHERE membermoniker = :moniker",
-                    moniker=moniker, stats=Jsonb(stats)
-                )
+
+    with database.connect(args) as conn, database.cursor(conn) as cur:
+        cur.execute(
+            database.query(
+                "UPDATE $casino.__player SET stats = :stats WHERE membermoniker = :moniker",
+                moniker=moniker, stats=Jsonb(stats)
             )
+        )
 
 
 def increment_stat(args: Any, moniker: str, stat_name: str, amount: int = 1) -> None:
     """Atomically increment a player stat.
-    
+
     Args:
         args: Application args (for database connection)
         moniker: BBS member moniker
         stat_name: Name of stat to increment (must be in ALLOWED_STATS)
         amount: Positive integer to add (default 1)
-        
+
     Raises:
         ValueError: If stat_name is not in ALLOWED_STATS or amount <= 0
     """
@@ -214,16 +207,15 @@ def increment_stat(args: Any, moniker: str, stat_name: str, amount: int = 1) -> 
         raise ValueError(
             f"Invalid stat name: '{stat_name}'. Allowed stats: {sorted(ALLOWED_STATS)}"
         )
-    
+
     if stat_name == "net":
         if not isinstance(amount, int):
             raise ValueError(f"amount must be an integer for net, got: {type(amount)}")
     else:
         if not isinstance(amount, int) or amount <= 0:
             raise ValueError(f"amount must be a positive integer, got: {amount}")
-    
-    with database.connect(args) as conn:
-        with database.cursor(conn) as cur:
+
+    with database.connect(args) as conn, database.cursor(conn) as cur:
             cur.execute(
                 database.query(
                     """UPDATE $casino.__player
@@ -253,16 +245,15 @@ def set_max_stat(args: Any, moniker: str, stat_name: str, value: int) -> None:
     if not isinstance(value, int) or value < 0:
         raise ValueError(f"value must be a non-negative integer, got: {value!r}")
 
-    with database.connect(args) as conn:
-        with database.cursor(conn) as cur:
-            cur.execute(
-                database.query(
-                    """UPDATE $casino.__player
+    with database.connect(args) as conn, database.cursor(conn) as cur:
+        cur.execute(
+            database.query(
+                """UPDATE $casino.__player
                        SET stats = stats || jsonb_build_object(
                            :stat_name,
                            GREATEST(COALESCE((stats->>:stat_name)::int, 0), :value)
                        )
                        WHERE membermoniker = :moniker""",
-                    moniker=moniker, stat_name=stat_name, value=value
-                )
+                moniker=moniker, stat_name=stat_name, value=value
             )
+        )

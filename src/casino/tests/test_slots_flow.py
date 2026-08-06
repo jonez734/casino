@@ -177,14 +177,14 @@ class TestSlotServiceSpinSuccess(unittest.TestCase):
         self.args = argparse.Namespace(databasename="test", database="test")
 
     def test_successful_spin_writes_audit_and_bumps_stats(self):
-        from casino.services.slots import handle_spin, _dealers, invalidate_dealer
+        from casino.services.slots import _dealers, handle_spin, invalidate_dealer
 
         # Build a dealer that always produces a winning 3-of-a-kind SEVEN
         class StubDealer:
             num_reels = 5
             num_rows = 3
             def play(self, bet):
-                from casino.slots.lib import Symbol, SpinResult, Win
+                from casino.slots.lib import SpinResult, Symbol, Win
                 seven = Symbol("SEVEN", 1, "7")
                 return SpinResult(
                     reels=[[seven] * 3 for _ in range(5)],
@@ -233,13 +233,13 @@ class TestSlotServiceSpinSuccess(unittest.TestCase):
         self.assertEqual(len(cursor.executed), 5)
 
     def test_insufficient_funds_rolls_back(self):
-        from casino.services.slots import handle_spin, _dealers, invalidate_dealer
+        from casino.services.slots import _dealers, handle_spin, invalidate_dealer
 
         class StubDealer:
             num_reels = 5
             num_rows = 3
             def play(self, bet):
-                from casino.slots.lib import Symbol, SpinResult
+                from casino.slots.lib import SpinResult, Symbol
                 lemon = Symbol("LEMON", 1, "l")
                 return SpinResult(
                     reels=[[lemon] * 3 for _ in range(5)],
@@ -278,7 +278,7 @@ class TestSlotPaytableLookup(unittest.TestCase):
         self.args = argparse.Namespace(databasename="test", database="test")
 
     def test_paytable_lookup(self):
-        from casino.services.slots import handle_get_paytable, _dealers, invalidate_dealer
+        from casino.services.slots import _dealers, handle_get_paytable, invalidate_dealer
         from casino.slots.lib import Paytable
 
         _dealers["slots-test"] = type("D", (), {
@@ -320,7 +320,7 @@ class TestSlotServiceHandler(unittest.TestCase):
     """Verify the WebSocket handler dispatches and constructs the right replies."""
 
     def setUp(self):
-        from casino.api.handler import SlotServiceHandler, SessionManager
+        from casino.api.handler import SessionManager, SlotServiceHandler
 
         self.args = argparse.Namespace(databasename="test", database="test")
         self.sessions = SessionManager()
@@ -350,6 +350,7 @@ class TestSlotServiceHandler(unittest.TestCase):
 
     def test_slot_history_no_auth(self):
         import asyncio
+
         from casino.api.handler import SessionManager, SlotServiceHandler
         sessions = SessionManager()
         handler = SlotServiceHandler(self.args, sessions, channel_state=None)
@@ -373,7 +374,7 @@ class TestSlotServiceHandlerSpinBroadcast(unittest.TestCase):
     """Verify a successful spin publishes to the table channel."""
 
     def setUp(self):
-        from casino.api.handler import SlotServiceHandler, SessionManager
+        from casino.api.handler import SessionManager, SlotServiceHandler
 
         self.args = argparse.Namespace(databasename="test", database="test")
         self.sessions = SessionManager()

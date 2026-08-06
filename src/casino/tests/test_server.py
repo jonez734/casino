@@ -2,12 +2,10 @@
 # casino/tests/test_server.py
 # Integration tests for server with mocked database
 
-import argparse
-import asyncio
 import json
 import sys
 import unittest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
 sys.path.insert(0, "/home/opencode/data/work/casino/src")
 
@@ -21,6 +19,7 @@ class TestServerMocked(unittest.IsolatedAsyncioTestCase):
         """Start server before each test."""
         # Import here to avoid issues if dependencies missing
         from bbsengine6.net import WebSocketServer
+
         from casino.api.handler import MessageRouter
 
         # Create mock args
@@ -222,7 +221,7 @@ class TestMessageParsing(unittest.TestCase):
 
     def test_create_message(self):
         """Test message creation."""
-        from casino.api.messages import create_message, MessageType
+        from casino.api.messages import MessageType, create_message
 
         msg = create_message(MessageType.AUTH, moniker="test")
         self.assertEqual(msg["type"], "auth")
@@ -230,7 +229,7 @@ class TestMessageParsing(unittest.TestCase):
 
     def test_error_message(self):
         """Test error message creation."""
-        from casino.api.messages import error_message, ErrorCode
+        from casino.api.messages import ErrorCode, error_message
 
         msg = error_message(ErrorCode.NOT_AUTHENTICATED, "Please log in")
         self.assertEqual(msg["type"], "error")

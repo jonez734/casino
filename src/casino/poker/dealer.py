@@ -1,7 +1,6 @@
-import random
-from typing import Any, List, Optional
+from typing import Any, Optional
 
-from casino.poker.lib import PokerDeck, PokerCard
+from casino.poker.lib import PokerCard, PokerDeck
 
 
 class PokerDealer:
@@ -9,18 +8,18 @@ class PokerDealer:
 
     def __init__(self):
         self.deck: PokerDeck = PokerDeck()
-        self.burn_cards: List[str] = []
-        self.community_cards: List[str] = []
+        self.burn_cards: list[str] = []
+        self.community_cards: list[str] = []
 
     def shuffle_deck(self, times: int = 1) -> None:
         """Shuffle the deck the specified number of times."""
         self.deck.shuffle(times)
 
     def deal_hole_cards(
-        self, players: List[Any], count: int
+        self, players: list[Any], count: int
     ) -> None:
         """Deal hole cards to all players.
-        
+
         Args:
             players: List of objects with a receive_card() method or hole_cards list attribute
             count: Number of hole cards to deal to each player
@@ -33,7 +32,7 @@ class PokerDealer:
 
     def _give_card_to_player(self, player: Any, card: PokerCard) -> None:
         """Give a card to a player.
-        
+
         Args:
             player: Player object (PokerPlayer or similar)
             card: Card to give
@@ -43,24 +42,24 @@ class PokerDealer:
         elif hasattr(player, 'hole_cards'):
             player.hole_cards.append(card.to_string())
 
-    def deal_community_cards(self, count: int) -> List[str]:
+    def deal_community_cards(self, count: int) -> list[str]:
         """Deal community cards (the board).
-        
+
         Args:
             count: Number of community cards to deal
-            
+
         Returns:
             List of card strings dealing with
         """
         self.burn_card()  # Burn one card before dealing community cards
-        
+
         cards = []
         for _ in range(count):
             card = self.deal_card()
             if card:
                 cards.append(card.to_string())
                 self.community_cards.append(card.to_string())
-        
+
         return cards
 
     def burn_card(self) -> Optional[str]:
@@ -94,10 +93,10 @@ class PokerDealer:
 
     def is_reshuffle_needed(self, threshold: float = 0.25) -> bool:
         """Check if the deck needs to be reshuffled.
-        
+
         Args:
             threshold: Fraction of deck that must remain (default 25%)
-            
+
         Returns:
             True if deck should be reshuffled
         """
@@ -105,11 +104,11 @@ class PokerDealer:
         remaining = self.deck.remaining()
         return remaining < (total_cards * threshold)
 
-    def get_community_cards(self) -> List[str]:
+    def get_community_cards(self) -> list[str]:
         """Get current community cards."""
         return self.community_cards.copy()
 
-    def get_burn_cards(self) -> List[str]:
+    def get_burn_cards(self) -> list[str]:
         """Get burned cards."""
         return self.burn_cards.copy()
 

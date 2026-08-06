@@ -2,12 +2,9 @@
 # casino/tests/test_api.py
 # Mock tests for casino API
 
-import argparse
-import asyncio
-import json
 import sys
 import unittest
-from unittest.mock import AsyncMock, MagicMock, patch, PropertyMock
+from unittest.mock import AsyncMock, MagicMock
 
 sys.path.insert(0, "/home/opencode/data/work/casino/src")
 

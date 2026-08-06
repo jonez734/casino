@@ -1,6 +1,5 @@
 from bbsengine6 import register_module
 
-
 __version__ = "202601010900"
 
 

@@ -4,11 +4,9 @@
 
 import sys
 import unittest
-from decimal import Decimal
 
 sys.path.insert(0, "/home/opencode/data/work/casino/src")
 
-from casino.cards import Card
 from casino.blackjack import Hand
 
 
@@ -56,7 +54,6 @@ class TestHoleCard(unittest.TestCase):
     def test_hide_hole_card_two_cards(self):
         """With 2 cards, second should be hidden."""
         dealer_cards = ["8H", "9D"]
-        hole_card = "9D"
         visible = [dealer_cards[0], "hidden"]
         self.assertEqual(visible, ["8H", "hidden"])
 
@@ -70,7 +67,6 @@ class TestHoleCard(unittest.TestCase):
     def test_hide_hole_card_empty(self):
         """Empty dealer hand returns empty."""
         dealer_cards = []
-        hole_card = None
         self.assertEqual(dealer_cards, [])
 
     def test_hide_hole_card_single(self):
@@ -105,14 +101,14 @@ class TestDealerSoft17(unittest.TestCase):
     def test_dealer_hits_on_soft_17_when_rule_hit(self):
         """Dealer should hit on soft 17 when rule is 'hit'."""
         soft_17_rule = "hit"
-        hand = Hand.from_strings(["AH", "6D"])
+        Hand.from_strings(["AH", "6D"])
         should_hit = soft_17_rule == "hit"
         self.assertTrue(should_hit)
 
     def test_dealer_stands_on_soft_17_when_rule_stand(self):
         """Dealer should stand on soft 17 when rule is 'stand'."""
         soft_17_rule = "stand"
-        hand = Hand.from_strings(["AH", "6D"])
+        Hand.from_strings(["AH", "6D"])
         should_hit = soft_17_rule == "hit"
         self.assertFalse(should_hit)
 
