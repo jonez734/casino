@@ -101,7 +101,7 @@ deploy-www:
 	$(MAKE) -C www prod
 	$(RSYNC) $(STAGE) $(HOST):$(STAGE)
 
-deploy-tui: build
+deploy-tui: install
 
 help:
 	@echo "Available build targets:"
@@ -109,6 +109,8 @@ help:
 	@echo "  make version      - Rewrite src/casino/_version.py from git + date"
 	@echo "  make sdist        - Build sdist only into ./dist"
 	@echo "  make install      - pip install . in current env"
+	@echo "  make deploy-tui   - install casino into the active venv (shared zoid6 venv)"
+	@echo "  make deploy-www   - build www and rsync to $(HOST)"
 	@echo "  make clean        - Remove ~ backups and recurse into src/"
 	@echo "  make push         - git push"
 	@echo ""
