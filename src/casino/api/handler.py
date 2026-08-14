@@ -808,8 +808,27 @@ class MessageRouter:
         self.tictactoe_service_handler = TictactoeServiceHandler(args, self.sessions)
 
     def register_all(self, server: Any) -> None:
-        """Register all services with the WebSocketServer."""
-        server.register_service(self.auth_service, ["auth", "ping"])
+        """Register all services with the WebSocketServer.
+
+        ``auth`` is owned by ``bed.api.auth.AuthService`` (registered
+        by ``bed.main.BED.start`` before any router loads). When that
+        service is already on the server we skip our ``auth`` /
+        ``ping`` registration entirely so the casino envelope shape
+        (which drops ``token`` / ``session_id`` / ``expires_at``)
+        never shadows bed's.
+
+        When the router is loaded standalone (the in-process tests
+        in ``casino.tests.test_server`` spin up a bare
+        ``WebSocketServer`` with no bed in front of it) no auth
+        service is registered yet, so we fall back to casino's own
+        ``AuthService`` for ``auth`` and ``ping`` to keep those
+        tests green. ``self.auth_service`` and the
+        ``casino.api.handler.AuthService`` class itself are still
+        defined unconditionally so any other code path that imports
+        them continues to work.
+        """
+        if server.get_service("auth") is None:
+            server.register_service(self.auth_service, ["auth", "ping"])
         server.register_service(
             self.table_service,
             [
