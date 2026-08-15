@@ -110,6 +110,7 @@ def main(args, **kw):
 
     _render_action_menu()
 
+    quit_hand = False
     while True:
         choice = io.inputchoice(
             "{var:promptcolor}Action: {var:optioncolor}[HSDQ]{var:promptcolor}: {var:inputcolor}",
@@ -148,11 +149,12 @@ def main(args, **kw):
         elif choice == "q":
             io.echo("{var:promptcolor}You quit the hand.{var:normalcolor}")
             player.incstat("loss")
+            quit_hand = True
             break
         else:
             break
 
-    if player_total <= 21:
+    if not quit_hand and player_total <= 21:
         run_dealer_turn(dealer.hand, shoe)
         determine_winner(player.hand, dealer.hand, player)
 
