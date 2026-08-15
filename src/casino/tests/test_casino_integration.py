@@ -19,7 +19,7 @@ wire shape the production client sends.
 The test is intentionally narrow (one happy path + two denial
 paths) so it stays fast and stable; broader matrix coverage lives
 in :mod:`bed.tests.test_casino_service` and
-:mod:`bbsengine6.tests.test_casino_access`.
+:mod:`casino.tests.test_casino_access`.
 """
 
 from __future__ import annotations

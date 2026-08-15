@@ -60,5 +60,6 @@ version = { attr = "casino._version.__version__" }
 
 [tool.pytest.ini_options]
 markers = [
+    "unit: marks tests as unit tests (no database required)",
     "integration: marks tests as integration tests (require BED server running)",
-]
+] 

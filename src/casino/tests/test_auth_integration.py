@@ -5,7 +5,8 @@ Mirrors the structure of ``bed/tests/test_auth_integration.py`` at the
 casino layer:
 
 - ``bbsengine6.casino.access()`` is the single source of truth for
-  the per-op policy (verified by ``tests/test_casino_access.py``).
+  the per-op policy (verified by
+  ``casino/tests/test_casino_access.py``).
 - ``casino.api._auth.check_access()`` runs the five-gate pipeline
   in order -- session resolve, wire-token validate, session-token
   validate, shape, then ``bbsengine6.casino.access()`` (verified by
