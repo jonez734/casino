@@ -38,7 +38,7 @@ class TestMonikerOnlyAuth(unittest.TestCase):
         class BotClient(CasinoClient):
             auth_prompt = staticmethod(moniker_only)
 
-        client = BotClient(argparse.Namespace(host="localhost", port=8765))
+        client = BotClient(argparse.Namespace(bed_host="localhost", bed_port=8765, bed_path="/"))
         seen = []
 
         async def runner():
@@ -57,7 +57,7 @@ class TestMonikerOnlyAuth(unittest.TestCase):
         class BotClient(CasinoClient):
             auth_prompt = staticmethod(moniker_only)
 
-        client = BotClient(argparse.Namespace(host="localhost", port=8765))
+        client = BotClient(argparse.Namespace(bed_host="localhost", bed_port=8765, bed_path="/"))
 
         async def runner():
             with patch("bbsengine6.io.inputstring", return_value=""):
@@ -84,7 +84,7 @@ class TestMonikerOnlyAuth(unittest.TestCase):
             auth_prompt = staticmethod(class_prompt)
 
         self._auth_module.auth_prompt = module_prompt
-        client = BotClient(argparse.Namespace(host="localhost", port=8765))
+        client = BotClient(argparse.Namespace(bed_host="localhost", bed_port=8765, bed_path="/"))
 
         async def runner():
             return await client.cmd_auth()

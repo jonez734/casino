@@ -114,7 +114,7 @@ class TestAuthPromptOverride(unittest.TestCase):
         class BotClient(CasinoClient):
             auth_prompt = staticmethod(my_prompt)
 
-        client = BotClient(argparse.Namespace(host="localhost", port=8765))
+        client = BotClient(argparse.Namespace(bed_host="localhost", bed_port=8765, bed_path="/"))
 
         async def runner():
             return await client.cmd_auth()
@@ -136,7 +136,7 @@ class TestAuthPromptOverride(unittest.TestCase):
         class BotClient(CasinoClient):
             auth_prompt = staticmethod(my_prompt)
 
-        client = BotClient(argparse.Namespace(host="localhost", port=8765))
+        client = BotClient(argparse.Namespace(bed_host="localhost", bed_port=8765, bed_path="/"))
 
         async def runner():
             return await client.cmd_auth()
@@ -156,7 +156,7 @@ class TestAuthPromptOverride(unittest.TestCase):
 
         self._auth_module.auth_prompt = my_prompt
 
-        client = CasinoClient(argparse.Namespace(host="localhost", port=8765))
+        client = CasinoClient(argparse.Namespace(bed_host="localhost", bed_port=8765, bed_path="/"))
         self.assertIsNone(client.auth_prompt)
 
         async def runner():

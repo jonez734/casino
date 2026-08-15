@@ -235,8 +235,9 @@ class TestCasinoClientExtensions(unittest.TestCase):
         from casino.client import CasinoClient
 
         args = MagicMock()
-        args.casino_host = "localhost"
-        args.casino_port = 8765
+        args.bed_host = "localhost"
+        args.bed_port = 8765
+        args.bed_path = "/"
         client = CasinoClient(args)
         self.assertTrue(hasattr(client, "last_available_actions"))
         self.assertEqual(client.last_available_actions, [])

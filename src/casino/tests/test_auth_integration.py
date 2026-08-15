@@ -28,15 +28,10 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
-import secrets
 import sys
-import tempfile
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
-
-import pytest
-
 
 sys.path.insert(0, "/home/opencode/data/work/casino/src")
 sys.path.insert(0, "/home/opencode/data/work/bbsengine6/py/src")
@@ -49,8 +44,6 @@ sys.path.insert(0, "/home/opencode/data/work/bed/src")
 
 def _make_args(**overrides) -> argparse.Namespace:
     args = argparse.Namespace()
-    args.host = "127.0.0.1"
-    args.port = 8765
     args.bed_host = "127.0.0.1"
     args.bed_port = 8765
     args.bed_path = "/"

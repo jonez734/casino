@@ -57,12 +57,12 @@ class TestClientMenuFlow(unittest.TestCase):
         """Test that CasinoClient can be instantiated."""
         from casino.client import CasinoClient
 
-        args = argparse.Namespace(casino_host="localhost", casino_port=8765)
+        args = argparse.Namespace(bed_host="localhost", bed_port=8765, bed_path="/")
         client = CasinoClient(args)
 
         self.assertIsNotNone(client)
-        self.assertEqual(client.args.casino_host, "localhost")
-        self.assertEqual(client.args.casino_port, 8765)
+        self.assertEqual(client.args.bed_host, "localhost")
+        self.assertEqual(client.args.bed_port, 8765)
         self.assertFalse(client.connected)
         self.assertFalse(client.authenticated)
 
@@ -70,7 +70,7 @@ class TestClientMenuFlow(unittest.TestCase):
         """Test CasinoClient initial state."""
         from casino.client import CasinoClient
 
-        args = argparse.Namespace(host="localhost", port=8765)
+        args = argparse.Namespace(bed_host="localhost", bed_port=8765, bed_path="/")
         client = CasinoClient(args)
 
         self.assertEqual(client.moniker, "")
@@ -82,8 +82,8 @@ class TestClientMenuFlow(unittest.TestCase):
         """Test that play function has default host/port."""
 
         args = argparse.Namespace()
-        host = getattr(args, "casino_host", "localhost")
-        port = getattr(args, "casino_port", 8765)
+        host = getattr(args, "bed_host", "localhost")
+        port = getattr(args, "bed_port", 8765)
 
         self.assertEqual(host, "localhost")
         self.assertEqual(port, 8765)
@@ -96,7 +96,7 @@ class TestClientServerIO(unittest.TestCase):
         """Test that auth message is properly formatted."""
         from casino.client import CasinoClient
 
-        args = argparse.Namespace(casino_host="localhost", casino_port=8765)
+        args = argparse.Namespace(bed_host="localhost", bed_port=8765, bed_path="/")
         CasinoClient(args)
 
         auth_msg = {"type": "auth", "moniker": "jam", "password": "test"}

@@ -26,7 +26,7 @@ def _make_client(args) -> "CasinoClient":
 
 
 def _make_args() -> argparse.Namespace:
-    return argparse.Namespace(host="127.0.0.1", port=8765)
+    return argparse.Namespace(bed_host="127.0.0.1", bed_port=8765, bed_path="/")
 
 
 def _run(coro):

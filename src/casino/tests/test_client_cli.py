@@ -16,15 +16,18 @@ class TestClientCliParser(unittest.TestCase):
         from casino.client_cli import build_parser
         parser = build_parser()
         args = parser.parse_args([])
-        self.assertEqual(args.host, "localhost")
-        self.assertEqual(args.port, 8765)
+        self.assertEqual(args.bed_host, "localhost")
+        self.assertEqual(args.bed_port, 8765)
+        self.assertEqual(args.bed_path, "/")
 
     def test_parser_explicit_host_port(self):
         from casino.client_cli import build_parser
         parser = build_parser()
-        args = parser.parse_args(["--host", "10.0.0.1", "--port", "9999"])
-        self.assertEqual(args.host, "10.0.0.1")
-        self.assertEqual(args.port, 9999)
+        args = parser.parse_args(
+            ["--bed-host", "10.0.0.1", "--bed-port", "9999"]
+        )
+        self.assertEqual(args.bed_host, "10.0.0.1")
+        self.assertEqual(args.bed_port, 9999)
 
 
 class TestClientCliMain(unittest.TestCase):
@@ -42,12 +45,12 @@ class TestClientCliMain(unittest.TestCase):
         fake = MagicMock()
         fake.authenticated = True
         with patch("casino.client_cli.CasinoClient", return_value=fake) as MockClient:
-            rc = client_cli.main(["--host", "h", "--port", "1"])
+            rc = client_cli.main(["--bed-host", "h", "--bed-port", "1"])
         self.assertEqual(rc, 0)
         MockClient.assert_called_once()
         args = MockClient.call_args.args[0]
-        self.assertEqual(args.host, "h")
-        self.assertEqual(args.port, 1)
+        self.assertEqual(args.bed_host, "h")
+        self.assertEqual(args.bed_port, 1)
         fake.run.assert_called_once()
 
     def test_returns_one_when_not_authenticated(self):
