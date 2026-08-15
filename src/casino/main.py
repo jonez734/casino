@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from argparse import Namespace
 
 from bbsengine6 import database, io, member, session, util
@@ -22,11 +20,11 @@ def parse_module_path(path: str) -> tuple[str, str | None]:
     return path, None
 
 
-def init(args: Namespace, **kwargs) -> bool:
+def init(args: Namespace, **kwargs) -> bool | None:
     return True
 
 
-def access(args: Namespace, op: str, **kwargs) -> bool:
+def access(args: Namespace, op: str, **kwargs) -> bool | None:
     return True
 
 
@@ -52,7 +50,7 @@ def buildargs(args, **kwargs):
             args.port = 8765
 
 
-def main(args: Namespace, **kwargs) -> bool:
+def main(args: Namespace, **kwargs) -> bool | None:
     if args.debug is True:
         io.echo(f"casino.main.100: {args=}", level="debug")
 
