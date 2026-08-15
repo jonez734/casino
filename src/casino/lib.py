@@ -113,9 +113,6 @@ class Hand:
         self.index = 0
         self.cards = []
         self.status_override = None
-        for _i in range(0, 5):
-            self.cards.append(Card(facedown=False))
-        io.echo("hand initialized, blank cards added")
 
     def adjustace(self):
         adjust = 0
@@ -154,13 +151,15 @@ class Hand:
     def add(self, card, facedown=False):
         card.facedown = facedown
         #        ttyio.echo(f"--> len(self.cards)={len(self.cards)}, self.index={self.index}")
-        self.cards[self.index] = card
-        self.index += 1
+        self.cards.append(card)
+        self.index = len(self.cards)
         self.refresh()
 
     def show(self, hide=True):
         io.echo(f"{self.label}: ", end="")
         for counter, c in enumerate(self.cards):
+            if c.suit is None:
+                continue
             if (
                 len(self.cards) == 2
                 and counter == 1
