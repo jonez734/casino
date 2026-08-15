@@ -20,7 +20,7 @@ def access(args, op: str, **kw: dict) -> bool:
     return True
 
 
-def buildargs(args, **kw: dict) -> bool:
+def buildargs(args, **kw: dict):
     return None
 
 

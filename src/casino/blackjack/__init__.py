@@ -23,10 +23,11 @@ def access(args, op: str, **kw: dict) -> bool:
     return True
 
 
-def buildargs(args, **kw: dict) -> bool:
+def buildargs(args, **kw: dict):
     return None
 
 
 def main(args, **kw):
-    lib.runmodule(args, "main", **kw)
-    return True
+    from bbsengine6 import module
+
+    return module.run(args, "game", package="casino.blackjack", **kw)

@@ -1,7 +1,7 @@
 import locale
 import time
 
-from bbsengine6 import io, screen, session
+from bbsengine6 import io, module, screen, session
 
 from . import lib
 
@@ -18,7 +18,7 @@ time.tzset()
 # module.init(args)
 
 try:
-    lib.runmodule(args, "main")
+    module.run(args, "game", package="casino.blackjack")
 except KeyboardInterrupt:
     io.echo("{/all}{bold}INTR{bold}")
 except EOFError:
