@@ -7,6 +7,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### casino: merge `casino-client` into `casino`; bed is the default backend
+
+The `casino-client` shell shim and console-script entry point are
+gone. The merged `casino` CLI exposes the same bed-style flag set as
+every other tool under `bed.tools`:
+
+- `casino` (default) talks to the bed daemon at
+  `ws://localhost:8765/`. The dispatcher probes the daemon first; if
+  it's unreachable and `--direct` was not passed, exits non-zero with
+  the bundled "rerun with --direct" hint (mirrors the bed tool
+  convention).
+- `casino --direct` runs the door mode: opens a Postgres connection
+  pool via `bbsengine6.database`, starts a BBS session, and runs the
+  interactive `casino.main` menu. Pass `--databasename` / etc. to
+  override the connection.
+- `casino --bed-host H --bed-port P` drives the bed daemon against a
+  non-default endpoint. The full set is `--bed-host`, `--bed-port`,
+  `--bed-path`, `--bed-call-timeout`, `--bed-probe-timeout`.
+
+The bed-style arg names (`args.bed_host`, `args.bed_port`,
+`args.bed_path`) replace the old `args.host` / `args.port` /
+`args.path` everywhere — both at the CLI surface and on
+`CasinoClient.__init__`. The door mode's BBS `connect` menu entry
+(`auth.connect`) was updated to read the same names.
+
+### casino: drop `casino-client` console-script entry point
+
+`pyproject.toml` registers only `casino = "casino.__main__:main"`
+now. `python -m casino.client_cli` still works for legacy callers
+that imported the entry point directly.
+
+### casino: extract `_routing` helper
+
+New `casino/src/casino/_routing.py` mirrors `bed/tools/_routing.py`:
+`build_client_args` registers the `--bed-*` + `--direct` flags, and
+`select_backend` picks `"bed"` (default) vs `"direct"` based on
+`probe_bed` reachability. Reuses
+`bed.tools._routing.BedNotReachable` so the operator-facing hint is
+shared with the rest of the bed tool family.
+
+### casino: add `blackjack` subcommand to the merged CLI
+
+`casino blackjack [...]` runs door-mode blackjack through the merged
+entry point. The branch short-circuits before `_routing.select_backend`
+because blackjack has no bed counterpart — it is door-mode only — so an
+unreachable bed daemon never blocks the door-mode startup. A new
+`blackjack = "casino.__main__:blackjack_main"` console-script entry
+mirrors the existing `casino = "casino.__main__:main"` for symmetry.
+The standalone `bin/blackjack` shim and `python -m casino.blackjack`
+entry continue to work unchanged; the BBS launcher at
+`letteredolive/build/lib/bbs.py:90` is unaffected.
+
 ### casino: clarify "decouple bank" CHANGELOG entry
 
 The "decouple bank, member, channel, postoffice services from casino"

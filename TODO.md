@@ -1,5 +1,33 @@
 # Casino - Not Implemented Features
 
+## Refactor `CasinoClient` transport onto `BedConnection`
+
+- [ ] `CasinoClient.connect`/`disconnect`/`send`/`receive`/
+      `receive_loop` (`casino/src/casino/client/casino_client.py:41-104`)
+      reimplement what `BedConnection` already does
+      (`bed/src/bed/client/connection.py:58-327`). After the
+      `casino-client` → `casino` merge the CLI surface and the
+      arg shape are unified (`--bed-host`, `--bed-port`,
+      `--bed-path`, `--bed-call-timeout`) but the transport is
+      still a fork. Replace it with a `BedConnection` handle
+      held on the client, and switch `send` to call the
+      `BedMessageClient._request` helper
+      (`bed/src/bed/client/messages.py:27-58`) so the
+      bearer-token injection and per-op `BedUnavailable`
+      translation come from one place. The interactive UI
+      loop (`CasinoClient.run` and the `cmd_*` methods),
+      the message dispatch (`handle_message`),
+      `display_game_state`, and the auth orchestration
+      (`cmd_auth` + `casino.auth`) all stay put — they're
+      casino-specific.
+- [ ] Drop the `casino.client.casino_client` WebSocket
+      transport. The `BedMessageClient`-style subclasses
+      under `casino/services/bank_client.py` already
+      subclass `bed.client.messages.BedMessageClient` —
+      this would let `CasinoClient` follow the same pattern
+      for its table / game / chat wire calls instead of
+      building dicts by hand in `cmd_*`.
+
 ## Run `bbsengine6.startup` at casino bring-up
 
 - [ ] Call `bbsengine6.startup.main(...)` as part of casino's

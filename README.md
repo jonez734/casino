@@ -11,7 +11,7 @@ WebSocket-driven real-time game server. It runs in three modes:
    menu in a BBS session.
 2. **WebSocket game server** — registered with bed via
    `casino.api.handler.MessageRouter`.
-3. **Standalone TUI client** (`casino-client`) — long-lived
+3. **Standalone TUI client** (`casino`, default branch) — long-lived
    WebSocket client for sysops and CI.
 
 > **See [`SPEC.md`](SPEC.md)** for the architecture: the layered
@@ -93,15 +93,25 @@ pip install -e .
 bbsengine6    # start the BBS
 # log in, choose Casino from the BBS menu
 
-# 2. Or run casino standalone
+# 2. Or run casino standalone (default: bed WebSocket client)
 python -m casino
+# or against a non-default daemon:
+python -m casino --bed-host H --bed-port P
 
 # 3. Or run the WebSocket server (bed will load MessageRouter)
 pip install -e . -e ../bbsengine6/py -e ../bed -e ../zoid6/src
 zoid6 --config /etc/zoid6/bed.json   # casino block is enabled by default
 
-# 4. Or use the standalone TUI client
-casino-client
+# 4. Or run the door-mode CLI (talks to local Postgres directly)
+python -m casino --direct
+# or with overridden DB args:
+python -m casino --direct --databasename foo
+
+# 5. Legacy direct entry points (still work)
+python -m casino.client_cli
+
+# 6. Door-mode blackjack (equivalent to `bin/blackjack`)
+python -m casino blackjack
 ```
 
 ## Games
@@ -139,7 +149,8 @@ casino/
 │   ├── auth.py                   BED auth + BBS entry points
 │   ├── lib.py                    Card / Hand / Shoe / Casino / CasinoPlayer + bottombar
 │   ├── config.py                 Env-var config loader
-│   ├── client_cli.py             `casino-client` console-script entry
+│   ├── _routing.py               bed / direct backend selector
+│   ├── client_cli.py             legacy `python -m casino.client_cli` entry
 │   ├── startup.py                Schema import
 │   ├── api/
 │   │   ├── handler.py            MessageRouter + CasinoSessionManager + all services
@@ -159,7 +170,7 @@ casino/
 │   ├── yahtzee/                  Yahtzee door + api + dealer + lib + service
 │   └── maint/                    Sysop maintenance menu
 ├── scripts/                      opencode.sql, poker.sql, setup_privileges.sql, tictactoe.sql
-├── bin/                          casino, casino-client, blackjack shims
+├── bin/                          casino, blackjack shims
 ├── www/                          Per-host landing page (Smarty)
 │   ├── php/index.php
 │   ├── skin/{scss,tmpl}/

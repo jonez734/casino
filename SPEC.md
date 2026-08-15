@@ -78,7 +78,8 @@ It does **not** own:
                        │                          │
                 ┌──────┴─────────┐         ┌──────┴─────────┐
                 │ main.py menu   │         │ CasinoClient   │
-                │ bbsengine6 BBS │         │ casino-client  │
+                │ --direct flag  │         │ default branch │
+                │ bbsengine6 BBS │         │ ws://bed:8765/ │
                 └────────────────┘         └────────────────┘
 ```
 
@@ -169,17 +170,34 @@ The door-mode entry is `python -m casino` (`__main__.py`). It:
    - Bank
    - Maintenance (sysop only)
 
-## 6. Standalone TUI client
+## 6. Standalone TUI client (merged `casino` default branch)
 
-`casino-client` is a long-lived `CasinoClient` WebSocket client
-(`src/casino/client/casino_client.py`) that authenticates with the
-BED server and exposes table management, blackjack, poker,
-tic-tac-toe, chat, and bank operations from the command line.
-Useful for sysops and CI smoke tests.
+The merged `casino` CLI is the standalone entry. It exposes the same
+bed-style flag set as every other tool under `bed.tools`
+(`--bed-host`, `--bed-port`, `--bed-path`, `--bed-call-timeout`,
+`--bed-probe-timeout`, plus `--direct` to opt out of the daemon).
 
-Auth always prompts for password (commit `ec0138e`) and reports a
-specific failure reason (`Member not found`, `Invalid moniker`,
-`Authentication service unavailable`).
+Default branch: bed WebSocket client. `casino.__main__:main` probes
+the bed daemon on the configured `--bed-host`/`--bed-port`; if
+reachable, instantiates `CasinoClient`
+(`src/casino/client/casino_client.py`) and runs the terminal UI
+loop. If unreachable and `--direct` was not passed, raises
+`bed.tools._routing.BedNotReachable` and exits non-zero with the
+bundled "rerun with --direct" hint.
+
+`--direct` branch: door mode. Opens a Postgres connection pool via
+`bbsengine6.database`, starts a BBS session, runs `casino.main` —
+the interactive menu. Mirrors the pre-merge `casino` shim's behavior.
+
+`CasinoClient` authenticates with the BED server and exposes table
+management, blackjack, poker, tic-tac-toe, chat, and bank operations
+from the command line. Auth always prompts for password (commit
+`ec0138e`) and reports a specific failure reason (`Member not found`,
+`Invalid moniker`, `Authentication service unavailable`).
+
+The legacy `casino-client` shell shim and console-script entry point
+were removed; `python -m casino.client_cli` still works for callers
+that imported the entry point directly.
 
 ## 7. Poker variant plugin system
 
@@ -261,6 +279,7 @@ Two schema locations exist:
 | Bank wrapper                       | `src/casino/services/bank.py`                 |
 | Player auth                        | `src/casino/services/player.py`               |
 | Table CRUD                         | `src/casino/services/table.py`                |
+| Backend selector                   | `src/casino/_routing.py`                      |
 | DAL (sync)                         | `src/casino/dal/{bet,game,player,slots,table}.py` |
 | DAL (async / aiosql)               | `src/casino/dal/aiosql/*`                     |
 | Games registry                     | `src/casino/games/base.py`                    |
@@ -283,14 +302,15 @@ Two schema locations exist:
 
 | Path                                              | Role                                  |
 |---------------------------------------------------|---------------------------------------|
-| `pyproject.toml`                                  | Manifest (4 console scripts + 4 poker variants) |
+| `pyproject.toml`                                  | Manifest (1 console script + 4 poker variants) |
 | `src/casino/__init__.py`                          | Package init (BBS module entry)      |
 | `src/casino/__main__.py`                          | `python -m casino` entry              |
 | `src/casino/main.py`                              | Door-mode menu                        |
 | `src/casino/auth.py`                              | BED auth + BBS entry                  |
 | `src/casino/lib.py`                               | Card / Hand / Shoe / CasinoPlayer + bottombar |
 | `src/casino/config.py`                            | Env-var config loader                 |
-| `src/casino/client_cli.py`                        | `casino-client` console-script entry  |
+| `src/casino/client_cli.py`                        | legacy `python -m casino.client_cli` entry |
+| `src/casino/_routing.py`                          | bed / direct backend selector         |
 | `src/casino/startup.py`                           | Schema import                         |
 | `src/casino/api/handler.py`                       | MessageRouter + CasinoSessionManager + services |
 | `src/casino/api/messages.py`                      | MessageType enum + dataclasses        |
