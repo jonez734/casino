@@ -27,19 +27,10 @@ class _StubPlayer:
 
 
 def _build_hand(card_strings, label: str = "test"):
-    """Build a casino.lib.Hand with real cards at slots 0..N-1.
-
-    The remaining blank slots are patched with a valid suit so the legacy
-    Hand.show() implementation can render without dereferencing None.
-    They stay ``blank=True`` so ``calcvalue()`` treats them as value 0.
-    """
+    """Build a casino.lib.Hand populated with the given cards in order."""
     hand = lib.Hand(label)
     for shorthand in card_strings:
         hand.add(lib.Card(shorthand=shorthand, facedown=False))
-    for i in range(hand.index, len(hand.cards)):
-        if hand.cards[i].blank:
-            hand.cards[i].pips = "0"
-            hand.cards[i].suit = "H"
     return hand
 
 
