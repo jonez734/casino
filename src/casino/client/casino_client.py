@@ -36,6 +36,7 @@ class CasinoClient:
         self.last_available_actions: list[str] = []
         self._receive_task: asyncio.Task | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
+        self._bearer_token: str | None = None
 
     async def connect(self) -> bool:
         """Connect to the server."""
@@ -62,10 +63,24 @@ class CasinoClient:
         io.echo("Disconnected")
 
     async def send(self, message: dict) -> None:
-        """Send message to server."""
+        """Send message to server.
+
+        When ``self._bearer_token`` is set (after a successful token-
+        file connect or after the server rotates it on auth), inject
+        ``"token"`` on every wire call. This is the defense-in-depth
+        path the casino server uses to re-verify the token against its
+        token store on every op, independent of (and preferred over)
+        the WS-bound session token. When no token is set, the payload
+        is sent verbatim so legacy / prompt-based sessions keep the
+        old shape.
+        """
         if not self.ws:
             return
-        await self.ws.send(json.dumps(message))
+        payload = dict(message)
+        token = (self._bearer_token or "").strip()
+        if token:
+            payload["token"] = token
+        await self.ws.send(json.dumps(payload))
 
     async def receive(self) -> dict | None:
         """Receive message from server."""
