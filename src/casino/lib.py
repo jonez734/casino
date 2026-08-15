@@ -548,6 +548,9 @@ def buildargs(args: Namespace | None = None, **kwargs: Any) -> argparse.Argument
     }
     database.buildarggroup(parser, defaults)
 
+    from . import _routing
+    _routing.build_client_args(parser)
+
     return parser
 
 

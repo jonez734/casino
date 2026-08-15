@@ -50,7 +50,7 @@ seven_card_stud = "casino.poker.variant.seven_card_stud:SevenCardStud"
 
 [project.scripts]
 casino = "casino.__main__:main"
-casino-client = "casino.client_cli:main"
+blackjack = "casino.__main__:blackjack_main"
 
 [project.urls]
 Homepage = "https://github.com/jonez734/casino"

@@ -119,7 +119,7 @@ def _read_token_file(path: str) -> str:
     door-mode contexts where bed is not on the path.
     """
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             for line in f:
                 tok = line.strip()
                 if tok and not tok.startswith("#"):
@@ -151,6 +151,7 @@ def _connect_with_token(args, host: str, port: int) -> CasinoClient | None:
     """
     from bed.client import get_bed_connection
     from bed.client.authservice import BedAuthServiceClient
+
     from .client import CasinoClient
 
     token_path = getattr(args, "token_file", None) or ""
@@ -224,8 +225,8 @@ def connect(args, **kwargs) -> CasinoClient | None:
     from .client import CasinoClient
 
     util.heading("connect to server")
-    host = getattr(args, "host", "127.0.0.1")
-    port = getattr(args, "port", 8765)
+    host = getattr(args, "bed_host", "127.0.0.1")
+    port = int(getattr(args, "bed_port", 8765))
     io.echo(f"Connecting to {host}:{port}...")
 
     token_path = getattr(args, "token_file", None) or ""

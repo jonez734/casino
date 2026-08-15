@@ -40,7 +40,10 @@ class CasinoClient:
 
     async def connect(self) -> bool:
         """Connect to the server."""
-        uri = f"ws://{self.args.host}:{self.args.port}/"
+        host = getattr(self.args, "bed_host", "localhost")
+        port = int(getattr(self.args, "bed_port", 8765))
+        path = getattr(self.args, "bed_path", "/")
+        uri = f"ws://{host}:{port}{path}"
         try:
             self.ws = await websockets.connect(uri)
             self.connected = True
