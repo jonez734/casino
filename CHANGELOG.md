@@ -50,6 +50,28 @@ the once-per-process screen-init + cleanup-echo wiring
 skip, `setbottombar`-triggered init, no-reinit, escape sequence
 shape). All 18 new tests pass.
 
+### casino: migrate `bbsengine6.casino` imports to in-tree `casino.access`
+
+The `bbsengine6.casino` stub module was removed in commit
+`fdd8fe2`, but a number of in-tree call sites still imported from
+it. The imports have been migrated to the in-tree `casino.access`
+module, matching the access policy that ships with the package:
+
+- `casino.api._auth` (line 55) — top-level import
+- `casino.api.handler` (lines 352, 508) — lazy imports inside the
+  per-op policy re-check
+- `casino.commands.game.lib` (line 18), `casino.commands.table.lib`
+  (line 19) — CLI tool entrypoints
+- `casino.tests.test_auth_integration` (lines 395, 437) — assertion
+  helpers
+- `casino.tests.test_casino_access` (line 23) — the module under test
+  (docstring updated to reference `casino.access`)
+
+`casino.access` is the same policy that previously lived in the
+dropped `bbsengine6.casino` stub, kept here in-tree so the
+`casino` package stays self-contained and the per-op authorization
+gate still runs against the same rule set.
+
 ### casino: merge `casino-client` into `casino`; bed is the default backend
 
 The `casino-client` shell shim and console-script entry point are

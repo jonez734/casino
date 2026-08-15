@@ -16,7 +16,7 @@ from types import SimpleNamespace
 from typing import Any, Dict, Optional
 
 from bbsengine6 import io
-from bbsengine6.casino import access as _casino_access
+from casino.access import access as _casino_access
 
 
 # Subcommand -> domain verb understood by ``bbsengine6.casino.access``.

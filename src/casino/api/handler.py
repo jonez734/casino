@@ -349,7 +349,7 @@ class TableServiceHandler(BaseService):
         message["table_moniker"] = table_moniker
 
         # Re-run the policy gate now that ``owner`` is populated.
-        from bbsengine6.casino import access as _casino_access
+        from casino.access import access as _casino_access
 
         if not _casino_access(self.args, "update_table", session=state, message=message):
             return {"type": "error", "code": "forbidden", "message": "Operation not permitted for this session"}
@@ -505,7 +505,7 @@ class TableServiceHandler(BaseService):
 
             message["table_moniker"] = table_moniker
             message["owner"] = table.get("ownermoniker") or ""
-            from bbsengine6.casino import access as _casino_access
+            from casino.access import access as _casino_access
 
             if not _casino_access(
                 self.args, "kick_player", session=state, message=message

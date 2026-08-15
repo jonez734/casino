@@ -392,7 +392,7 @@ def test_casino_access_uses_token_claims_for_kick_player_authorization():
     passes; a non-owner non-sysop claim denies; the in-message
     owner check matches the claim-derived moniker.
     """
-    from bbsengine6.casino import access
+    from casino.access import access
 
     args = argparse.Namespace()
 
@@ -434,7 +434,7 @@ def test_casino_access_seat_at_check_uses_session_attribute():
     policy consults the session's ``table_moniker`` attribute. A
     session bound to a different table is denied.
     """
-    from bbsengine6.casino import access
+    from casino.access import access
 
     args = argparse.Namespace()
     state = SimpleNamespace(

@@ -1,12 +1,13 @@
 """
-Unit tests for ``bbsengine6.casino.access``.
+Unit tests for ``casino.access``.
 
 Pins every (op, session, message) branch of the casino access
 decision matrix. These are unit-only: no DB connection required.
 
 Moved from ``bbsengine6/py/tests/test_casino_access.py`` to live
 alongside the casino code that consumes the policy; the underlying
-implementation under test is still in ``bbsengine6.casino``.
+implementation under test now lives in ``casino.access`` (it was
+moved out of ``bbsengine6.casino`` when that stub was dropped).
 """
 
 from __future__ import annotations
@@ -18,9 +19,10 @@ import pytest
 
 
 sys.path.insert(0, "/home/opencode/data/work/bbsengine6/py/src")
+sys.path.insert(0, "/home/opencode/data/work/casino/src")
 
 
-from bbsengine6.casino import access as casino_access  # noqa: E402
+from casino.access import access as casino_access  # noqa: E402
 
 
 pytestmark = pytest.mark.unit

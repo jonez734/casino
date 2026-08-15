@@ -52,7 +52,7 @@ import json
 import secrets
 from typing import Any, Dict, Optional, Tuple
 
-from bbsengine6.casino import access as _casino_access
+from casino.access import access as _casino_access
 
 
 # ----- Wire-protocol error envelopes ----------------------------------
