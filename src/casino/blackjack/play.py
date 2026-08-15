@@ -11,7 +11,7 @@ def access(args, op, **kw):
     return True
 
 
-def buildargs(args=None, **kw):
+def buildargs(args, **kw):
     return None
 
 
