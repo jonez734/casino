@@ -62,7 +62,8 @@ It does **not** own:
                 │   GameServiceHandler                        │
                 │   BetServiceHandler                         │
                 │   ChatServiceHandler                        │
-                │   BankServiceHandler  ─► bbsengine6.bank     │
+                │   BankServiceHandler (bed defaultrouter)      │
+                │   ─► bbsengine6.bank                         │
                 │   PokerServiceHandler ─► poker.*             │
                 │   Yahtzee / TicTacToe / PostOffice handlers │
                 │                                              │
@@ -116,11 +117,15 @@ bed WebSocket server. The full surface:
 | `GameServiceHandler`    | `hit`, `stand`, `double`, `split`                                                                  |
 | `BetServiceHandler`     | `bet`                                                                                             |
 | `ChatServiceHandler`    | `chat_table`, `chat_global`, `emote`                                                              |
-| `BankServiceHandler`    | `bank_balance`, `bank_add`, `bank_remove`, `bank_transfer_request`, `bank_transfer_approve`, `bank_transfer_reject`, `bank_pending`, `bank_history`, `bank_list_all` |
+| `BankServiceHandler` *(bed; from `bbsengine6.bank.api.handler`)* | `bank_balance`, `bank_add`, `bank_remove`, `bank_transfer_request`, `bank_transfer_approve`, `bank_transfer_reject`, `bank_pending`, `bank_history`, `bank_list_all` |
 | `PokerServiceHandler`   | `poker_create_table`, `poker_join_table`, `poker_leave_table`, `poker_start_hand`, `poker_action`, `poker_fold`, `poker_check`, `poker_call`, `poker_bet`, `poker_raise`, `poker_all_in`, `poker_get_state`, `poker_list_tables` |
 | `YahtzeeService`        | (per-game — see `yahtzee/README.md`)                                                              |
 | `TicTacToeService`      | (per-game — see `tictactoe/README.md`)                                                            |
 | `PostOfficeService`     | IMAP polling, notification fan-out                                                                |
+
+Bank service is loaded by `bed.defaultrouter.DefaultRouter.register_all`
+(`bed/src/bed/defaultrouter.py:14`); not registered by
+`casino.api.handler.MessageRouter`. See `bed/SPEC.md:137`.
 
 The `CasinoSessionManager` (subclass of `bbsengine6.session.SessionManager`)
 handles per-websocket session state, including the bottombar fragment

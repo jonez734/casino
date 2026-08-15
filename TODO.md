@@ -2410,9 +2410,10 @@ here so the work isn't lost between repos.
   reference `COALESCE(..., 0)` pattern already in use by
   the bank service.
 - `zoid6/TODO.md` "data/bed.json — bank and channel
-  modulepaths do not resolve" — related cleanup, the
-  casino `BankServiceHandler` may defer to
-  `bbsengine6.bank.api.handler` once the bank work lands.
+  modulepaths do not resolve" — bank module resolution is
+  already canonical (`bbsengine6.bank.api.handler.BankServiceHandler`,
+  registered by `bed.defaultrouter.DefaultRouter`,
+  `bed/src/bed/defaultrouter.py:14`). See `bed/SPEC.md:137`.
 
 ---
 
@@ -2420,10 +2421,13 @@ here so the work isn't lost between repos.
 
 End state: every money movement in the casino — bets, payouts,
 insurance, table-bank credits/debits — flows through
-`BankServiceHandler` and `bbsengine6.bank`. The direct
-`UPDATE engine.__member.credits` writes in `casino.dal.bet`
-(lines 54, 150, 201) become bank-mediated transfers between
-the member's account and the table's house account.
+`bbsengine6.bank.api.handler.BankServiceHandler`
+(registered by bed's default router, not by casino's
+`MessageRouter`; see `bed/SPEC.md:137`) and `bbsengine6.bank`.
+The direct `UPDATE engine.__member.credits` writes in
+`casino.dal.bet` (lines 54, 150, 201) become bank-mediated
+transfers between the member's account and the table's house
+account.
 
 ### Current design (intentional, captured for context)
 
@@ -2436,9 +2440,14 @@ The casino maintains **two independent ledgers**:
   `casino.dal.bet.settle_insurance` (line 201). One source of
   truth: the `dal.bet` module.
 - **Table bank** — `bank.__account` rows mapped to tables via
-  `casino.__bank_table`. Operated by
-  `casino.api.handler.BankServiceHandler` (line 876) and
-  `casino.services.bank.BankService`. Covers the orthogonal
+  `casino.__bank_table`. Operated at the WS-message layer by
+  `bbsengine6.bank.api.handler.BankServiceHandler`
+  (registered by `bed.defaultrouter.DefaultRouter`,
+  `bed/src/bed/defaultrouter.py:14`; see `bed/SPEC.md:137`)
+  and at the maintenance-script layer by
+  `casino.services.bank.BankService`. Casino's `MessageRouter`
+  does not register a bank service — bank message types are
+  loaded by bed, not casino. Covers the orthogonal
   table-bank-management workflow: operator view of the table's
   chip pool, transfers between tables, history audit.
 
@@ -2455,11 +2464,15 @@ independent:
 - Wins and losses are recorded in `casino.__betlog` regardless
   of which ledger the money moves through.
 
-`BankServiceHandler` covers `bank_balance`, `bank_add`,
-`bank_remove`, `bank_transfer_request`, `bank_transfer_approve`,
+`bbsengine6.bank.api.handler.BankServiceHandler`
+(`bbsengine6/py/src/bbsengine6/bank/api/handler.py:83`) covers
+`bank_balance`, `bank_add`, `bank_remove`,
+`bank_transfer_request`, `bank_transfer_approve`,
 `bank_transfer_reject`, `bank_pending`, `bank_history`,
 `bank_list_all`, and `stats` — i.e. everything that touches the
-table bank rather than the player's chip stack.
+table bank rather than the player's chip stack. It is loaded
+into the WS server by bed's default router, not by casino's
+`MessageRouter` (see `bed/SPEC.md:137`).
 
 ### Why the rework
 
@@ -2558,8 +2571,10 @@ table bank rather than the player's chip stack.
   separate ledger and is unaffected by this rework.
 - `casino/dal/bet.py:54,150,201` — the three direct-SQL
   writes this rework will replace.
-- `casino/api/handler.py:876` — `BankServiceHandler` that
-  the rework will route through.
+- `bbsengine6/py/src/bbsengine6/bank/api/handler.py:83` —
+  `BankServiceHandler` that the rework will route through.
+  Registered by `bed/src/bed/defaultrouter.py:14`; not a
+  casino-owned class. See `bed/SPEC.md:137`.
 
 ---
 

@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### casino: clarify "decouple bank" CHANGELOG entry
+
+The "decouple bank, member, channel, postoffice services from casino"
+entry below claims "Casino's router just registers the already-imported
+classes" for bank. That description did not match the actual state of
+`casino.api.handler.MessageRouter.register_all`
+(`casino/src/casino/api/handler.py:1270`): the casino router registers
+table, game, bet, chat, slot, yahtzee, and tictactoe services only —
+**not** bank. Bank message types are loaded by
+`bed.defaultrouter.DefaultRouter.register_all`
+(`bed/src/bed/defaultrouter.py:14`), which imports `BankServiceHandler`
+from `bbsengine6.bank.api.handler`. The "already-imported classes"
+claim applies to bed's router, not casino's. See `bed/SPEC.md:137`.
+
 ### lint: ruff cleanup across the tree
 
 Drop unused imports, combine nested `with` statements, convert `%`
