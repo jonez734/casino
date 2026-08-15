@@ -352,6 +352,7 @@ def _get_session_state(
         ws_id = str(websocket.id)
     except Exception:
         return None
+    py_id = id(websocket)
 
     state = None
     # BED's SessionRegistry has ``get_by_websocket``.
@@ -365,18 +366,28 @@ def _get_session_state(
         return _CasinoSessionState.from_state(state)
 
     # Casino's CasinoSessionManager stores under ``id(websocket)`` (int).
-    # Look up by int key (legacy / standalone path).
+    # ``websocket.id`` is a UUID-style string assigned by the underlying
+    # websockets library, which never matches the Python object id the
+    # auth handler used for registration. Look up by both keys (Python
+    # id first since that is what ``AuthService._handle_auth`` writes).
     get_session = getattr(sessions, "get_session", None)
     if callable(get_session):
-        try:
-            state = get_session(ws_id)
-        except Exception:
-            state = None
-        if state is None:
+        for key in (py_id, ws_id):
+            if key is None:
+                continue
             try:
-                state = get_session(int(ws_id))
+                state = get_session(key)
             except Exception:
                 state = None
+            if state is not None:
+                break
+            if isinstance(key, str):
+                try:
+                    state = get_session(int(key))
+                except Exception:
+                    state = None
+                if state is not None:
+                    break
     if state is not None:
         # CasinoSessionManager's record is a dict -- wrap it.
         if isinstance(state, dict):

@@ -72,6 +72,22 @@ dropped `bbsengine6.casino` stub, kept here in-tree so the
 `casino` package stays self-contained and the per-op authorization
 gate still runs against the same rule set.
 
+### casino: fix `websocket.id` lookup key in session resolve
+
+A pre-existing latent bug in
+`casino.api._auth._get_session_state` and
+`casino.api.handler.TableServiceHandler._legacy_session_id` was
+uncovered when the blackjack flow tests first connected through
+`WebSocketServer`. The legacy `websockets` library assigns
+`websocket.id` to a `uuid.UUID` whose `int()` coercion yields a
+128-bit value that is unrelated to the Python object id
+`AuthService` used for session registration, so the 5-gate auth
+pipeline was looking up a key that did not match the one written.
+
+Both lookups have been corrected to try `id(websocket)` first
+(matching the writer) and fall back to `str(websocket.id)` /
+`int(websocket.id)` for the BED `SessionRegistry` path.
+
 ### casino: merge `casino-client` into `casino`; bed is the default backend
 
 The `casino-client` shell shim and console-script entry point are

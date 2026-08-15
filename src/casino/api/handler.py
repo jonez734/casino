@@ -278,11 +278,21 @@ class TableServiceHandler(BaseService):
         existing spectator / table-moniker bookkeeping continues to
         work. BED-mode (SessionRegistry) ignores this -- it indexes
         by ``str(websocket.id)``.
+
+        Note: ``websocket.id`` on the legacy ``websockets`` library is a
+        ``uuid.UUID`` whose ``int()`` coercion yields a 128-bit value
+        that is unrelated to the Python object id ``AuthService``
+        registered the session under. We deliberately return
+        ``id(websocket)`` first so the standalone path stays
+        self-consistent; the fallback to ``int(websocket.id)`` only
+        fires if the websocket is some odd proxy whose id is already
+        an int (e.g. a test double).
         """
-        try:
-            return int(websocket.id)
-        except Exception:
-            return id(websocket)
+        py_id = id(websocket)
+        ws_id = getattr(websocket, "id", None)
+        if isinstance(ws_id, int) and not isinstance(ws_id, bool):
+            return ws_id
+        return py_id
 
     async def _handle_list_tables(
         self, websocket: Any, message: dict[str, Any]
