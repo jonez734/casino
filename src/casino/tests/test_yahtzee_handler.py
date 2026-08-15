@@ -4,11 +4,17 @@
 
 import asyncio
 import random
+import sys
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
+
+sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, "/home/opencode/data/work/bbsengine6/py/src")
 
 from casino.yahtzee.api_handler import YahtzeeServiceHandler
 from casino.yahtzee.dealer import YahtzeeDealer
 from casino.yahtzee.service import YahtzeeService
+from casino.tests._session_mock import make_sessions_mock
 
 
 def _make_args():
@@ -36,7 +42,7 @@ def _make_service():
 
 
 def _make_handler():
-    sessions = MagicMock()
+    sessions = make_sessions_mock(moniker="alice")
     service = _make_service()
     handler = YahtzeeServiceHandler(_make_args(), sessions, service=service)
     return handler, sessions, service
@@ -105,7 +111,11 @@ class TestDispatch:
             MagicMock(), MagicMock(), "/", {"type": "yahtzee_roll"},
         ))
         assert result["type"] == "error"
-        assert result["code"] == "not_at_table"
+        # After the bank-style ``bbsengine6.casino.access()``
+        # migration the seat-at check lives in the policy, so an
+        # authenticated session that is not seated at the target
+        # table is denied as ``forbidden`` (the bank equivalent).
+        assert result["code"] == "forbidden"
 
     def test_score_after_quick_play(self):
         handler, sessions, service = _make_handler()

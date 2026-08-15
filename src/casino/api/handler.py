@@ -16,13 +16,32 @@ from bbsengine6.net import (
 )
 from bbsengine6.session import SessionManager
 
+from casino.api._auth import (
+    TYPE_TO_OP,
+    check_access as _check_access_pipeline,
+)
 from casino.dal.aiosql import table as async_dal_table
 from casino.tictactoe.api_handler import TictactoeServiceHandler
 from casino.yahtzee.api_handler import YahtzeeServiceHandler
 
 
 class CasinoSessionManager(SessionManager):
-    """Extends base SessionManager with table/spectator tracking."""
+    """Extends base SessionManager with table/spectator tracking.
+
+    Two parallel sources of truth live on each session record:
+      - ``table_moniker`` -- the table the player is seated at
+        (a player sits at exactly one table, or none).
+      - ``spectator_of`` -- the set of tables the session is watching
+        without being seated (a session can spectate multiple tables
+        concurrently).
+
+    The ``_spectators`` dict is a reverse index keyed by ``table_moniker``
+    that maps to the set of session ids currently spectating it. It is
+    rebuilt from each session's ``spectator_of`` set on add / remove so
+    ``get_table_observers`` is O(1). ``get_table_player_count`` does a
+    full scan because there is no player-count index (the result is only
+    used for log lines, not for routing).
+    """
 
     def __init__(self):
         super().__init__()
@@ -31,12 +50,12 @@ class CasinoSessionManager(SessionManager):
     def register_session(self, session_id: int, moniker: str, is_sysop: bool = False) -> None:
         super().register_session(session_id, moniker, is_sysop)
         self._sessions[session_id]["table_moniker"] = None
+        self._sessions[session_id]["spectator_of"] = set()
 
     def unregister_session(self, session_id: int) -> None:
         if session_id in self._sessions:
-            table_moniker = self._sessions[session_id].get("table_moniker")
-            if table_moniker and table_moniker in self._spectators:
-                self._spectators[table_moniker].discard(session_id)
+            for table in list(self._sessions[session_id].get("spectator_of", set())):
+                self._purge_spectator(table, session_id)
         super().unregister_session(session_id)
 
     def get_table_moniker(self, session_id: int) -> Optional[str]:
@@ -51,13 +70,14 @@ class CasinoSessionManager(SessionManager):
             io.echo(f"set_table_moniker: session {session_id} not found in sessions", level="warning")
 
     def add_spectator(self, table_moniker: str, session_id: int) -> None:
-        if table_moniker not in self._spectators:
-            self._spectators[table_moniker] = set()
-        self._spectators[table_moniker].add(session_id)
+        if session_id in self._sessions:
+            self._sessions[session_id].setdefault("spectator_of", set()).add(table_moniker)
+        self._spectators.setdefault(table_moniker, set()).add(session_id)
 
     def remove_spectator(self, table_moniker: str, session_id: int) -> None:
-        if table_moniker in self._spectators:
-            self._spectators[table_moniker].discard(session_id)
+        if session_id in self._sessions:
+            self._sessions[session_id].get("spectator_of", set()).discard(table_moniker)
+        self._purge_spectator(table_moniker, session_id)
 
     def get_table_observers(self, table_moniker: str) -> set:
         return self._spectators.get(table_moniker, set())
@@ -65,13 +85,61 @@ class CasinoSessionManager(SessionManager):
     def get_table_player_count(self, table_moniker: str) -> int:
         return sum(1 for s in self._sessions.values() if s.get("table_moniker") == table_moniker)
 
+    def _purge_spectator(self, table_moniker: str, session_id: int) -> None:
+        observers = self._spectators.get(table_moniker)
+        if observers is not None:
+            observers.discard(session_id)
+            if not observers:
+                self._spectators.pop(table_moniker, None)
+
 
 class BaseService:
-    """Base class for message handlers."""
+    """Base class for message handlers.
 
-    def __init__(self, args: Any, session_manager: SessionManager):
+    Each handler carries optional token wiring (``secret`` /
+    ``token_store`` / ``instance_id``) so the per-op ``_check_access``
+    pipeline can re-verify a bearer token on every call. When the
+    wiring is absent the token gates become no-ops and authorization
+    falls back to the session attributes (legacy / standalone path).
+    """
+
+    def __init__(
+        self,
+        args: Any,
+        session_manager: Any,
+        *,
+        secret: Optional[bytes] = None,
+        token_store: Any = None,
+        instance_id: Optional[str] = None,
+        clock: Any = None,
+    ) -> None:
         self.args = args
         self.sessions = session_manager
+        self.secret = bytes(secret) if secret else None
+        self.token_store = token_store
+        self.instance_id = str(instance_id) if instance_id else None
+        self._clock = clock
+
+    def _now(self) -> float:
+        """Return the current UNIX timestamp, honoring ``clock`` if set."""
+        if self._clock is not None:
+            return float(self._clock())
+        import time as _time
+
+        return _time.time()
+
+    def _check_access(
+        self, websocket: Any, op: str, message: dict[str, Any]
+    ) -> tuple[Optional[Any], Optional[dict[str, Any]]]:
+        """Run the five access gates for ``op``.
+
+        Returns ``(state, None)`` on allow or ``(state_or_None,
+        error_envelope)`` on deny. See ``casino.api._auth.check_access``
+        for the gate list. Handlers call this as the first step of
+        every per-op ``_handle_*`` method and return the envelope on
+        deny.
+        """
+        return _check_access_pipeline(self, websocket, op, message)
 
     async def handle_message(
         self, server: Any, websocket: Any, path: str, message: dict[str, Any]
@@ -157,8 +225,25 @@ class TableServiceHandler(BaseService):
 
     from casino.services.table import TableService
 
-    def __init__(self, args: Any, session_manager: SessionManager, channel_state: Optional[ChannelState] = None):
-        super().__init__(args, session_manager)
+    def __init__(
+        self,
+        args: Any,
+        session_manager: Any,
+        channel_state: Optional[ChannelState] = None,
+        *,
+        secret: Optional[bytes] = None,
+        token_store: Any = None,
+        instance_id: Optional[str] = None,
+        clock: Any = None,
+    ) -> None:
+        super().__init__(
+            args,
+            session_manager,
+            secret=secret,
+            token_store=token_store,
+            instance_id=instance_id,
+            clock=clock,
+        )
         self.table_service = self.TableService(args)
         self.channel_state = channel_state
 
@@ -168,34 +253,54 @@ class TableServiceHandler(BaseService):
         msg_type = message.get("type")
 
         if msg_type == "list_tables":
-            return await self._handle_list_tables(id(websocket), message)
+            return await self._handle_list_tables(websocket, message)
         elif msg_type == "create_table":
-            return await self._handle_create_table(id(websocket), message)
+            return await self._handle_create_table(websocket, message)
         elif msg_type == "join_table":
-            return await self._handle_join_table(id(websocket), message)
+            return await self._handle_join_table(websocket, message)
         elif msg_type == "leave_table":
-            return await self._handle_leave_table(id(websocket), message)
+            return await self._handle_leave_table(websocket, message)
         elif msg_type == "watch_table":
-            return await self._handle_watch_table(id(websocket), message)
+            return await self._handle_watch_table(websocket, message)
         elif msg_type == "stop_watching":
-            return await self._handle_stop_watching(id(websocket), message)
+            return await self._handle_stop_watching(websocket, message)
         elif msg_type == "update_table":
-            return await self._handle_update_table(id(websocket), message)
+            return await self._handle_update_table(websocket, message)
         elif msg_type == "kick_player":
-            return await self._handle_kick_player(id(websocket), message)
+            return await self._handle_kick_player(websocket, message)
 
         return None
 
-    async def _handle_list_tables(self, session_id: int, message: dict[str, Any]) -> dict[str, Any]:
+    def _legacy_session_id(self, websocket: Any) -> int:
+        """Return the int key CasinoSessionManager uses for ``websocket``.
+
+        Standalone / door-mode path keeps ``id(websocket)`` so the
+        existing spectator / table-moniker bookkeeping continues to
+        work. BED-mode (SessionRegistry) ignores this -- it indexes
+        by ``str(websocket.id)``.
+        """
+        try:
+            return int(websocket.id)
+        except Exception:
+            return id(websocket)
+
+    async def _handle_list_tables(
+        self, websocket: Any, message: dict[str, Any]
+    ) -> dict[str, Any]:
+        state, err = self._check_access(websocket, "list_tables", message)
+        if err is not None:
+            return err
         game_type = message.get("game_type")
-        is_sysop = self.sessions.get_is_sysop(session_id)
+        is_sysop = bool(getattr(state, "is_sysop", False))
         tables = self.table_service.list_tables(game_type, is_sysop=is_sysop)
         return {"type": "table_list", "tables": tables}
 
-    async def _handle_create_table(self, session_id: int, message: dict[str, Any]) -> dict[str, Any]:
-        session_moniker = self.sessions.get_moniker(session_id)
-        if not session_moniker:
-            return {"type": "error", "code": "not_authenticated"}
+    async def _handle_create_table(
+        self, websocket: Any, message: dict[str, Any]
+    ) -> dict[str, Any]:
+        state, err = self._check_access(websocket, "create_table", message)
+        if err is not None:
+            return err
 
         game_type = message.get("game_type", "blackjack")
         min_bet = message.get("min_bet", 10)
@@ -204,7 +309,7 @@ class TableServiceHandler(BaseService):
         hidden = bool(message.get("hidden", False))
 
         result = self.table_service.create_table(
-            game_type, session_moniker, min_bet, max_bet, table_moniker, hidden=hidden
+            game_type, state.moniker, min_bet, max_bet, table_moniker, hidden=hidden
         )
 
         if result["success"]:
@@ -218,16 +323,36 @@ class TableServiceHandler(BaseService):
         else:
             return {"type": "error", "code": "create_failed", "message": result["message"]}
 
-    async def _handle_update_table(self, session_id: int, message: dict[str, Any]) -> dict[str, Any]:
-        session_moniker = self.sessions.get_moniker(session_id)
-        if not session_moniker:
-            return {"type": "error", "code": "not_authenticated"}
-
-        is_sysop = self.sessions.get_is_sysop(session_id)
+    async def _handle_update_table(
+        self, websocket: Any, message: dict[str, Any]
+    ) -> dict[str, Any]:
+        state, err = self._check_access(websocket, "update_table", message)
+        if err is not None:
+            return err
 
         table_moniker = message.get("moniker")
         if not table_moniker:
             return {"type": "error", "code": "invalid_request", "message": "moniker required"}
+
+        # Resolve the table owner from the DB so ``bbsengine6.casino.access``
+        # can compare it against the session moniker for non-sysop ops.
+        try:
+            owner_table = self.table_service.list_tables(None, is_sysop=True)
+            owner = ""
+            for t in owner_table or []:
+                if t.get("moniker") == table_moniker or t.get("id") == table_moniker:
+                    owner = t.get("owner") or t.get("ownermoniker") or ""
+                    break
+        except Exception:
+            owner = ""
+        message["owner"] = owner
+        message["table_moniker"] = table_moniker
+
+        # Re-run the policy gate now that ``owner`` is populated.
+        from bbsengine6.casino import access as _casino_access
+
+        if not _casino_access(self.args, "update_table", session=state, message=message):
+            return {"type": "error", "code": "forbidden", "message": "Operation not permitted for this session"}
 
         updates = {}
         if "new_moniker" in message:
@@ -244,7 +369,9 @@ class TableServiceHandler(BaseService):
         if not updates:
             return {"type": "error", "code": "invalid_request", "message": "No fields to update"}
 
-        result = self.table_service.update_table(table_moniker, session_moniker, is_sysop=is_sysop, **updates)
+        result = self.table_service.update_table(
+            table_moniker, state.moniker, is_sysop=bool(state.is_sysop), **updates
+        )
 
         if result["success"]:
             return {
@@ -256,17 +383,16 @@ class TableServiceHandler(BaseService):
         else:
             return {"type": "error", "code": "update_failed", "message": result["message"]}
 
-    async def _handle_join_table(self, session_id: int, message: dict[str, Any]) -> dict[str, Any]:
-        session_moniker = self.sessions.get_moniker(session_id)
-        if not session_moniker:
-            return {"type": "error", "code": "not_authenticated"}
+    async def _handle_join_table(
+        self, websocket: Any, message: dict[str, Any]
+    ) -> dict[str, Any]:
+        state, err = self._check_access(websocket, "join_table", message)
+        if err is not None:
+            return err
 
         table_moniker = message.get("moniker")
-
         if not table_moniker:
             return {"type": "error", "code": "invalid_request", "message": "moniker required"}
-
-        is_sysop = self.sessions.get_is_sysop(session_id)
 
         # Slots v1 single-seater invariant: a slots table holds at most
         # one seated player. Spectators can watch via `watch_table` but
@@ -297,16 +423,20 @@ class TableServiceHandler(BaseService):
 
         result = self.table_service.join_table(
             moniker=table_moniker,
-            player_moniker=session_moniker,
-            is_sysop=is_sysop,
+            player_moniker=state.moniker,
+            is_sysop=bool(state.is_sysop),
         )
 
         if result["success"]:
-            self.sessions.set_table_moniker(session_id, table_moniker)
+            self._set_seated(websocket, table_moniker)
 
             # Auto-subscribe to table channel for real-time updates
             if self.channel_state:
-                channel_subscribe(self.channel_state, session_id, f"casino:table:{table_moniker}")
+                channel_subscribe(
+                    self.channel_state,
+                    self._legacy_session_id(websocket),
+                    f"casino:table:{table_moniker}",
+                )
 
             return {
                 "type": "joined_table",
@@ -316,23 +446,28 @@ class TableServiceHandler(BaseService):
         else:
             return {"type": "error", "code": "join_failed", "message": result["message"]}
 
-    async def _handle_leave_table(self, session_id: int, message: dict[str, Any]) -> dict[str, Any]:
-        session_moniker = self.sessions.get_moniker(session_id)
-        if not session_moniker:
-            return {"type": "error", "code": "not_authenticated"}
+    async def _handle_leave_table(
+        self, websocket: Any, message: dict[str, Any]
+    ) -> dict[str, Any]:
+        state, err = self._check_access(websocket, "leave_table", message)
+        if err is not None:
+            return err
 
-        table_moniker = message.get("moniker") or self.sessions.get_table_moniker(session_id)
-
+        table_moniker = message.get("moniker") or self._get_seated(websocket)
         if not table_moniker:
             return {"type": "error", "code": "not_at_table"}
 
-        result = self.table_service.leave_table(table_moniker, session_moniker)
+        result = self.table_service.leave_table(table_moniker, state.moniker)
 
         if result["success"]:
-            self.sessions.set_table_moniker(session_id, None)
+            self._set_seated(websocket, None)
             # Unsubscribe from table channel
             if self.channel_state:
-                channel_unsubscribe(self.channel_state, session_id, f"casino:table:{table_moniker}")
+                channel_unsubscribe(
+                    self.channel_state,
+                    self._legacy_session_id(websocket),
+                    f"casino:table:{table_moniker}",
+                )
 
         return {
             "type": "left_table",
@@ -340,15 +475,15 @@ class TableServiceHandler(BaseService):
             "message": result["message"],
         }
 
-    async def _handle_kick_player(self, session_id: int, message: dict[str, Any]) -> dict[str, Any]:
-        session_moniker = self.sessions.get_moniker(session_id)
-        if not session_moniker:
-            return {"type": "error", "code": "not_authenticated"}
-
-        is_sysop = self.sessions.get_is_sysop(session_id)
+    async def _handle_kick_player(
+        self, websocket: Any, message: dict[str, Any]
+    ) -> dict[str, Any]:
+        state, err = self._check_access(websocket, "kick_player", message)
+        if err is not None:
+            return err
 
         table_monikers = message.get("table_monikers", [])
-        player_moniker = message.get("player_moniker", "").strip()
+        player_moniker = (message.get("player_moniker") or "").strip()
 
         if not player_moniker:
             return {"type": "error", "code": "invalid_request", "message": "player_moniker required"}
@@ -368,7 +503,13 @@ class TableServiceHandler(BaseService):
                 errors.append(f"Table not found: {table_moniker}")
                 continue
 
-            if not is_sysop and table.get("ownermoniker") != session_moniker:
+            message["table_moniker"] = table_moniker
+            message["owner"] = table.get("ownermoniker") or ""
+            from bbsengine6.casino import access as _casino_access
+
+            if not _casino_access(
+                self.args, "kick_player", session=state, message=message
+            ):
                 errors.append(f"Permission denied for table: {table_moniker}")
                 continue
 
@@ -380,8 +521,8 @@ class TableServiceHandler(BaseService):
                         notification_type="casino_kick",
                         recipients=[player_moniker],
                         template="You have been kicked from table {table_moniker} by {admin_moniker}",
-                        template_vars={"table_moniker": table_moniker, "admin_moniker": session_moniker},
-                        sender_moniker=session_moniker,
+                        template_vars={"table_moniker": table_moniker, "admin_moniker": state.moniker},
+                        sender_moniker=state.moniker,
                         urgency=NotificationUrgency.IMPORTANT,
                         args=self.args,
                     )
@@ -404,9 +545,14 @@ class TableServiceHandler(BaseService):
                 "message": "; ".join(errors) if errors else "Player not found at any specified table",
             }
 
-    async def _handle_watch_table(self, session_id: int, message: dict[str, Any]) -> dict[str, Any]:
-        table_moniker = message.get("moniker")
+    async def _handle_watch_table(
+        self, websocket: Any, message: dict[str, Any]
+    ) -> dict[str, Any]:
+        state, err = self._check_access(websocket, "watch_table", message)
+        if err is not None:
+            return err
 
+        table_moniker = message.get("moniker")
         if not table_moniker:
             return {"type": "error", "code": "invalid_request", "message": "moniker required"}
 
@@ -419,11 +565,15 @@ class TableServiceHandler(BaseService):
         if not table:
             return {"type": "error", "code": "invalid_request", "message": "Table not found"}
 
-        self.sessions.add_spectator(table_moniker, session_id)
+        self._add_spectator(websocket, table_moniker)
 
         # Auto-subscribe to table channel for real-time updates
         if self.channel_state:
-            channel_subscribe(self.channel_state, session_id, f"casino:table:{table_moniker}")
+            channel_subscribe(
+                self.channel_state,
+                self._legacy_session_id(websocket),
+                f"casino:table:{table_moniker}",
+            )
 
         return {
             "type": "watching_table",
@@ -431,15 +581,106 @@ class TableServiceHandler(BaseService):
             "message": f"Now watching table {table_moniker}",
         }
 
-    async def _handle_stop_watching(self, session_id: int, message: dict[str, Any]) -> dict[str, Any]:
+    async def _handle_stop_watching(
+        self, websocket: Any, message: dict[str, Any]
+    ) -> dict[str, Any]:
+        state, err = self._check_access(websocket, "stop_watching", message)
+        if err is not None:
+            return err
+
         table_moniker = message.get("moniker")
         if table_moniker:
-            self.sessions.remove_spectator(table_moniker, session_id)
-            # Unsubscribe from table channel
+            self._remove_spectator(websocket, table_moniker)
             if self.channel_state:
-                channel_unsubscribe(self.channel_state, session_id, f"casino:table:{table_moniker}")
+                channel_unsubscribe(
+                    self.channel_state,
+                    self._legacy_session_id(websocket),
+                    f"casino:table:{table_moniker}",
+                )
 
         return {"type": "stopped_watching", "message": "Stopped watching"}
+
+    def _set_seated(self, websocket: Any, table_moniker: Optional[str]) -> None:
+        """Mirror ``join_table`` / ``leave_table`` into both session stores."""
+        try:
+            ws_id = str(websocket.id)
+        except Exception:
+            ws_id = ""
+        sessions = self.sessions
+        # BED's SessionRegistry (duck-typed).
+        set_tm = getattr(sessions, "set_table_moniker", None)
+        if callable(set_tm):
+            try:
+                state = getattr(sessions, "get_by_websocket", lambda _: None)(ws_id)
+                if state is not None:
+                    set_tm(state.session_id, table_moniker)
+                    return
+            except Exception:
+                pass
+        # CasinoSessionManager (legacy / standalone).
+        try:
+            sessions.set_table_moniker(self._legacy_session_id(websocket), table_moniker)
+        except Exception as e:
+            io.echo(f"_set_seated: {e}", level="warning")
+
+    def _get_seated(self, websocket: Any) -> Optional[str]:
+        try:
+            ws_id = str(websocket.id)
+        except Exception:
+            ws_id = ""
+        sessions = self.sessions
+        get_by_websocket = getattr(sessions, "get_by_websocket", None)
+        if callable(get_by_websocket):
+            try:
+                state = get_by_websocket(ws_id)
+                if state is not None:
+                    return state.table_moniker
+            except Exception:
+                pass
+        try:
+            return sessions.get_table_moniker(self._legacy_session_id(websocket))
+        except Exception:
+            return None
+
+    def _add_spectator(self, websocket: Any, table_moniker: str) -> None:
+        try:
+            ws_id = str(websocket.id)
+        except Exception:
+            ws_id = ""
+        sessions = self.sessions
+        add_sp = getattr(sessions, "add_spectator", None)
+        if callable(add_sp):
+            try:
+                state = getattr(sessions, "get_by_websocket", lambda _: None)(ws_id)
+                if state is not None:
+                    add_sp(state.session_id, table_moniker)
+                    return
+            except Exception:
+                pass
+        try:
+            sessions.add_spectator(table_moniker, self._legacy_session_id(websocket))
+        except Exception as e:
+            io.echo(f"_add_spectator: {e}", level="warning")
+
+    def _remove_spectator(self, websocket: Any, table_moniker: str) -> None:
+        try:
+            ws_id = str(websocket.id)
+        except Exception:
+            ws_id = ""
+        sessions = self.sessions
+        rm_sp = getattr(sessions, "remove_spectator", None)
+        if callable(rm_sp):
+            try:
+                state = getattr(sessions, "get_by_websocket", lambda _: None)(ws_id)
+                if state is not None:
+                    rm_sp(state.session_id, table_moniker)
+                    return
+            except Exception:
+                pass
+        try:
+            sessions.remove_spectator(table_moniker, self._legacy_session_id(websocket))
+        except Exception as e:
+            io.echo(f"_remove_spectator: {e}", level="warning")
 
 
 class GameServiceHandler(BaseService):
@@ -447,8 +688,24 @@ class GameServiceHandler(BaseService):
 
     from casino.services.game import GameService
 
-    def __init__(self, args: Any, session_manager: SessionManager):
-        super().__init__(args, session_manager)
+    def __init__(
+        self,
+        args: Any,
+        session_manager: Any,
+        *,
+        secret: Optional[bytes] = None,
+        token_store: Any = None,
+        instance_id: Optional[str] = None,
+        clock: Any = None,
+    ) -> None:
+        super().__init__(
+            args,
+            session_manager,
+            secret=secret,
+            token_store=token_store,
+            instance_id=instance_id,
+            clock=clock,
+        )
         self.game_service = self.GameService(args)
 
     async def handle_message(
@@ -457,27 +714,44 @@ class GameServiceHandler(BaseService):
         msg_type = message.get("type")
 
         if msg_type in ("hit", "stand", "double", "split", "surrender"):
-            return await self._handle_game_action(id(websocket), msg_type, message, server)
+            return await self._handle_game_action(websocket, msg_type, message, server)
 
         return None
 
-    async def _handle_game_action(
-        self, session_id: int, action: str, message: Optional[dict[str, Any]] = None, server: Optional[Any] = None
-    ) -> Optional[dict[str, Any]]:
-        moniker = self.sessions.get_moniker(session_id)
-        if not moniker:
-            return {"type": "error", "code": "not_authenticated"}
+    def _legacy_session_id(self, websocket: Any) -> int:
+        try:
+            return int(websocket.id)
+        except Exception:
+            return id(websocket)
 
-        table_moniker = self.sessions.get_table_moniker(session_id)
+    async def _handle_game_action(
+        self,
+        websocket: Any,
+        action: str,
+        message: Optional[dict[str, Any]] = None,
+        server: Optional[Any] = None,
+    ) -> Optional[dict[str, Any]]:
+        if action == "bet":
+            return {
+                "type": "error",
+                "code": "invalid_request",
+                "message": "Use bet message with amount",
+            }
+
+        state, err = self._check_access(websocket, action, message or {})
+        if err is not None:
+            return err
+
+        moniker = state.moniker
+        session_id = self._legacy_session_id(websocket)
+        # Reuse the seated-table lookup from TableServiceHandler via duck typing.
+        table_moniker = getattr(state, "table_moniker", None)
         io.echo(
             f"_handle_game_action: action={action}, session_id={session_id}, table_moniker={table_moniker}",
             level="info",
         )
         if not table_moniker:
             return {"type": "error", "code": "not_at_table"}
-
-        if action == "bet":
-            return {"type": "error", "code": "invalid_request", "message": "Use bet message with amount"}
 
         result = None
         if action == "hit":
@@ -508,8 +782,8 @@ class GameServiceHandler(BaseService):
         if server and table_moniker:
             broadcast_state = self.game_service.get_game_state(table_moniker, "")
             broadcast_state["type"] = "game_state"
-            observer_count = len(self.sessions.get_table_observers(table_moniker))
-            player_count = self.sessions.get_table_player_count(table_moniker)
+            observer_count = len(self._get_observers(table_moniker))
+            player_count = self._get_player_count(table_moniker)
             io.echo(
                 f"broadcast game_state: channel=casino:table:{table_moniker} "
                 f"phase={broadcast_state.get('phase', '?')} "
@@ -520,14 +794,50 @@ class GameServiceHandler(BaseService):
 
         return game_state
 
+    def _get_observers(self, table_moniker: str) -> set:
+        sessions = self.sessions
+        getter = getattr(sessions, "get_table_observers", None)
+        if callable(getter):
+            try:
+                return getter(table_moniker)
+            except Exception:
+                return set()
+        return set()
+
+    def _get_player_count(self, table_moniker: str) -> int:
+        sessions = self.sessions
+        getter = getattr(sessions, "get_table_player_count", None)
+        if callable(getter):
+            try:
+                return int(getter(table_moniker))
+            except Exception:
+                return 0
+        return 0
+
 
 class BetServiceHandler(BaseService):
     """Handle bet messages."""
 
     from casino.services.game import GameService
 
-    def __init__(self, args: Any, session_manager: SessionManager):
-        super().__init__(args, session_manager)
+    def __init__(
+        self,
+        args: Any,
+        session_manager: Any,
+        *,
+        secret: Optional[bytes] = None,
+        token_store: Any = None,
+        instance_id: Optional[str] = None,
+        clock: Any = None,
+    ) -> None:
+        super().__init__(
+            args,
+            session_manager,
+            secret=secret,
+            token_store=token_store,
+            instance_id=instance_id,
+            clock=clock,
+        )
         self.game_service = self.GameService(args)
 
     async def handle_message(
@@ -536,19 +846,33 @@ class BetServiceHandler(BaseService):
         msg_type = message.get("type")
 
         if msg_type == "bet":
-            return await self._handle_bet(id(websocket), message, server)
+            return await self._handle_bet(websocket, message, server)
 
         return None
 
-    async def _handle_bet(
-        self, session_id: int, message: dict[str, Any], server: Optional[Any] = None
-    ) -> Optional[dict[str, Any]]:
-        moniker = self.sessions.get_moniker(session_id)
-        if not moniker:
-            return {"type": "error", "code": "not_authenticated"}
+    def _legacy_session_id(self, websocket: Any) -> int:
+        try:
+            return int(websocket.id)
+        except Exception:
+            return id(websocket)
 
-        table_moniker = self.sessions.get_table_moniker(session_id)
-        io.echo(f"_handle_bet: session_id={session_id}, moniker={moniker}, table_moniker={table_moniker}", level="info")
+    async def _handle_bet(
+        self,
+        websocket: Any,
+        message: dict[str, Any],
+        server: Optional[Any] = None,
+    ) -> Optional[dict[str, Any]]:
+        state, err = self._check_access(websocket, "bet", message)
+        if err is not None:
+            return err
+
+        moniker = state.moniker
+        session_id = self._legacy_session_id(websocket)
+        table_moniker = getattr(state, "table_moniker", None) or message.get("table_moniker")
+        io.echo(
+            f"_handle_bet: session_id={session_id}, moniker={moniker}, table_moniker={table_moniker}",
+            level="info",
+        )
         if not table_moniker:
             return {"type": "error", "code": "not_at_table"}
 
@@ -560,7 +884,11 @@ class BetServiceHandler(BaseService):
                 f"amount={amount!r} (type={type(amount).__name__})",
                 level="warning",
             )
-            return {"type": "error", "code": "invalid_bet", "message": "Bet amount must be a positive integer"}
+            return {
+                "type": "error",
+                "code": "invalid_bet",
+                "message": "Bet amount must be a positive integer",
+            }
 
         io.echo(f"_handle_bet: {moniker} betting {amount} at {table_moniker}", level="info")
 
@@ -575,8 +903,8 @@ class BetServiceHandler(BaseService):
             if server and table_moniker:
                 broadcast_state = self.game_service.get_game_state(table_moniker, "")
                 broadcast_state["type"] = "game_state"
-                observer_count = len(self.sessions.get_table_observers(table_moniker))
-                player_count = self.sessions.get_table_player_count(table_moniker)
+                observer_count = len(self._get_observers(table_moniker))
+                player_count = self._get_player_count(table_moniker)
                 io.echo(
                     f"broadcast game_state: channel=casino:table:{table_moniker} "
                     f"phase={broadcast_state.get('phase', '?')} "
@@ -591,9 +919,48 @@ class BetServiceHandler(BaseService):
             io.echo(f"_handle_bet: FAILED: {moniker} bet {amount} at {table_moniker}: {error_msg}", level="warning")
             return {"type": "error", "code": "bet_failed", "message": error_msg}
 
+    def _get_observers(self, table_moniker: str) -> set:
+        sessions = self.sessions
+        getter = getattr(sessions, "get_table_observers", None)
+        if callable(getter):
+            try:
+                return getter(table_moniker)
+            except Exception:
+                return set()
+        return set()
+
+    def _get_player_count(self, table_moniker: str) -> int:
+        sessions = self.sessions
+        getter = getattr(sessions, "get_table_player_count", None)
+        if callable(getter):
+            try:
+                return int(getter(table_moniker))
+            except Exception:
+                return 0
+        return 0
+
 
 class ChatServiceHandler(BaseService):
     """Handle chat messages."""
+
+    def __init__(
+        self,
+        args: Any,
+        session_manager: Any,
+        *,
+        secret: Optional[bytes] = None,
+        token_store: Any = None,
+        instance_id: Optional[str] = None,
+        clock: Any = None,
+    ) -> None:
+        super().__init__(
+            args,
+            session_manager,
+            secret=secret,
+            token_store=token_store,
+            instance_id=instance_id,
+            clock=clock,
+        )
 
     async def handle_message(
         self, server: Any, websocket: Any, path: str, message: dict[str, Any]
@@ -601,19 +968,26 @@ class ChatServiceHandler(BaseService):
         msg_type = message.get("type")
 
         if msg_type in ("chat_table", "chat_global", "emote"):
-            return await self._handle_chat(id(websocket), msg_type, message)
+            return await self._handle_chat(websocket, msg_type, message)
 
         return None
 
-    async def _handle_chat(self, session_id: int, msg_type: str, message: dict[str, Any]) -> Optional[dict[str, Any]]:
-        moniker = self.sessions.get_moniker(session_id)
-        if not moniker:
-            return {"type": "error", "code": "not_authenticated"}
+    async def _handle_chat(
+        self,
+        websocket: Any,
+        msg_type: str,
+        message: dict[str, Any],
+    ) -> Optional[dict[str, Any]]:
+        op = msg_type  # chat_table / chat_global / emote map directly to op
+        state, err = self._check_access(websocket, op, message)
+        if err is not None:
+            return err
 
+        moniker = state.moniker
         chat_msg = message.get("message", "")
+        table_moniker = getattr(state, "table_moniker", None)
 
         if msg_type == "chat_table":
-            table_moniker = self.sessions.get_table_moniker(session_id)
             if not table_moniker:
                 return {"type": "error", "code": "not_at_table"}
 
@@ -636,7 +1010,6 @@ class ChatServiceHandler(BaseService):
             }
 
         elif msg_type == "emote":
-            table_moniker = self.sessions.get_table_moniker(session_id)
             return {
                 "type": "chat_message",
                 "from_moniker": moniker,
@@ -645,6 +1018,8 @@ class ChatServiceHandler(BaseService):
                 "moniker": table_moniker,
                 "timestamp": datetime.utcnow().isoformat(),
             }
+
+        return None
 
         return None
 
@@ -658,8 +1033,25 @@ class SlotServiceHandler(BaseService):
     - ``slot_history``  - client request: get the player's recent spins
     """
 
-    def __init__(self, args: Any, session_manager: SessionManager, channel_state: Optional[ChannelState] = None):
-        super().__init__(args, session_manager)
+    def __init__(
+        self,
+        args: Any,
+        session_manager: Any,
+        channel_state: Optional[ChannelState] = None,
+        *,
+        secret: Optional[bytes] = None,
+        token_store: Any = None,
+        instance_id: Optional[str] = None,
+        clock: Any = None,
+    ) -> None:
+        super().__init__(
+            args,
+            session_manager,
+            secret=secret,
+            token_store=token_store,
+            instance_id=instance_id,
+            clock=clock,
+        )
         self.channel_state = channel_state
         from casino.services.slots import (
             handle_get_history as _handle_history,
@@ -680,29 +1072,55 @@ class SlotServiceHandler(BaseService):
     ) -> Optional[dict[str, Any]]:
         msg_type = message.get("type")
         if msg_type == "slot_spin":
-            return await self._handle_spin_msg(id(websocket), message, server)
+            return await self._handle_spin_msg(websocket, message, server)
         if msg_type == "slot_paytable":
-            return await self._handle_paytable_msg(id(websocket), message)
+            return await self._handle_paytable_msg(websocket, message)
         if msg_type == "slot_history":
-            return await self._handle_history_msg(id(websocket), message)
+            return await self._handle_history_msg(websocket, message)
         return None
+
+    def _legacy_session_id(self, websocket: Any) -> int:
+        try:
+            return int(websocket.id)
+        except Exception:
+            return id(websocket)
+
+    def _get_seated(self, websocket: Any) -> Optional[str]:
+        try:
+            ws_id = str(websocket.id)
+        except Exception:
+            ws_id = ""
+        sessions = self.sessions
+        get_by_websocket = getattr(sessions, "get_by_websocket", None)
+        if callable(get_by_websocket):
+            try:
+                state = get_by_websocket(ws_id)
+                if state is not None:
+                    return state.table_moniker
+            except Exception:
+                pass
+        try:
+            return sessions.get_table_moniker(self._legacy_session_id(websocket))
+        except Exception:
+            return None
 
     async def _handle_spin_msg(
         self,
-        session_id: int,
+        websocket: Any,
         message: dict[str, Any],
         server: Optional[Any] = None,
     ) -> dict[str, Any]:
-        moniker = self.sessions.get_moniker(session_id)
-        if not moniker:
-            return {"type": "error", "code": "not_authenticated"}
+        state, err = self._check_access(websocket, "slot_spin", message)
+        if err is not None:
+            return err
 
         bet = message.get("bet", 0)
-        table_moniker = message.get("table_moniker") or self.sessions.get_table_moniker(session_id)
+        table_moniker = message.get("table_moniker") or self._get_seated(websocket)
+        message["table_moniker"] = table_moniker
         if not table_moniker:
             return {"type": "error", "code": "not_at_table"}
 
-        result = self._handle_spin(self.args, table_moniker, moniker, bet)
+        result = self._handle_spin(self.args, table_moniker, state.moniker, bet)
 
         if not result.get("success"):
             return {
@@ -717,7 +1135,7 @@ class SlotServiceHandler(BaseService):
             broadcast_msg = {
                 "type": "slot_result",
                 "table_moniker": table_moniker,
-                "player_moniker": moniker,
+                "player_moniker": state.moniker,
                 "spin": {
                     "id": spin["id"],
                     "bet": spin["bet"],
@@ -741,13 +1159,15 @@ class SlotServiceHandler(BaseService):
 
     async def _handle_paytable_msg(
         self,
-        session_id: int,
+        websocket: Any,
         message: dict[str, Any],
     ) -> dict[str, Any]:
-        moniker = self.sessions.get_moniker(session_id)
-        if not moniker:
-            return {"type": "error", "code": "not_authenticated"}
-        table_moniker = message.get("table_moniker") or self.sessions.get_table_moniker(session_id)
+        state, err = self._check_access(websocket, "slot_paytable", message)
+        if err is not None:
+            return err
+
+        table_moniker = message.get("table_moniker") or self._get_seated(websocket)
+        message["table_moniker"] = table_moniker
         if not table_moniker:
             return {"type": "error", "code": "not_at_table"}
         result = self._handle_paytable(self.args, table_moniker)
@@ -765,14 +1185,15 @@ class SlotServiceHandler(BaseService):
 
     async def _handle_history_msg(
         self,
-        session_id: int,
+        websocket: Any,
         message: dict[str, Any],
     ) -> dict[str, Any]:
-        moniker = self.sessions.get_moniker(session_id)
-        if not moniker:
-            return {"type": "error", "code": "not_authenticated"}
+        state, err = self._check_access(websocket, "slot_history", message)
+        if err is not None:
+            return err
+
         limit = int(message.get("limit", 50))
-        history = self._handle_history(self.args, moniker, limit)
+        history = self._handle_history(self.args, state.moniker, limit)
         return {
             "type": "slot_history",
             "spins": history,
@@ -783,11 +1204,33 @@ class MessageRouter:
     """
     Main message handler that coordinates all services.
     Handles broadcasting and session lifecycle.
+
+    Optional ``session_registry``, ``secret``, ``token_store``, and
+    ``instance_id`` kwargs mirror ``bed.api.bank.BankService`` wiring:
+    when BED loads the router it forwards its
+    :class:`SessionRegistry` so handlers can look up the
+    cryptographically-bound session the auth flow registered. The
+    token-wiring trio enables the per-call defense-in-depth check in
+    ``casino.api._auth.check_access``. When the wiring is absent the
+    handlers fall back to the standalone CasinoSessionManager + the
+    in-memory auth shim (door-mode / legacy tests).
     """
 
-    def __init__(self, args: Any, channel_state: Optional[ChannelState] = None, server: Any = None):
+    def __init__(
+        self,
+        args: Any,
+        channel_state: Optional[ChannelState] = None,
+        server: Any = None,
+        *,
+        session_registry: Any = None,
+        secret: Optional[bytes] = None,
+        token_store: Any = None,
+        instance_id: Optional[str] = None,
+        clock: Any = None,
+    ):
         self.args = args
-        self.sessions = CasinoSessionManager()
+        self.session_registry = session_registry
+        self.sessions = session_registry if session_registry is not None else CasinoSessionManager()
 
         # Channel subscription state for pub/sub messaging. Accept a
         # shared state from the caller (typically BED) so that
@@ -797,15 +1240,32 @@ class MessageRouter:
         self.channel_state = channel_state if channel_state is not None else ChannelState()
         self.server = server
 
+        # Forward token wiring to every handler so the per-call
+        # defense-in-depth check sees a consistent snapshot.
+        token_kwargs = dict(
+            secret=secret,
+            token_store=token_store,
+            instance_id=instance_id,
+            clock=clock,
+        )
+
         # Create services
         self.auth_service = AuthService(args, self.sessions, self.channel_state)
-        self.table_service = TableServiceHandler(args, self.sessions, self.channel_state)
-        self.game_service = GameServiceHandler(args, self.sessions)
-        self.bet_service = BetServiceHandler(args, self.sessions)
-        self.chat_service = ChatServiceHandler(args, self.sessions)
-        self.slot_service = SlotServiceHandler(args, self.sessions, self.channel_state)
-        self.yahtzee_service_handler = YahtzeeServiceHandler(args, self.sessions)
-        self.tictactoe_service_handler = TictactoeServiceHandler(args, self.sessions)
+        self.table_service = TableServiceHandler(
+            args, self.sessions, self.channel_state, **token_kwargs
+        )
+        self.game_service = GameServiceHandler(args, self.sessions, **token_kwargs)
+        self.bet_service = BetServiceHandler(args, self.sessions, **token_kwargs)
+        self.chat_service = ChatServiceHandler(args, self.sessions, **token_kwargs)
+        self.slot_service = SlotServiceHandler(
+            args, self.sessions, self.channel_state, **token_kwargs
+        )
+        self.yahtzee_service_handler = YahtzeeServiceHandler(
+            args, self.sessions, **token_kwargs
+        )
+        self.tictactoe_service_handler = TictactoeServiceHandler(
+            args, self.sessions, **token_kwargs
+        )
 
     def register_all(self, server: Any) -> None:
         """Register all services with the WebSocketServer.

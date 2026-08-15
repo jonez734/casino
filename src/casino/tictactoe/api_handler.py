@@ -13,9 +13,11 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Optional
 
 from bbsengine6 import io
+
+from casino.api._auth import check_access as _check_access_pipeline
 
 from .service import TictactoeService
 
@@ -26,6 +28,13 @@ class TictactoeServiceHandler:
     Mirrors ``YahtzeeServiceHandler``. The service does its own
     bank + DB work; the handler authenticates, dispatches, and
     broadcasts.
+
+    Token-aware: the per-op :func:`bbsengine6.casino.access` decision
+    is enforced through the shared five-gate pipeline in
+    ``casino.api._auth.check_access``. When the optional token
+    wiring (``secret`` / ``token_store`` / ``instance_id``) is not
+    provided (door-mode / legacy tests) the token gates become
+    no-ops and authorization falls back to session-based lookup.
     """
 
     TICTACTOE_MSG_TYPES = (
@@ -40,10 +49,31 @@ class TictactoeServiceHandler:
         args: Any,
         sessions: Any,
         service: TictactoeService | None = None,
+        *,
+        secret: Optional[bytes] = None,
+        token_store: Any = None,
+        instance_id: Optional[str] = None,
+        clock: Any = None,
     ) -> None:
         self.args = args
         self.sessions = sessions
         self._service = service if service is not None else TictactoeService(args)
+        self.secret = bytes(secret) if secret else None
+        self.token_store = token_store
+        self.instance_id = str(instance_id) if instance_id else None
+        self._clock = clock
+
+    def _now(self) -> float:
+        if self._clock is not None:
+            return float(self._clock())
+        import time as _time
+
+        return _time.time()
+
+    def _check_access(
+        self, websocket: Any, op: str, message: dict
+    ) -> tuple[Optional[Any], Optional[dict]]:
+        return _check_access_pipeline(self, websocket, op, message)
 
     @property
     def tictactoe_service(self) -> TictactoeService:
@@ -60,10 +90,11 @@ class TictactoeServiceHandler:
         if msg_type not in self.TICTACTOE_MSG_TYPES:
             return None
 
-        session_id = id(websocket)
-        moniker = self.sessions.get_moniker(session_id)
-        if not moniker:
-            return {"type": "error", "code": "not_authenticated"}
+        state, err = self._check_access(websocket, msg_type, message)
+        if err is not None:
+            return err
+
+        moniker = state.moniker
 
         if msg_type == "tictactoe_quick_play":
             mode = message.get("mode", 1)
@@ -73,7 +104,7 @@ class TictactoeServiceHandler:
             result = self._service.quick_play(moniker, mode=mode)
             table_moniker = result.get("table_moniker")
             if table_moniker:
-                self.sessions.set_table_moniker(session_id, table_moniker)
+                self._set_seated(websocket, table_moniker)
             await self._broadcast(server, result)
             # Mode 0: kick off self-play and stream the resulting
             # states.
@@ -84,7 +115,7 @@ class TictactoeServiceHandler:
             return result
 
         # All other actions require the player to be at a table
-        table_moniker = self.sessions.get_table_moniker(session_id)
+        table_moniker = getattr(state, "table_moniker", None)
         if not table_moniker:
             return {"type": "error", "code": "not_at_table"}
 
@@ -121,3 +152,26 @@ class TictactoeServiceHandler:
         """Hook called by MessageRouter.unregister_session when a
         player disconnects mid-game."""
         return self._service.finalize_on_disconnect(table_moniker, leaving_moniker)
+
+    def _set_seated(self, websocket: Any, table_moniker: Optional[str]) -> None:
+        try:
+            ws_id = str(websocket.id)
+        except Exception:
+            ws_id = ""
+        sessions = self.sessions
+        set_tm = getattr(sessions, "set_table_moniker", None)
+        if callable(set_tm):
+            try:
+                state = getattr(sessions, "get_by_websocket", lambda _: None)(ws_id)
+                if state is not None:
+                    set_tm(state.session_id, table_moniker)
+                    return
+            except Exception:
+                pass
+        try:
+            sessions.set_table_moniker(
+                int(websocket.id) if isinstance(websocket.id, int) else id(websocket),
+                table_moniker,
+            )
+        except Exception:
+            pass

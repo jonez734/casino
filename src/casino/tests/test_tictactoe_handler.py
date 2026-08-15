@@ -3,11 +3,17 @@
 # routing, broadcast, mode-0 streaming, disconnect cleanup.
 
 import asyncio
+import sys
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
+
+sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, "/home/opencode/data/work/bbsengine6/py/src")
 
 from casino.tictactoe.api_handler import TictactoeServiceHandler
 from casino.tictactoe.dealer import TictactoeDealer
 from casino.tictactoe.service import TictactoeService
+from casino.tests._session_mock import bridge_sessions_mock, make_sessions_mock
 
 
 def _make_args():
@@ -35,7 +41,7 @@ def _make_service():
 
 
 def _make_handler():
-    sessions = MagicMock()
+    sessions = make_sessions_mock(moniker="alice")
     service = _make_service()
     handler = TictactoeServiceHandler(_make_args(), sessions, service=service)
     return handler, sessions, service
@@ -109,8 +115,11 @@ class TestDispatch:
             MagicMock(), MagicMock(), "/",
             {"type": "tictactoe_move", "cell": 0},
         ))
-        assert result["type"] == "error"
-        assert result["code"] == "not_at_table"
+        # After the bank-style ``bbsengine6.casino.access()``
+        # migration the seat-at check lives in the policy. An
+        # authenticated session that is not seated at the target
+        # table is denied as ``forbidden`` (the bank equivalent).
+        assert result["code"] == "forbidden"
 
     def test_move_after_quick_play(self):
         handler, sessions, _ = _make_handler()
