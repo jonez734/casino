@@ -316,7 +316,7 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
 
     async def test_full_blackjack_flow(self):
         """Test complete blackjack flow from connection to receiving hand."""
-        uri = "ws://127.0.0.1:8765/"
+        uri = "ws://127.0.0.1:8766/"
 
         # Create robust client
         self.client = WebSocketTestClient(uri)
@@ -460,7 +460,7 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
 
     async def test_connection_resilience(self):
         """Test that connection handles reconnection gracefully."""
-        uri = "ws://127.0.0.1:8765/"
+        uri = "ws://127.0.0.1:8766/"
 
         # Create and connect
         self.client = WebSocketTestClient(uri)
@@ -487,7 +487,7 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
 
     async def test_stand_after_bet(self):
         """Test placing a bet and then standing (completing the round)."""
-        uri = "ws://127.0.0.1:8765/"
+        uri = "ws://127.0.0.1:8766/"
 
         self.client = WebSocketTestClient(uri)
 
@@ -575,7 +575,7 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
 
     async def test_hit_then_stand(self):
         """Test full round: bet -> hit -> stand."""
-        uri = "ws://127.0.0.1:8765/"
+        uri = "ws://127.0.0.1:8766/"
 
         self.client = WebSocketTestClient(uri)
 
@@ -676,7 +676,7 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
 
     async def test_invalid_bet_amounts(self):
         """Test that invalid bet amounts are rejected via network."""
-        uri = "ws://127.0.0.1:8765/"
+        uri = "ws://127.0.0.1:8766/"
 
         self.client = WebSocketTestClient(uri)
 
@@ -801,7 +801,7 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
 
     async def test_betlog_settlement(self):
         """Test that betlog status changes from pending to won/lost after settlement."""
-        uri = "ws://127.0.0.1:8765/"
+        uri = "ws://127.0.0.1:8766/"
 
         self.client = WebSocketTestClient(uri)
 
@@ -894,7 +894,7 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
                 print("  ⚠ Skipping test: 'notes' column does not exist in __betlog")
                 return
 
-        uri = "ws://127.0.0.1:8765/"
+        uri = "ws://127.0.0.1:8766/"
 
         self.client = WebSocketTestClient(uri)
 
@@ -1000,7 +1000,7 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
                 print("  ⚠ Skipping test: 'currenthand' column does not exist in __betlog")
                 return
 
-        uri = "ws://127.0.0.1:8765/"
+        uri = "ws://127.0.0.1:8766/"
 
         self.client = WebSocketTestClient(uri)
 
@@ -1045,9 +1045,17 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
             self.assertIsNotNone(game_state, "No game_state received after bet")
             player_hand = game_state.get("player_hand", [])
 
-            # Query the betlog VIEW (not the table directly)
+            # Query the betlog VIEW (not the table directly). The view's
+            # ``datepostedlocal`` column depends on
+            # ``engine.__member.loginid = current_user`` so the PG role
+            # needs to match a member for the timezone column to be
+            # populated. We SET LOCAL ROLE jam (a PG role created by the
+            # engine startup script whose loginid matches jam's row in
+            # engine.__member) inside a transaction so the role switch
+            # is scoped to this query.
             from bbsengine6 import database
             with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
+                cur.execute("SET LOCAL ROLE jam")
                 cur.execute(
                     database.query(
                         """SELECT playermoniker, cardtablemoniker, amount, status, currenthand,
@@ -1102,7 +1110,7 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
             )
             initial_count = cur.fetchone()["cnt"]
 
-        uri = "ws://127.0.0.1:8765/"
+        uri = "ws://127.0.0.1:8766/"
 
         self.client = WebSocketTestClient(uri)
 

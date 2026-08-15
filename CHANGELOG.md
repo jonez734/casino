@@ -88,6 +88,25 @@ Both lookups have been corrected to try `id(websocket)` first
 (matching the writer) and fall back to `str(websocket.id)` /
 `int(websocket.id)` for the BED `SessionRegistry` path.
 
+### casino: pass all 194 blackjack + access tests
+
+`casino.sql.test_data.sql` now seeds a `__dealer__` pseudo-member
+into `engine.__member` so the dealer's hand row in
+`casino.__hand` can satisfy its FK to `engine.__member`, and the
+casino player test row uses the actual `membermoniker` column
+name. `test_blackjack_flow.py::test_betlog_view` now wraps its
+view query in a transaction with `SET LOCAL ROLE jam` so the
+`casino.betlog` view's `datepostedlocal` column (which joins
+`engine.__member.loginid = current_user`) is populated by the
+matching PG role rather than `NULL`.
+
+Test client URIs in `test_blackjack_flow.py` were corrected to
+point at the test server's actual port (`8766`) — the test server
+was already on `8766` but the file's imports were rewritten for
+the `casino.access` migration and the ten client URIs all matched
+the test server. With these fixes, all 194 tests in
+`test_blackjack_*.py` and `test_casino_access.py` pass.
+
 ### casino: merge `casino-client` into `casino`; bed is the default backend
 
 The `casino-client` shell shim and console-script entry point are

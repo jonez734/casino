@@ -6,12 +6,19 @@ INSERT INTO engine.__member (moniker, loginid, password, email, credits)
 VALUES ('jam', 'jam', crypt('test', gen_salt('md5')), 'jam@test.local', 100000)
 ON CONFLICT (moniker) DO UPDATE SET password = crypt('test', gen_salt('md5')), credits = 100000;
 
+-- Dealer is a system pseudo-member referenced by casino.__hand.playermoniker
+-- (FK to engine.__member). It exists so a dealer's hand row can be
+-- inserted; no password / login is needed since it never authenticates.
+INSERT INTO engine.__member (moniker, loginid, password, email, credits)
+VALUES ('__dealer__', '__dealer__', crypt('__no_password__', gen_salt('md5')), '__dealer__@casino.local', 0)
+ON CONFLICT (moniker) DO NOTHING;
+
 -- Set up bank account for test user
 INSERT INTO bank.__account (moniker, balance, maxtransfer)
 VALUES ('jam', 100000, 1000000)
 ON CONFLICT (moniker) DO UPDATE SET balance = 100000;
 
 -- Set up casino player record
-INSERT INTO casino.__player (moniker, wins, losses, pushes, blackjacks, net)
-VALUES ('jam', 0, 0, 0, 0, 0)
-ON CONFLICT (moniker) DO UPDATE SET wins = 0, losses = 0, pushes = 0, blackjacks = 0, net = 0;
+INSERT INTO casino.__player (membermoniker)
+VALUES ('jam')
+ON CONFLICT DO NOTHING;
