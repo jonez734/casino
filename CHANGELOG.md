@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### casino: bottombar status surface with host:port, player, credits
+
+The `casino` main menu now paints a status bar across the bottom
+row of the terminal while the loop is running, mirroring the
+`bed bank` tool. Three fragments are registered on
+`bbsengine6.bottombar.registry_for("casino")` (leftmost first so a
+notification fragment prepends even further left):
+
+- a `<host>:<port>` fragment that flips to `direct` when the CLI is
+  run with `--direct` (or when door mode bypasses the bed probe);
+- a `<moniker>` fragment that reads the bound
+  `_casino_registry.player.moniker`;
+- a `<N credits>` / `<a credit>` / `<no credits>` fragment that
+  reads the bound `_casino_registry.player.credits`.
+
+`casino.lib.setbottombar()` now calls
+`_ensure_screen_initialized()` before delegating to
+`bbsengine6.bottombar.setbottombar`, mirroring the once-per-process
+`io.screen.init()` guard in `bed.tools.bank._ensure_screen_initialized`
+and `bbsengine6.ed.common.ui._screen_initialized`. This sets the
+terminal scroll region (top/bottom margins) before any `setbottombar`
+call lands, so the bottom row no longer scrolls off when output
+overflows.
+
+`casino.main.main()` registers the fragments on entry (via
+`setbottombar`) and, in the outer `finally` block, calls
+`lib._unregister_casino_fragments()` followed by
+`lib._clear_bottombar()`. The cleanup echo uses the same
+`{savecursor}{curpos:{height},0}{el}{reset}{restorecursor}` escape
+sequence that `bed.tools.bank._clear_bottombar` and
+`empyre/__main__.py` use, so the bottom row is erased and the
+cursor is restored to where it was when `main()` was entered.
+
+New tests in `casino/tests/test_bottombar.py` cover both fragments
+in isolation (`TestCasinoBottombarFragments` — 9 tests: player,
+credits pluralization, host:port/direct/defaults/empty), the
+register/unregister lifecycle (`TestCasinoFragmentLifecycle` — 4
+tests: idempotent register, full unregister, empty-tolerance), and
+the once-per-process screen-init + cleanup-echo wiring
+(`TestCasinoScreenInitGuard` — 5 tests: first-call init, repeat-call
+skip, `setbottombar`-triggered init, no-reinit, escape sequence
+shape). All 18 new tests pass.
+
 ### casino: merge `casino-client` into `casino`; bed is the default backend
 
 The `casino-client` shell shim and console-script entry point are

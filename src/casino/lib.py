@@ -9,6 +9,8 @@ from typing import Any
 # import ttyio5 as ttyio
 # import bbsengine5 as bbsengine
 from bbsengine6 import bottombar, database, io, member, module, util
+from bbsengine6.io import screen as bbsengine6_screen
+from bbsengine6.io import terminal as bbsengine6_terminal
 from PIL import Image, ImageOps, ImageTk
 
 PACKAGENAME = "casino"
@@ -444,6 +446,14 @@ _casino_fragments = []
 _current_args = _casino_registry.args
 _current_player = _casino_registry.player
 
+# Mirrors the pattern in bbsengine6.ed.common.ui._screen_initialized:
+# call io.screen.init() exactly once per process so the scroll region
+# (top/bottom margins) is set before any setbottombar() call lands.
+# setbottombar() positions text on ``terminal.lines()`` -- without a
+# scroll region the bottombar would scroll off the visible area when
+# the user types past the bottom of the screen.
+_screen_initialized: bool = False
+
 
 def _casino_player_fragment(**kwargs) -> str:
     if _casino_registry.player is None:
@@ -457,8 +467,33 @@ def _casino_credits_fragment(**kwargs) -> str:
     return util.pluralize(_casino_registry.player.credits, "credit", "credits")
 
 
+def _casino_host_fragment(**kwargs) -> str:
+    """Right-side fragment: ``"<host>:<port>"`` or ``"direct"``.
+
+    Reads ``args.bed_host`` and ``args.bed_port`` from the cached
+    ``_casino_registry.args`` (stashed by :func:`setbottombar`).
+    Falls back to the routing defaults (``127.0.0.1:8765``) when the
+    args object does not carry the bed routing attributes. Returns
+    ``"direct"`` when ``args._backend == "direct"`` so the operator
+    can tell at a glance whether the menu is wired to a BED daemon
+    or running straight against the local DB.
+    """
+    args = _casino_registry.args
+    if args is None:
+        return ""
+    if getattr(args, "_backend", None) == "direct":
+        return "direct"
+    host = getattr(args, "bed_host", "127.0.0.1") or "127.0.0.1"
+    port = int(getattr(args, "bed_port", 8765) or 8765)
+    return f"{host}:{port}"
+
+
 def _register_casino_fragments() -> None:
-    for fn in (_casino_player_fragment, _casino_credits_fragment):
+    for fn in (
+        _casino_host_fragment,
+        _casino_player_fragment,
+        _casino_credits_fragment,
+    ):
         if fn not in _casino_fragments:
             bottombar.register_bottombar_fragment(fn)
             _casino_fragments.append(fn)
@@ -470,10 +505,42 @@ def _unregister_casino_fragments() -> None:
     _casino_fragments.clear()
 
 
+def _ensure_screen_initialized() -> None:
+    """Call ``io.screen.init()`` exactly once per process.
+
+    Mirrors :func:`bed.tools.bank._ensure_screen_initialized` and
+    :func:`bbsengine6.ed.common.ui.init_screen`. ``screen.init()``
+    sets the terminal scroll region (top/bottom margins) so the bottom
+    bar stays parked on the last line instead of scrolling off when
+    output overflows. setbottombar() positions text on the last line,
+    so calling it before screen.init() is a no-op (the bar would be
+    drawn but immediately scrolled away on the next line of output).
+    """
+    global _screen_initialized
+    if not _screen_initialized:
+        bbsengine6_screen.init()
+        _screen_initialized = True
+
+
+def _clear_bottombar() -> None:
+    """Wipe the bottom row so we don't leak the bar past menu() exit.
+
+    Mirrors the cleanup echo in ``bed/src/bed/tools/bank.py`` and
+    ``empyre/__main__.py``: save the cursor, jump to
+    ``(terminal.height(), 0)``, erase the line, reset attributes, then
+    restore the cursor.
+    """
+    io.echo(
+        f"{{savecursor}}{{curpos:{bbsengine6_terminal.height()},0}}"
+        f"{{el}}{{reset}}{{restorecursor}}"
+    )
+
+
 def setbottombar(args, buf, **kwargs) -> None:
     global _current_args, _current_player
     player = kwargs.get("player")
     pool = kwargs.get("pool")
+    _ensure_screen_initialized()
     # Stash on the per-package registry and on the legacy module globals
     # so any code that still reads `_current_player` / `_current_args`
     # continues to work.

@@ -186,4 +186,5 @@ def main(args: Namespace, **kwargs) -> bool | None:
             currentplayer.save()
     finally:
         lib._unregister_casino_fragments()
+        lib._clear_bottombar()
     return True
