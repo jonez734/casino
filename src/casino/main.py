@@ -175,7 +175,6 @@ def main(args: Namespace, **kwargs) -> bool | None:
                             )
 
                             run_kwargs = dict(kwargs)
-                            run_kwargs["player"] = currentplayer
                             run_kwargs["pool"] = pool
                             run_kwargs["client"] = remote_client
                             if subcommand is not None:
