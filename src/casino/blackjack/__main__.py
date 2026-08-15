@@ -20,7 +20,7 @@ time.tzset()
 try:
     module.run(args, "game", package="casino.blackjack")
 except KeyboardInterrupt:
-    io.echo("{/all}{bold}INTR{bold}")
+    io.echo("{/all}{bold}INTR{/bold}")
 except EOFError:
     io.echo("{/all}{bold}EOF{/bold}")
 finally:
