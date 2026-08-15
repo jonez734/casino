@@ -29,25 +29,7 @@ def access(args: Namespace, op: str, **kwargs) -> bool | None:
 
 
 def buildargs(args, **kwargs):
-    if hasattr(args, "add_argument"):
-        args.add_argument(
-            "--host",
-            dest="host",
-            default="localhost",
-            help="Casino server host (default: localhost)",
-        )
-        args.add_argument(
-            "--port",
-            dest="port",
-            type=int,
-            default=8765,
-            help="Casino server port (default: 8765)",
-        )
-    else:
-        if not hasattr(args, "host"):
-            args.host = "localhost"
-        if not hasattr(args, "port"):
-            args.port = 8765
+    return None
 
 
 def main(args: Namespace, **kwargs) -> bool | None:
