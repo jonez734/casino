@@ -423,6 +423,180 @@ class TestRenderAscii(unittest.TestCase):
         self.assertIn("\x1b[7m", joined)
         self.assertIn("\x1b[27m", joined)
 
+    # ------------------------------------------------------------------
+    # Extended coverage: structural invariants and io.echo round-trip
+    # ------------------------------------------------------------------
+
+    BOX_CHARS = set("┌┐└┘├┤┬┴┼─│")
+    GLYPHS = set("CLPB=7.")
+
+    def _synthetic(self, names):
+        """Build a 5-column, 3-row result from per-column name lists.
+
+        Each entry in ``names`` is a list of symbol names (one per row)
+        for that column. Missing rows are filled with BLANK.
+        """
+        columns = []
+        for col_names in names:
+            col = []
+            for nm in col_names:
+                sym = lib.DEFAULT_SYMBOLS.get(nm) or lib.Symbol(nm, 1, nm[:1], "")
+                col.append(sym)
+            while len(col) < 3:
+                col.append(lib.DEFAULT_SYMBOLS["BLANK"])
+            columns.append(col)
+        return lib.SpinResult(
+            reels=columns,
+            center_row=[c[1] for c in columns],
+            wins=[],
+            bet=1,
+            payout=0,
+            net=-1,
+        )
+
+    def test_default_spin_has_no_literal_attribute_name(self):
+        """The literal substring ``sym.color`` must never appear in the
+        rendered output. Regression guard for the f-string brace bug
+        on ``lib.py:416`` where ``{{sym.color}}`` collapsed to
+        ``{sym.color}`` verbatim.
+        """
+        rng = lib.RNG(random.Random(20240101))
+        dealer = SlotDealer(
+            lib.default_reels(lib.DEFAULT_SYMBOLS, rng), lib.Paytable(), rng
+        )
+        out = lib.render_ascii(dealer.play(bet=1))
+        self.assertNotIn("sym.color", out)
+
+    def test_top_row_uses_symbol_color_name(self):
+        """The top row should contain real color names like ``{red}``
+        from CHERRY rather than the literal text ``{sym.color}``.
+        """
+        rng = lib.RNG(random.Random(0))
+        dealer = SlotDealer(
+            lib.default_reels(lib.DEFAULT_SYMBOLS, rng), lib.Paytable(), rng
+        )
+        r = dealer.play(bet=1)
+        text = lib.render_ascii(r)
+        first_row = text.splitlines()[1]
+        # The default reel strip is dense in colored symbols; with
+        # seed 0 the first row is guaranteed to contain colored cells.
+        # Either a real color tag is present OR the literal bug text
+        # is present -- the test fails if it's the latter.
+        self.assertFalse(
+            "{sym.color}" in first_row,
+            f"top row contains literal {{sym.color}} (f-string brace bug): {first_row!r}",
+        )
+        self.assertTrue(
+            any(
+                tag in first_row
+                for tag in (
+                    "{red}", "{yellow}", "{purple}",
+                    "{cyan}", "{white}", "{lightred}",
+                )
+            ),
+            f"top row missing any real color tag: {first_row!r}",
+        )
+
+    def test_grid_shape_default_5x3(self):
+        """Default dealer produces a 5-column, 3-row grid framed by
+        box-drawing corners and T/plus separators.
+        """
+        rng = lib.RNG(random.Random(20240101))
+        dealer = SlotDealer(
+            lib.default_reels(lib.DEFAULT_SYMBOLS, rng), lib.Paytable(), rng
+        )
+        out = lib.render_ascii(dealer.play(bet=1))
+        lines = out.splitlines()
+        self.assertEqual(len(lines), 7)
+        self.assertTrue(lines[0].startswith("┌") and lines[0].endswith("┐"), lines[0])
+        self.assertTrue(lines[-1].startswith("└") and lines[-1].endswith("┘"), lines[-1])
+        self.assertTrue(lines[2].startswith("├") and lines[2].endswith("┤"), lines[2])
+        self.assertTrue(lines[4].startswith("├") and lines[4].endswith("┤"), lines[4])
+        for ln in (lines[0], lines[2], lines[4], lines[-1]):
+            self.assertEqual(ln.count("┬") + ln.count("┼") + ln.count("┴"), 4, ln)
+        for ln in (lines[1], lines[3], lines[5]):
+            self.assertTrue(ln.startswith("│") and ln.endswith("│"), ln)
+            self.assertEqual(ln.count("│"), 6, ln)
+
+    def test_glyph_padding_to_cell_w(self):
+        """With a 3-wide WIDE symbol and 1-wide default glyphs, every
+        cell pads to ``cell_w`` (3) so the box borders line up.
+        """
+        wide = lib.Symbol("WIDE", 1, "XYZ", "red")
+        col_a = [lib.DEFAULT_SYMBOLS["BLANK"], wide, lib.DEFAULT_SYMBOLS["BLANK"]]
+        col_b = [lib.DEFAULT_SYMBOLS["CHERRY"], lib.DEFAULT_SYMBOLS["CHERRY"], lib.DEFAULT_SYMBOLS["BLANK"]]
+        col_c = [lib.DEFAULT_SYMBOLS["BLANK"], lib.DEFAULT_SYMBOLS["BLANK"], lib.DEFAULT_SYMBOLS["BLANK"]]
+        col_d = [lib.DEFAULT_SYMBOLS["LEMON"], lib.DEFAULT_SYMBOLS["BLANK"], lib.DEFAULT_SYMBOLS["BLANK"]]
+        col_e = [lib.DEFAULT_SYMBOLS["BLANK"], lib.DEFAULT_SYMBOLS["BAR"], lib.DEFAULT_SYMBOLS["BLANK"]]
+        result = lib.SpinResult(
+            reels=[col_a, col_b, col_c, col_d, col_e],
+            center_row=[c[1] for c in (col_a, col_b, col_c, col_d, col_e)],
+            wins=[], bet=1, payout=0, net=-1,
+        )
+        out = lib.render_ascii(result)
+        center_line = out.splitlines()[3]
+        self.assertIn("XYZ", center_line)
+        # CHERRY cell in center row: 1-char glyph padded to cell_w=3,
+        # so we expect exactly 2 trailing spaces inside the cell before
+        # the closing color tag.
+        self.assertIn("{red}C  ", center_line, center_line)
+
+    def test_passes_through_io_echo_to_ansi(self):
+        """Feeding ``render_ascii`` output through ``io.echo`` must
+        produce ANSI escapes; the literal ``{sym.color}`` text and any
+        doubled braces must not survive the round-trip.
+        """
+        from bbsengine6 import io
+        from bbsengine6.io import common
+        import io as stdio
+
+        buf = stdio.StringIO()
+        old = common._current_output_stream
+        common.set_output_stream(buf)
+        try:
+            rng = lib.RNG(random.Random(20240101))
+            dealer = SlotDealer(
+                lib.default_reels(lib.DEFAULT_SYMBOLS, rng), lib.Paytable(), rng
+            )
+            io.echo(lib.render_ascii(dealer.play(bet=1)))
+            echoed = buf.getvalue()
+        finally:
+            common.set_output_stream(old)
+
+        self.assertIn("\x1b[", echoed, "echo should produce ANSI escapes")
+        self.assertNotIn("sym.color", echoed, "literal sym.color leaked through echo")
+        self.assertNotIn("{{", echoed, "doubled braces leaked through echo")
+        self.assertNotIn("{/inverse}", echoed, "{/inverse} not interpreted by io.echo")
+        self.assertNotIn("{red}", echoed, "{red} opener not interpreted by io.echo")
+
+    def test_io_echo_preserves_glyphs_and_box_drawing(self):
+        """After echo, every box-drawing char and every symbol glyph
+        present in the raw render must survive in the output.
+        """
+        from bbsengine6 import io
+        from bbsengine6.io import common
+        import io as stdio
+
+        buf = stdio.StringIO()
+        old = common._current_output_stream
+        common.set_output_stream(buf)
+        try:
+            rng = lib.RNG(random.Random(7))
+            dealer = SlotDealer(
+                lib.default_reels(lib.DEFAULT_SYMBOLS, rng), lib.Paytable(), rng
+            )
+            out_raw = lib.render_ascii(dealer.play(bet=1))
+            io.echo(out_raw)
+            echoed = buf.getvalue()
+        finally:
+            common.set_output_stream(old)
+
+        for ch in self.BOX_CHARS:
+            self.assertIn(ch, echoed, f"box char {ch!r} lost in echo round-trip")
+        for ch in out_raw:
+            if ch in self.GLYPHS:
+                self.assertIn(ch, echoed, f"glyph {ch!r} lost in echo round-trip")
+
 
 class TestSpinResultDataclass(unittest.TestCase):
     def test_to_dict(self):
