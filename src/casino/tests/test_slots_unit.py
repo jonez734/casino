@@ -2,11 +2,14 @@
 # casino/tests/test_slots_unit.py
 # Unit tests for the slots lib + dealer modules.
 
+import io as stdio
 import random
 import sys
 import unittest
 
 sys.path.insert(0, "/home/opencode/data/work/casino/src")
+
+from bbsengine6.io import common
 
 from casino.slots import lib
 from casino.slots.dealer import SlotDealer
@@ -367,6 +370,59 @@ class TestRenderAscii(unittest.TestCase):
         )
         self.assertEqual(lib.render_ascii(result), "")
 
+    def test_render_ascii_echoes_without_crash(self):
+        """Pipe render_ascii() output through bbsengine6.io.echo_iter()
+        to verify closing palette color tags (e.g. {/red}) no longer
+        crash echo and produce the proper default-fg reset."""
+        import importlib
+        em = importlib.import_module("bbsengine6.io.echo")
+
+        syms = [
+            lib.Symbol("CHERRY", 1, "C", "red"),
+            lib.Symbol("LEMON", 1, "L", "yellow"),
+            lib.Symbol("BLANK", 1, ".", ""),
+        ]
+        reels = [
+            [syms[0], syms[1], syms[2]],
+            [syms[1], syms[0], syms[2]],
+            [syms[2], syms[0], syms[1]],
+            [syms[0], syms[2], syms[1]],
+            [syms[1], syms[2], syms[0]],
+        ]
+        center = [col[1] for col in reels]
+        result = lib.SpinResult(
+            reels=reels,
+            center_row=center,
+            wins=[],
+            bet=10,
+            payout=0,
+            net=-10,
+        )
+        out = lib.render_ascii(result)
+
+        tokens = []
+        try:
+            for tok in em.echo_iter(out, wordwrap=False):
+                tokens.append(tok)
+        except Exception as e:
+            self.fail(f"echo_iter raised {type(e).__name__}: {e}")
+
+        # For each fg-colored cell, we expect an open sequence
+        # (\x1b[38;2;...m) followed by the glyph, then a default-fg
+        # reset (\x1b[39m).
+        fg_open = "\x1b[38;2;136;0;0m"   # cherry red
+        fg_open_l = "\x1b[38;2;238;238;119m"  # lemon yellow
+        default_fg = "\x1b[39m"
+        joined = "".join(t.text or "" for t in tokens if t.text)
+        self.assertIn(fg_open, joined)
+        self.assertIn(fg_open_l, joined)
+        self.assertIn(default_fg, joined)
+
+        # Center row is inverse-highlighted; expect at least one
+        # inverse open (\x1b[7m) and inverse close (\x1b[27m).
+        self.assertIn("\x1b[7m", joined)
+        self.assertIn("\x1b[27m", joined)
+
 
 class TestSpinResultDataclass(unittest.TestCase):
     def test_to_dict(self):
@@ -407,6 +463,101 @@ class TestDefaults(unittest.TestCase):
         for key in lib.DEFAULT_PAYTABLE:
             for s in key:
                 self.assertIn(s, lib.DEFAULT_SYMBOLS, f"paytable key references unknown symbol {s}")
+
+
+class TestEchoMarkup(unittest.TestCase):
+    """Verify that bbsengine6.io.echo markup used by slots is
+    interpreted as color escapes, not printed as literal text.
+
+    Regression guard: a previous bug in casino_client.py passed a
+    plain ``"{{var:...}}..."`` string to ``io.echo``, which rendered
+    the doubled braces verbatim instead of expanding the color
+    variable. These tests confirm the slots module never falls into
+    that pattern, and that its f-string ``{{var:...}}`` literals
+    escape cleanly through the bbsengine6 echo pipeline.
+    """
+
+    def setUp(self):
+        self._buf = stdio.StringIO()
+        self._old_stream = common._current_output_stream
+        common.set_output_stream(self._buf)
+
+    def tearDown(self):
+        common.set_output_stream(self._old_stream)
+
+    def _captured(self) -> str:
+        return self._buf.getvalue()
+
+    def test_smoke_spin_emits_color_escapes(self):
+        """``_smoke_spin`` uses f-string ``{{var:labelcolor}}...``
+        literals; Python's f-string escaping reduces them to
+        ``{var:labelcolor}`` and ``io.echo`` must expand them into
+        ANSI CSI sequences.
+        """
+        from casino.slots.__main__ import _smoke_spin
+
+        _smoke_spin(seed=42, rtp_progress=0)
+        out = self._captured()
+
+        self.assertIn("\x1b[", out, "expected ANSI escapes in smoke-spin output")
+        self.assertNotIn("{{", out, "doubled braces leaked through echo (literal text)")
+        self.assertNotIn(
+            "var:labelcolor", out, "{var:labelcolor} not interpreted by io.echo"
+        )
+        self.assertNotIn(
+            "var:valuecolor", out, "{var:valuecolor} not interpreted by io.echo"
+        )
+        self.assertIn("total reels:", out)
+        self.assertIn("target RTP:", out)
+
+    def test_render_bet_help_emits_color_escapes(self):
+        """``play._render_bet_help`` echoes plain ``{var:optioncolor}``
+        strings; ``io.echo`` must interpret them into ANSI escapes
+        and never print the markup literally.
+        """
+        from casino.slots.play import _render_bet_help
+
+        _render_bet_help()
+        out = self._captured()
+
+        self.assertIn("\x1b[", out, "expected ANSI escapes in bet-help output")
+        self.assertNotIn("{{", out, "doubled braces leaked through echo")
+        self.assertNotIn(
+            "var:optioncolor", out, "{var:optioncolor} not interpreted by io.echo"
+        )
+        self.assertNotIn(
+            "var:labelcolor", out, "{var:labelcolor} not interpreted by io.echo"
+        )
+
+    def test_double_braces_in_fstring_round_trip(self):
+        """A literal ``{{var:foo}}`` written as ``f"{{{{var:foo}}}}"``
+        is a programmer mistake: the f-string collapses to the
+        double-brace plain string, which ``io.echo`` does NOT
+        interpret. This test pins that behavior so callers don't
+        regress to the broken pattern.
+        """
+        from bbsengine6 import io
+
+        io.echo(f"{{{{var:promptcolor}}}}hello{{{{var:inputcolor}}}}")
+        out = self._captured()
+
+        self.assertIn("{{var:promptcolor}}", out)
+        self.assertIn("{{var:inputcolor}}", out)
+        self.assertNotIn("\x1b[38;", out)
+
+    def test_plain_string_single_brace_is_interpreted(self):
+        """The slots ``play`` module passes plain strings with
+        single-brace ``{var:optioncolor}`` markup to ``io.echo``;
+        that markup must expand to ANSI escapes.
+        """
+        from bbsengine6 import io
+
+        io.echo("{var:optioncolor}[B]{var:labelcolor}et")
+        out = self._captured()
+
+        self.assertIn("\x1b[", out)
+        self.assertNotIn("var:optioncolor", out)
+        self.assertNotIn("var:labelcolor", out)
 
 
 if __name__ == "__main__":
