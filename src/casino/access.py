@@ -28,6 +28,8 @@
 #   "slot_spin"       -- pull the lever on a slot table
 #   "slot_paytable"   -- read a slot table's payout table
 #   "slot_history"    -- read a player's recent spins (self or sysop)
+#   "slot_table_history" -- read a table's recent spins (seated player
+#                           or sysop; mirrors slot_spin / slot_paytable)
 #   "yahtzee_quick_play"/"yahtzee_roll"/"yahtzee_reroll"/"yahtzee_score"
 #                      -- yahtzee hand actions
 #   "tictactoe_quick_play"/"tictactoe_move"/"tictactoe_resign"/"tictactoe_join"
@@ -40,7 +42,6 @@ from __future__ import annotations
 
 import argparse
 from typing import Any, Dict, Optional
-
 
 __all__ = ["access"]
 
@@ -199,7 +200,7 @@ def access(args: argparse.Namespace, op: str, /, **kwargs: Any) -> bool:
     if op in ("chat_table", "chat_global", "emote"):
         return bool(auth_moniker)
 
-    if op in ("slot_spin", "slot_paytable"):
+    if op in ("slot_spin", "slot_paytable", "slot_table_history"):
         target = (_get_message(kwargs).get("table_moniker") or "").strip()
         if not auth_moniker:
             return False
