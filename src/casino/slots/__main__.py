@@ -110,9 +110,11 @@ def _smoke_spin(seed: int | None, rtp_progress: int) -> int:
     result = player.play(bet=5)
     io.echo("{/all}")
     io.echo(lib.render_ascii(result))
-    print(
-        f"bet={result.bet}  payout={result.payout}  "
-        f"net={result.net:+d}  credits={player.credits}"
+    io.echo(
+        f"{{var:valuecolor}}bet={{var:normalcolor}}{result.bet}  "
+        f"{{var:valuecolor}}payout={{var:normalcolor}}{result.payout}  "
+        f"{{var:valuecolor}}net={{var:normalcolor}}{result.net:+d}  "
+        f"{{var:valuecolor}}credits={{var:normalcolor}}{player.credits}"
     )
     return 0
 
@@ -206,10 +208,10 @@ def _run_door(args: argparse.Namespace) -> int:
         print()
         io.echo(lib.render_ascii(result))
         if result.did_win:
-            print(f"  won {result.payout}  net={result.net:+d}")
+            io.echo(f"{{var:labelcolor}}  won {{var:valuecolor}}{result.payout}  {{var:labelcolor}}net={{var:valuecolor}}{result.net:+d}")
         else:
-            print(f"  no win  net={result.net:+d}")
-        print(f"  credits={player.credits}")
+            io.echo(f"{{var:labelcolor}}  no win {{var:valuecolor}}net={result.net:+d}")
+        io.echo(f"{{var:labelcolor}}  credits={{var:valuecolor}}{player.credits}")
         print()
         if player.credits < player.min_bet:
             print("credits below minimum bet; ending session")

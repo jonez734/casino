@@ -517,6 +517,10 @@ class TestRenderAscii(unittest.TestCase):
             lib.default_reels(lib.DEFAULT_SYMBOLS, rng), lib.Paytable(), rng
         )
         out = lib.render_ascii(dealer.play(bet=1))
+        # render_ascii appends a trailing {/all} so the terminal is
+        # back in the default character set after the grid; strip it
+        # for the shape assertions below.
+        out = out.removesuffix("{/all}")
         lines = out.splitlines()
         self.assertEqual(len(lines), 7)
         self.assertTrue(
@@ -630,6 +634,47 @@ class TestRenderAscii(unittest.TestCase):
         for ch in out_raw:
             if ch in self.GLYPHS:
                 self.assertIn(ch, echoed, f"glyph {ch!r} lost in echo round-trip")
+
+    def test_render_ascii_ends_with_acs_off(self):
+        """After ``io.echo(render_ascii(result))``, the *last* ACS
+        escape in the emitted stream must be ACS_OFF (``ESC ( B``).
+        Otherwise the terminal stays in DEC graphics mode and any
+        raw stdout write that follows (e.g. ``print()`` in
+        ``_smoke_spin`` / ``_run_door``) is rendered as DEC glyphs —
+        i.e. garbled.
+
+        Regression test for the symptom: text below the slot grid
+        is rendered with the wrong character set because the ACS
+        state was never reset.
+        """
+        from bbsengine6 import io
+        from bbsengine6.io import common
+        import io as stdio
+
+        buf = stdio.StringIO()
+        old = common._current_output_stream
+        common.set_output_stream(buf)
+        try:
+            rng = lib.RNG(random.Random(20240101))
+            dealer = SlotDealer(
+                lib.default_reels(lib.DEFAULT_SYMBOLS, rng), lib.Paytable(), rng
+            )
+            io.echo(lib.render_ascii(dealer.play(bet=1)))
+            echoed = buf.getvalue()
+        finally:
+            common.set_output_stream(old)
+
+        acs_on = "\x1b(0"
+        acs_off = "\x1b(B"
+        self.assertIn(acs_on, echoed, "ACS_ON must appear in echo output")
+        self.assertIn(acs_off, echoed, "ACS_OFF must appear in echo output")
+        self.assertGreater(
+            echoed.rfind(acs_off),
+            echoed.rfind(acs_on),
+            "ACS_OFF must be the *last* ACS escape in the stream — "
+            "otherwise downstream raw stdout writes will be rendered "
+            "in DEC graphics mode (garbled).",
+        )
 
 
 class TestSpinResultDataclass(unittest.TestCase):

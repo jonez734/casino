@@ -446,4 +446,9 @@ def render_ascii(result: SpinResult) -> str:
         if r < num_rows - 1:
             lines.append(mid)
     lines.append(bot)
-    return "\n".join(lines)
+    # Trailing {/all} resets ACS (ESC ( B) and SGR (ESC [ 0 m) so
+    # downstream raw stdout writes (print() in _smoke_spin / _run_door)
+    # are not garbled by the DEC graphics character set left on by the
+    # final {lrcorner}. See AGENTS.md "Reset ACS at the end of
+    # render_ascii".
+    return "{f6}".join(lines) + "{/all}"
