@@ -603,7 +603,7 @@ class CasinoClient:
             cmd = io.inputchoice(
                 f"{{var:promptcolor}}[{self.moniker}] Balance: {self.balance}"
                 + (f" Table: {self.current_table}" if self.current_table else "")
-                + "{{var:optioncolor}}[T]ables  [C]reate  [U]pdate  [J]oin  [L]eave  [B]et  [H]it  [S]tand  [M]sg  [K]  [X]TicTac  [V]Move  [N]JoinT  [G]Resign  [Q]uit{{var:promptcolor}}: {{var:inputcolor}}",
+                + f"{{var:optioncolor}}[T]ables  [C]reate  [U]pdate  [J]oin  [L]eave  [B]et  [H]it  [S]tand  [M]sg  [K]  [X]TicTac  [V]Move  [N]JoinT  [G]Resign  [Q]uit{{var:promptcolor}}: {{var:inputcolor}}",
                 "t,c,u,j,l,b,h,s,m,k,x,v,n,g,q",
                 default="q",
             )
