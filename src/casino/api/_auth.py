@@ -49,11 +49,9 @@ import base64
 import hashlib
 import hmac
 import json
-import secrets
 from typing import Any, Dict, Optional, Tuple
 
 from casino.access import access as _casino_access
-
 
 # ----- Wire-protocol error envelopes ----------------------------------
 
@@ -229,7 +227,7 @@ class _CasinoSessionState:
         self._wrapped = None
 
     @classmethod
-    def from_state(cls, state: Any) -> "_CasinoSessionState":
+    def from_state(cls, state: Any) -> _CasinoSessionState:
         """Wrap ``state`` if it is a plain dict; return as-is otherwise.
 
         ``SessionState`` (dataclass) and ``_CasinoSessionState``
@@ -351,28 +349,46 @@ def _get_session_state(
     try:
         ws_id = str(websocket.id)
     except Exception:
-        return None
+        ws_id = ""
     py_id = id(websocket)
+    # bbsengine6's WebSocketServer stashes the allocated session id on
+    # the websocket. ``AuthService._handle_auth`` uses the same id when
+    # registering the session, so it must be in the lookup keys or the
+    # very next op will fall through to ``not_authenticated``.
+    bbs_id = getattr(websocket, "_bbsengine6_session_id", None)
 
     state = None
     # BED's SessionRegistry has ``get_by_websocket``.
     get_by_websocket = getattr(sessions, "get_by_websocket", None)
     if callable(get_by_websocket):
-        try:
-            state = get_by_websocket(ws_id)
-        except Exception:
-            state = None
-    if state is not None:
-        return _CasinoSessionState.from_state(state)
+        for key in (str(bbs_id) if bbs_id is not None else None, ws_id):
+            if not key:
+                continue
+            try:
+                state = get_by_websocket(key)
+            except Exception:
+                state = None
+            if state is not None:
+                return _CasinoSessionState.from_state(state)
 
     # Casino's CasinoSessionManager stores under ``id(websocket)`` (int).
     # ``websocket.id`` is a UUID-style string assigned by the underlying
     # websockets library, which never matches the Python object id the
-    # auth handler used for registration. Look up by both keys (Python
-    # id first since that is what ``AuthService._handle_auth`` writes).
+    # auth handler used for registration. Look up by all candidate keys
+    # (Python id, bbsengine6 id, websocket.id string) so registration
+    # under any of them resolves.
     get_session = getattr(sessions, "get_session", None)
     if callable(get_session):
-        for key in (py_id, ws_id):
+        candidates: list = []
+        if bbs_id is not None:
+            try:
+                candidates.append(int(bbs_id))
+            except (TypeError, ValueError):
+                pass
+        candidates.append(py_id)
+        if ws_id:
+            candidates.append(ws_id)
+        for key in candidates:
             if key is None:
                 continue
             try:
@@ -487,7 +503,7 @@ def _get_or_bind_session_for(
                 if callable(bound):
                     st = bound(session_id)
                     if st is not None:
-                        setattr(st, "auth_service_token", wire_token)
+                        st.auth_service_token = wire_token
             except Exception:
                 pass
 
@@ -641,6 +657,7 @@ TYPE_TO_OP: Dict[str, str] = {
     "slot_spin": "slot_spin",
     "slot_paytable": "slot_paytable",
     "slot_history": "slot_history",
+    "slot_table_history": "slot_table_history",
     "yahtzee_quick_play": "yahtzee_quick_play",
     "yahtzee_roll": "yahtzee_roll",
     "yahtzee_reroll": "yahtzee_reroll",

@@ -17,7 +17,6 @@ from bbsengine6.net import (
 from bbsengine6.session import SessionManager
 
 from casino.api._auth import (
-    TYPE_TO_OP,
     check_access as _check_access_pipeline,
 )
 from casino.dal.aiosql import table as async_dal_table
@@ -179,7 +178,18 @@ class AuthService(BaseService):
         result = self.player_service.authenticate(moniker, password)
 
         if result["success"]:
-            session_id = id(websocket)
+            # Prefer the server-assigned ``_bbsengine6_session_id`` so
+            # the key matches what every other handler reads via
+            # ``_legacy_session_id`` during gameplay (table-moniker
+            # lookups, spectator bookkeeping, slot_spin, ...).
+            bbs_id = getattr(websocket, "_bbsengine6_session_id", None)
+            if bbs_id is not None:
+                try:
+                    session_id = int(bbs_id)
+                except (TypeError, ValueError):
+                    session_id = id(websocket)
+            else:
+                session_id = id(websocket)
             is_sysop = member.issysop(self.args, moniker=moniker) is True
             self.sessions.register_session(session_id, moniker, is_sysop=is_sysop)
             balance = self.player_service.get_balance(moniker)
@@ -292,6 +302,12 @@ class TableServiceHandler(BaseService):
         ws_id = getattr(websocket, "id", None)
         if isinstance(ws_id, int) and not isinstance(ws_id, bool):
             return ws_id
+        bbs_id = getattr(websocket, "_bbsengine6_session_id", None)
+        if bbs_id is not None:
+            try:
+                return int(bbs_id)
+            except (TypeError, ValueError):
+                pass
         return py_id
 
     async def _handle_list_tables(
@@ -729,6 +745,12 @@ class GameServiceHandler(BaseService):
         return None
 
     def _legacy_session_id(self, websocket: Any) -> int:
+        bbs_id = getattr(websocket, "_bbsengine6_session_id", None)
+        if bbs_id is not None:
+            try:
+                return int(bbs_id)
+            except (TypeError, ValueError):
+                pass
         try:
             return int(websocket.id)
         except Exception:
@@ -861,6 +883,12 @@ class BetServiceHandler(BaseService):
         return None
 
     def _legacy_session_id(self, websocket: Any) -> int:
+        bbs_id = getattr(websocket, "_bbsengine6_session_id", None)
+        if bbs_id is not None:
+            try:
+                return int(bbs_id)
+            except (TypeError, ValueError):
+                pass
         try:
             return int(websocket.id)
         except Exception:
@@ -1038,9 +1066,10 @@ class SlotServiceHandler(BaseService):
     """Handle slot machine messages.
 
     Message types:
-    - ``slot_spin``   - client request: spin the reels
-    - ``slot_paytable`` - client request: get the table's paytable
-    - ``slot_history``  - client request: get the player's recent spins
+    - ``slot_spin``         - client request: spin the reels
+    - ``slot_paytable``     - client request: get the table's paytable
+    - ``slot_history``      - client request: get the player's recent spins
+    - ``slot_table_history`` - client request: get the table's recent spins
     """
 
     def __init__(
@@ -1070,12 +1099,16 @@ class SlotServiceHandler(BaseService):
             handle_get_paytable as _handle_paytable,
         )
         from casino.services.slots import (
+            handle_get_table_history as _handle_table_history,
+        )
+        from casino.services.slots import (
             handle_spin as _handle_spin,
         )
 
         self._handle_spin = _handle_spin
         self._handle_paytable = _handle_paytable
         self._handle_history = _handle_history
+        self._handle_table_history = _handle_table_history
 
     async def handle_message(
         self, server: Any, websocket: Any, path: str, message: dict[str, Any]
@@ -1087,20 +1120,43 @@ class SlotServiceHandler(BaseService):
             return await self._handle_paytable_msg(websocket, message)
         if msg_type == "slot_history":
             return await self._handle_history_msg(websocket, message)
+        if msg_type == "slot_table_history":
+            return await self._handle_table_history_msg(websocket, message)
         return None
 
     def _legacy_session_id(self, websocket: Any) -> int:
+        # Prefer the server-assigned ``_bbsengine6_session_id`` if
+        # present; the auth flow uses the same id when registering the
+        # session. Falls back to ``int(websocket.id)`` (legacy
+        # websockets library attribute) and finally to ``id(ws)`` so
+        # older test doubles that don't expose either still work.
+        bbs_id = getattr(websocket, "_bbsengine6_session_id", None)
+        if bbs_id is not None:
+            try:
+                return int(bbs_id)
+            except (TypeError, ValueError):
+                pass
         try:
             return int(websocket.id)
         except Exception:
             return id(websocket)
 
     def _get_seated(self, websocket: Any) -> Optional[str]:
+        bbs_id = getattr(websocket, "_bbsengine6_session_id", None)
+        sessions = self.sessions
+        if bbs_id is not None:
+            get_by_websocket = getattr(sessions, "get_by_websocket", None)
+            if callable(get_by_websocket):
+                try:
+                    state = get_by_websocket(str(bbs_id))
+                    if state is not None:
+                        return state.table_moniker
+                except Exception:
+                    pass
         try:
             ws_id = str(websocket.id)
         except Exception:
             ws_id = ""
-        sessions = self.sessions
         get_by_websocket = getattr(sessions, "get_by_websocket", None)
         if callable(get_by_websocket):
             try:
@@ -1198,14 +1254,59 @@ class SlotServiceHandler(BaseService):
         websocket: Any,
         message: dict[str, Any],
     ) -> dict[str, Any]:
+        # Resolve session first so we can seed ``message["moniker"]``
+        # before the access policy reads it.
+        from casino.api._auth import _get_or_bind_session_for
+
+        state, err = _get_or_bind_session_for(self, websocket, message)
+        if err is not None:
+            return err
+        if state is not None:
+            message["moniker"] = state.moniker
         state, err = self._check_access(websocket, "slot_history", message)
         if err is not None:
             return err
 
-        limit = int(message.get("limit", 50))
+        try:
+            limit = int(message.get("limit", 50))
+        except (TypeError, ValueError):
+            return {"type": "error", "code": "invalid_request", "message": "limit must be an integer"}
+        if limit < 0:
+            return {"type": "error", "code": "invalid_request", "message": "limit must be non-negative"}
         history = self._handle_history(self.args, state.moniker, limit)
+        return {"type": "slot_history", "spins": history}
+
+    async def _handle_table_history_msg(
+        self,
+        websocket: Any,
+        message: dict[str, Any],
+    ) -> dict[str, Any]:
+        # Resolve session first so we can seed ``message["table_moniker"]``
+        # from the session's bound table before the access policy reads it.
+        from casino.api._auth import _get_or_bind_session_for
+
+        state, err = _get_or_bind_session_for(self, websocket, message)
+        if err is not None:
+            return err
+        if state is not None and not message.get("table_moniker"):
+            message["table_moniker"] = self._get_seated(websocket)
+        state, err = self._check_access(websocket, "slot_table_history", message)
+        if err is not None:
+            return err
+
+        table_moniker = message.get("table_moniker") or self._get_seated(websocket)
+        if not table_moniker:
+            return {"type": "error", "code": "not_at_table"}
+        try:
+            limit = int(message.get("limit", 50))
+        except (TypeError, ValueError):
+            return {"type": "error", "code": "invalid_request", "message": "limit must be an integer"}
+        if limit < 0:
+            return {"type": "error", "code": "invalid_request", "message": "limit must be non-negative"}
+        history = self._handle_table_history(self.args, table_moniker, limit=limit)
         return {
-            "type": "slot_history",
+            "type": "slot_table_history",
+            "table_moniker": table_moniker,
             "spins": history,
         }
 
@@ -1316,7 +1417,7 @@ class MessageRouter:
         server.register_service(self.chat_service, ["chat_table", "chat_global", "emote"])
 
         # Register slot service for slot machine play
-        server.register_service(self.slot_service, ["slot_spin", "slot_paytable", "slot_history"])
+        server.register_service(self.slot_service, ["slot_spin", "slot_paytable", "slot_history", "slot_table_history"])
 
         # Register yahtzee service for dice play
         server.register_service(
