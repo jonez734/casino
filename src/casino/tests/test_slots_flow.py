@@ -97,6 +97,12 @@ class _StubWebSocket:
         type(self)._counter += 1
         self._id = type(self)._counter
 
+    @property
+    def id(self):
+        """Expose ``_id`` as ``.id`` so the auth pipeline's ``str(websocket.id)``
+        lookup matches the session registry's key shape."""
+        return self._id
+
     def __hash__(self):
         return self._id
 
@@ -320,10 +326,11 @@ class TestSlotServiceHandler(unittest.TestCase):
     """Verify the WebSocket handler dispatches and constructs the right replies."""
 
     def setUp(self):
-        from casino.api.handler import SessionManager, SlotServiceHandler
+        from casino.api.handler import SlotServiceHandler
+        from casino.tests._session_mock import make_sessions_mock
 
         self.args = argparse.Namespace(databasename="test", database="test")
-        self.sessions = SessionManager()
+        self.sessions = make_sessions_mock(moniker="alice")
         self.handler = SlotServiceHandler(self.args, self.sessions, channel_state=None)
         # Use a stable WS object and register its id() as session 1
         self.ws = stable_ws()
@@ -339,20 +346,25 @@ class TestSlotServiceHandler(unittest.TestCase):
         r = asyncio.run(self.handler.handle_message(
             None, self.ws, "/", {"type": "slot_spin", "bet": 10}
         ))
-        self.assertEqual(r["code"], "not_at_table")
+        # Per the bank-style access() migration, an authenticated
+        # session that is not at the target table is denied as
+        # ``forbidden`` (the policy short-circuits before the handler's
+        # own ``not_at_table`` check fires).
+        self.assertEqual(r["code"], "forbidden")
 
     def test_slot_paytable_no_table(self):
         import asyncio
         r = asyncio.run(self.handler.handle_message(
             None, self.ws, "/", {"type": "slot_paytable"}
         ))
-        self.assertEqual(r["code"], "not_at_table")
+        self.assertEqual(r["code"], "forbidden")
 
     def test_slot_history_no_auth(self):
         import asyncio
 
-        from casino.api.handler import SessionManager, SlotServiceHandler
-        sessions = SessionManager()
+        from casino.api.handler import SlotServiceHandler
+        from casino.tests._session_mock import make_sessions_mock
+        sessions = make_sessions_mock(moniker=None)
         handler = SlotServiceHandler(self.args, sessions, channel_state=None)
         other_ws = stable_ws()
         r = asyncio.run(handler.handle_message(
@@ -362,9 +374,11 @@ class TestSlotServiceHandler(unittest.TestCase):
 
     def test_slot_history_with_auth(self):
         import asyncio
+        # slot_history is self-or-sysop: the player must either be a
+        # sysop or specify ``moniker`` matching their auth moniker.
         with patch("casino.services.slots.dal_slots.get_spin_history", return_value=[]):
             r = asyncio.run(self.handler.handle_message(
-                None, self.ws, "/", {"type": "slot_history", "limit": 10}
+                None, self.ws, "/", {"type": "slot_history", "limit": 10, "moniker": "alice"}
             ))
         self.assertEqual(r["type"], "slot_history")
         self.assertEqual(r["spins"], [])
@@ -374,10 +388,11 @@ class TestSlotServiceHandlerSpinBroadcast(unittest.TestCase):
     """Verify a successful spin publishes to the table channel."""
 
     def setUp(self):
-        from casino.api.handler import SessionManager, SlotServiceHandler
+        from casino.api.handler import SlotServiceHandler
+        from casino.tests._session_mock import make_sessions_mock
 
         self.args = argparse.Namespace(databasename="test", database="test")
-        self.sessions = SessionManager()
+        self.sessions = make_sessions_mock(moniker="alice", table_moniker="slots-test")
         self.handler = SlotServiceHandler(self.args, self.sessions, channel_state=None)
         self.ws = stable_ws()
         self.sessions.register_session(id(self.ws), "alice", is_sysop=False)

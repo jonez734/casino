@@ -44,6 +44,7 @@ def main(args: Namespace, **kwargs) -> bool | None:
         ("B", "Blackjack", "blackjack.play"),
         ("P", "Poker", "poker.play"),
         ("S", "Slots", "slots.play"),
+        ("Y", "Yahtzee", "yahtzee.play"),
         ("C", "Connect", "auth"),
         ("L", "List tables", "table.list"),
         ("J", "Join table", "table.join"),
@@ -61,6 +62,13 @@ def main(args: Namespace, **kwargs) -> bool | None:
     )
 
     def mainmenuhelp(**kwargs):
+        """Render the main menu options.
+
+        Per the spec: util.heading() is called exactly once per display
+        of help (one F1 press -> one heading), then the option list is
+        echoed.
+        """
+        util.heading("main menu")
         for o in options:
             opt = o[0]
             t = o[1]
@@ -118,8 +126,6 @@ def main(args: Namespace, **kwargs) -> bool | None:
                     player=currentplayer,
                     pool=pool,
                 )
-
-                util.heading("main menu")
 
                 io.echo()
 

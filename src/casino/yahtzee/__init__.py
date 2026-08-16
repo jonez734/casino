@@ -22,5 +22,10 @@ def buildargs(args, **kw):
 
 
 def main(args, **kw):
-    """No door-mode entry; yahtzee v1 is BED-only."""
-    return True
+    """Door-mode + BED entry: delegates to yahtzee/game.py so callers like
+    casino.yahtzee.__main__ and commands/yahtzee/lib.py:play get the
+    standard init/buildargs/main machinery.
+    """
+    from bbsengine6 import module
+
+    return module.run(args, "game", package="casino.yahtzee", **kw)

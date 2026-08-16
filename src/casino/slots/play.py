@@ -24,22 +24,61 @@ def buildargs(args: Any = None, **kw: dict) -> None:
     return None
 
 
-def run_one_spin(player: SlotPlayer) -> dict:
+def _render_bet_help(**kwargs) -> None:
+    """F1/HELP callback for the bet prompt.
+
+    Per the spec: util.heading() is called exactly once per display of
+    help, then the option list is echoed.
+    """
+    util.heading("play slots")
+    io.echo("{var:optioncolor}[B]{var:labelcolor}et an amount (within table min/max and your credits)")
+    io.echo("{var:optioncolor}[Q]{var:labelcolor}uit to main menu")
+
+
+def _render_again_help(**kwargs) -> None:
+    """F1/HELP callback for the spin-again prompt.
+
+    Per the spec: util.heading() is called exactly once per display of
+    help, then the option list is echoed.
+    """
+    util.heading("play slots")
+    io.echo("{var:optioncolor}[Y]{var:labelcolor}es, spin again")
+    io.echo("{var:optioncolor}[N]{var:labelcolor}o, return to main menu")
+
+
+def _prompt_bet(player: SlotPlayer) -> int | None:
+    """Ask the player for a bet. Returns the bet or None if the player quit."""
+    while True:
+        choice = io.inputchoice(
+            "{var:promptcolor}Bet (q to quit): {var:inputcolor}",
+            "b,q",
+            default="b",
+            help=_render_bet_help,
+        )
+        if choice == "Q":
+            return None
+        bet = io.inputinteger(
+            f"{{var:promptcolor}}Bet amount ({player.min_bet}-{min(player.max_bet, player.credits)}): {{var:inputcolor}}",
+            minimum=player.min_bet,
+            maximum=min(player.max_bet, player.credits),
+        )
+        if bet is None:
+            return None
+        err = player.validate_bet(bet)
+        if err is not None:
+            io.echo(f"{{error}}{err}{{normal}}")
+            continue
+        return bet
+
+
+def run_one_spin(player: SlotPlayer) -> dict | None:
     """Prompt for a bet, run one spin, render the result.
 
     Returns the SpinResult on success, or ``None`` if the player chose to
     quit / bet validation failed at the prompt.
     """
-    bet = io.inputinteger(
-        "{var:promptcolor}Bet (q to quit): {var:inputcolor}",
-        minimum=player.min_bet,
-        maximum=min(player.max_bet, player.credits),
-    )
+    bet = _prompt_bet(player)
     if bet is None:
-        return None
-    err = player.validate_bet(bet)
-    if err is not None:
-        io.echo(f"{{error}}{err}{{normal}}")
         return None
     result = player.play(bet)
     io.echo("{title}Spin result:{normal}")
@@ -68,9 +107,11 @@ def main(args: Any, **kw: dict) -> bool:
         result = run_one_spin(player)
         if result is None:
             return True
-        again = io.inputboolean(
+        again = io.inputchoice(
             "{var:promptcolor}spin again? {var:optioncolor}[Yn]{var:promptcolor}: {var:inputcolor}",
-            "Y",
+            "y,n",
+            default="y",
+            help=_render_again_help,
         )
-        if again is False:
+        if again == "N":
             return True

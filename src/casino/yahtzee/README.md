@@ -116,9 +116,30 @@ existing WebSocket transport.
 - Upper-section bonus, yahtzee bonus, joker rule.
 - Multiplayer (the bank/scoring logic assumes the player is the
   table owner).
-- Door-mode `play.py` (deleted; v1 is BED-only).
-- Top-level `Y` menu shortcut in `main.py` (removed; players
-  reach yahtzee via the existing `Create` + `Join` flow).
-- `cmd_yahtzee_quick_play()` helper in `client/casino_client.py` for the
-  BBS-side client (a future commit can wrap the BED messages
-  for door-mode use).
+- `cmd_yahtzee_quick_play()` helper in `client/casino_client.py`
+  for the BBS-side client (a future commit can wrap the BED
+  messages so the `Y` door-mode shortcut can also drive the
+  WebSocket protocol end-to-end).
+
+## Door-mode parity
+
+The `Y` menu shortcut in `casino.main` routes to
+`casino.commands.yahtzee.lib.play`, which dispatches via
+`bbsengine6.module.run` to `casino.yahtzee.game`. The game module
+sets up a `YahtzeeDealer` + `YahtzeePlayer` and runs the local
+door-mode play loop in `casino.yahtzee.play` (mirrors
+`casino.slots.play` and `casino.blackjack.play`).
+
+Two prompts are wired with `KEY_HELP` / `KEY_F1` redraw via
+`io.inputchoice(help=...)`:
+
+- **Action prompt** — `[R]oll` / `[L]ock` / `[S]core` / `[Q]uit`.
+  Help heading is `play yahtzee`.
+- **Score-category prompt** — picks one of the 13 categories.
+  Help heading is `score category`.
+
+Both help callbacks call `bbsengine6.util.heading` exactly once
+per F1 press, matching the spec. The existing BED-side flow
+(`yahtzee_quick_play` / `yahtzee_roll` / `yahtzee_reroll` /
+`yahtzee_score` over WebSocket) is unchanged and remains the
+recommended path for table.join / table.create users.

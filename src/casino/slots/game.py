@@ -1,11 +1,7 @@
 # casino/slots/game.py
 # Top-level entry: wires up a SlotDealer + SlotPlayer and runs the door loop.
 
-from __future__ import annotations
-
-from typing import Any
-
-from bbsengine6 import io, member
+from bbsengine6 import io, member, register_module
 
 from . import lib as slots_lib
 from .dealer import SlotDealer
@@ -14,19 +10,25 @@ from .player import SlotPlayer
 __version__ = "202210010112"
 
 
-def init(args: Any, **kw: dict) -> bool:
+def init(args, **kw: dict) -> bool:
+    register_module(
+        name="casino.slots.game",
+        module_path="casino.slots.game",
+        version=__version__,
+        apis={},
+    )
+    return True  # type: ignore[return-value]
+
+
+def access(args, op: str, **kw: dict) -> bool:
     return True
 
 
-def access(args: Any, op: str, **kw: dict) -> bool:
-    return True
-
-
-def buildargs(args: Any = None, **kw: dict) -> None:
+def buildargs(args, **kw: dict):
     return None
 
 
-def main(args: Any, **kw: dict) -> bool:
+def main(args, **kw: dict) -> bool:
     io.terminal.title("slots")
     memberid = member.getcurrentid(args)
     if not memberid:

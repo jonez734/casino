@@ -7,6 +7,85 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### casino: yahtzee door-mode parity
+
+Yahtzee now ships door-mode parity with blackjack and slots,
+reversing the BED-only decision in `a307fde`. The `Y` menu
+shortcut routes through `casino.commands.yahtzee.lib.play` to
+`casino.yahtzee.game`, which sets up a `YahtzeeDealer` +
+`YahtzeePlayer` (mirrors `casino.slots.player.SlotPlayer` /
+`casino.slots.dealer.SlotDealer`) and runs the local play loop
+in `casino.yahtzee.play`.
+
+New files: `casino/src/casino/yahtzee/{player,game,play,__main__}.py`
+plus `casino/src/casino/commands/yahtzee/{__init__,lib}.py`. The
+`yahtzee/__init__.py:main` entry now uses `module.run` to
+delegate to `yahtzee.game`, so callers like
+`python -m casino.yahtzee` and `commands/yahtzee/lib.py:play`
+get the standard init/buildargs/main machinery.
+
+`commands/yahtzee/lib.py:play` branches on `args.direct`:
+without it, dispatch lands in `yahtzee.game` (the BED-side
+primary path); with `--direct`, dispatch lands in
+`yahtzee.play` directly (the thin offline wrapper).
+
+`yahtzee.game` and `yahtzee.play` both pass `module.check`
+(via `bbsengine6.module._check_func_signature`), unlike the
+existing `slots.play` and `blackjack.play` which are not
+checked. This required removing `from __future__ import
+annotations` from `yahtzee.play.py` so the `bool` / `bool |
+None` return type is real (not a string) for the
+annotation-introspecting `_check_func_return`.
+
+29 new tests in `casino/tests/test_yahtzee_commands.py` cover
+the commands subpkg, the door-mode dispatch, the help wiring
+(two `util.heading()` calls per F1 — one for the action
+prompt, one for the score-category prompt), and
+`module.check` parity for all three yahtzee modules.
+
+### casino: slots door-mode parity
+
+Slots now ships door-mode parity with blackjack: the `S` menu
+shortcut routes through `casino.commands.slots.lib.play` to
+`casino.slots.game`, which sets up a `SlotDealer` + `SlotPlayer`
+and runs the local play loop in `casino.slots.play`.
+
+New files: `casino/src/casino/commands/slots/{__init__,lib}.py`.
+The `slots/__init__.py:main` entry now uses `module.run` to
+delegate to `slots.game`, matching the blackjack / yahtzee
+pattern.
+
+Both prompts in `casino.slots.play` (bet prompt, spin-again
+prompt) are wired with `help=` callbacks so KEY_HELP / KEY_F1
+redraws the option list. Each help callback calls
+`bbsengine6.util.heading("play slots")` exactly once per F1
+press.
+
+24 new tests in `casino/tests/test_slots_commands.py` cover
+the commands subpkg, the door-mode dispatch, the help wiring,
+and `module.check` parity.
+
+### casino: KEY_HELP wiring on every interactive prompt
+
+Per the spec, every interactive prompt in the casino passes a
+`help=` callback to `bbsengine6.io.inputchoice` so that
+KEY_HELP / KEY_F1 redraws the prompt's option list. The
+callback for each prompt calls `bbsengine6.util.heading()`
+exactly once per F1 press — one F1 press = one heading. This
+applies to:
+
+- `casino.main.mainmenuhelp` — heading `"main menu"`
+- `casino.commands.slots.lib.menu` — heading `"Slots"`
+- `casino.commands.yahtzee.lib.menu` — heading `"Yahtzee"`
+- `casino.slots.play._render_bet_help` — heading `"play slots"`
+- `casino.slots.play._render_again_help` — heading `"play slots"`
+- `casino.yahtzee.play._render_action_help` — heading `"play yahtzee"`
+- `casino.yahtzee.play._render_score_help` — heading `"score category"`
+
+The `main` menu used to call `util.heading("main menu")` once
+before the inputchoice; the heading is now inside the
+`mainmenuhelp` callback so F1 redraws the banner as well.
+
 ### casino: bottombar status surface with host:port, player, credits
 
 The `casino` main menu now paints a status bar across the bottom

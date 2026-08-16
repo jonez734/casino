@@ -24,5 +24,5 @@ def buildargs(args, **kw):
 
 
 def main(args, **kw):
-    from . import game
-    return game.main(args, **kw)
+    from bbsengine6 import module
+    return module.run(args, "game", package="casino.slots", **kw)
