@@ -49,6 +49,40 @@ No new tests; the existing
 the door-mode end-to-end tests (test_slots_integrated.py:421)
 continue to pass without modification.
 
+### casino: slots — end-of-render ACS reset + print→io.echo
+
+`render_ascii()` ends with `{lrcorner}`, which leaves the terminal
+in DEC graphics mode (ACS on). Any raw stdout write that follows
+(e.g. `print()` in `_smoke_spin` / `_run_door`) is then rendered
+as DEC glyphs — text below the slot grid was garbled.
+
+`casino/slots/lib.py:render_ascii`:
+
+- Append a trailing `{/all}` to the returned string. The token
+  routes through `_handle_command`'s unconditional `_acs_off()`
+  (`ESC ( B`) and then `_handle_slashall` (`ESC [ 0 m`), so the
+  terminal is back in the default character set by the time
+  `io.echo(render_ascii(result))` returns.
+
+`casino/slots/__main__.py:_smoke_spin` and `_run_door`:
+
+- Trailing `print(...)` calls that followed `io.echo(render_ascii(...))`
+  are converted to `io.echo(...)` with `{{var:labelcolor}}/
+  {{var:valuecolor}}` wrapping, matching the yahtzee stat-display
+  pattern. Belt-and-suspenders: even with the trailing `{/all}`,
+  routing all post-render text through `io.echo` keeps color and
+  attribute state consistent.
+
+`casino/AGENTS.md`: add a "Reset ACS at the end of render_ascii"
+section parallel to the existing "Reset attributes before rendering
+the slot grid" rule.
+
+Tests: new `test_render_ascii_ends_with_acs_off` in
+`test_slots_unit.py:TestRenderAscii` pins the contract — the last
+ACS escape in the emitted stream must be `ESC ( B`. Existing
+`test_io_echo_preserves_glyphs_and_box_drawing` and
+`test_smoke_spin_emits_color_escapes` continue to pass.
+
 ### casino: yahtzee door-mode parity
 
 Yahtzee now ships door-mode parity with blackjack and slots,

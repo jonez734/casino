@@ -77,3 +77,27 @@ io.echo(render_ascii(result))
 
 This applies in both `__main__.py:_smoke_spin` (smoke spin) and
 `play.py:run_one_spin` (door-mode loop).
+
+## Reset ACS at the end of `render_ascii`
+
+`render_ascii()` ends with `{lrcorner}`, which leaves the terminal
+in DEC graphics mode (ACS on). Any raw stdout write that follows
+(e.g. `print()` in `_smoke_spin` / `_run_door` / `_run_demo`) is
+then rendered as DEC glyphs — i.e. garbled.
+
+`render_ascii()` already appends a trailing `{/all}` to its
+returned string; that token routes through `_handle_command`'s
+unconditional `_acs_off()` (`ESC ( B`) and then `_handle_slashall`
+(`ESC [ 0 m`), so the terminal is back in the default character
+set by the time `io.echo(render_ascii(result))` returns. Do not
+remove that trailing `{/all}`; the regression test
+`test_render_ascii_ends_with_acs_off` in
+`tests/test_slots_unit.py` pins the contract.
+
+When emitting text after the box render, prefer `io.echo()` over
+`print()`: `print()` bypasses the echo pipeline entirely, so even
+with the trailing reset, a `print()` call that follows another
+`print()` (which is itself preceded by the box render) will not
+see any leftover state from `io.echo` runs — but it also won't
+benefit from any color tag expansion, and a future regression
+that re-introduces an ACS leak would not be guarded.
