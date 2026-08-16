@@ -53,6 +53,8 @@ from typing import Any, Dict, Optional, Tuple
 
 from casino.access import access as _casino_access
 
+from bbsengine6 import io
+
 # ----- Wire-protocol error envelopes ----------------------------------
 
 CODE_TOKEN_INVALID = "token_invalid"
@@ -599,11 +601,53 @@ def check_access(
     so the existing test surface keeps working without
     re-minting tokens for every fixture.
     """
+    # ---- WS stats: which mode is this handler running in? ----
+    # BED mode: secret + token_store + instance_id all wired in,
+    # real WebSocketServer handles dispatch. Door mode: missing
+    # token wiring, drives the service via stub websockets for
+    # unit / integration tests. The flag below makes it visible
+    # at runtime so it is obvious whether slot ops are flowing
+    # through a real WebSocket or a door-mode harness.
+    _has_secret = bool(getattr(self_ref, "secret", None))
+    _has_store = getattr(self_ref, "token_store", None) is not None
+    _has_inst = bool(getattr(self_ref, "instance_id", None))
+    _legacy_only = bool(
+        getattr(self_ref, "allow_legacy_session_only", False)
+    )
+    _mode = (
+        "BED" if (_has_secret and _has_store and _has_inst) else "door"
+    )
+    try:
+        _ws_id = str(websocket.id) if websocket is not None else "<none>"
+    except Exception:
+        _ws_id = "<unreadable>"
+    try:
+        _ws_py_id = id(websocket) if websocket is not None else -1
+    except Exception:
+        _ws_py_id = -1
+    _has_wire_token = bool((message.get("token") or "").strip())
+    io.echo(
+        f"[check_access] ENTER op={op} mode={_mode} legacy_only={_legacy_only} "
+        f"ws_id={_ws_id} ws_py_id={_ws_py_id} wire_token={'yes' if _has_wire_token else 'no'}",
+        level="info",
+    )
+
     state, err = _get_or_bind_session_for(self_ref, websocket, message)
+    io.echo(
+        f"[check_access] op={op} session="
+        f"{'bound(moniker=' + str(getattr(state, 'moniker', None)) + ')' if state is not None else 'NONE'} "
+        f"err={'yes' if err is not None else 'no'}",
+        level="info",
+    )
+
     if err is not None and op == "list_tables":
         state = None
         err = None
     if err is not None:
+        io.echo(
+            f"[check_access] op={op} DENY early-resolve code={err.get('code')}",
+            level="info",
+        )
         return None, err
 
     claims_were_set = "claims" in message
@@ -611,17 +655,35 @@ def check_access(
     if not claims_were_set:
         claims, err = _validate_wire_token(self_ref, message)
         if err is not None:
+            io.echo(
+                f"[check_access] op={op} DENY wire-token code={err.get('code')}",
+                level="info",
+            )
             return state, err
         if claims is not None:
             message["claims"] = claims
             claims_were_set = True
+            io.echo(
+                f"[check_access] op={op} claims-set via wire-token "
+                f"moniker={claims.get('moniker')}",
+                level="info",
+            )
         elif state is not None:
             claims, err = _validate_session_token(self_ref, state)
             if err is not None:
+                io.echo(
+                    f"[check_access] op={op} DENY session-token code={err.get('code')}",
+                    level="info",
+                )
                 return state, err
             if claims is not None:
                 message["claims"] = claims
                 claims_were_set = True
+                io.echo(
+                    f"[check_access] op={op} claims-set via session-token "
+                    f"moniker={claims.get('moniker')}",
+                    level="info",
+                )
 
     # Public / read-only ops are intentionally authless (lobby
     # listing). Every other op requires a token so the downstream
@@ -631,7 +693,17 @@ def check_access(
     # ``self_ref.allow_legacy_session_only``.
     if not claims_were_set and op != "list_tables":
         if not getattr(self_ref, "allow_legacy_session_only", False):
+            io.echo(
+                f"[check_access] op={op} DENY gate no-claims "
+                f"mode={_mode} session={'bound' if state is not None else 'NONE'}",
+                level="info",
+            )
             return state, not_authenticated()
+        io.echo(
+            f"[check_access] op={op} gate-passed via legacy_session_only "
+            f"mode={_mode}",
+            level="info",
+        )
 
     # Normalize wire shape for the policy: ``kick_player`` carries
     # ``table_monikers`` (plural list) on the wire, but the policy in
@@ -647,11 +719,25 @@ def check_access(
 
     err = _validate_shape(op, message)
     if err is not None:
+        io.echo(
+            f"[check_access] op={op} DENY shape code={err.get('code')}",
+            level="info",
+        )
         return state, err
 
     if not _casino_access(self_ref.args, op, session=state, message=message):
+        io.echo(
+            f"[check_access] op={op} DENY policy forbidden "
+            f"session_moniker={getattr(state, 'moniker', None)}",
+            level="info",
+        )
         return state, forbidden("Operation not permitted for this session")
 
+    io.echo(
+        f"[check_access] op={op} ALLOW "
+        f"session_moniker={getattr(state, 'moniker', None)}",
+        level="info",
+    )
     return state, None
 
 
