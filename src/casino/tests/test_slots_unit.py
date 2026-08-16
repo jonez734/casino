@@ -325,9 +325,9 @@ class TestRenderAscii(unittest.TestCase):
         # Center row is highlighted with {inverse} ... {/inverse}
         self.assertIn("{inverse}", out)
         self.assertIn("{/inverse}", out)
-        # box characters
-        self.assertIn("┌", out)
-        self.assertIn("└", out)
+        # ACS box corners are echo commands, not literal Unicode chars
+        self.assertIn("{ulcorner}", out)
+        self.assertIn("{llcorner}", out)
 
     def test_renders_with_color_wrappers(self):
         """When a symbol has a color, its cell wraps the glyph in
@@ -346,7 +346,10 @@ class TestRenderAscii(unittest.TestCase):
         self.assertIn("{/red}", out)
 
     def test_renders_without_color_when_symbol_has_none(self):
-        """Empty color string means no color wrappers are emitted."""
+        """Empty color string means no color wrappers are emitted
+        around the glyphs. The ACS frame commands are still present
+        because they are part of the box border, not the symbol color.
+        """
         result = lib.SpinResult(
             reels=[[lib.Symbol("BLANK", 1, ".", "")]],
             center_row=[lib.Symbol("BLANK", 1, ".", "")],
@@ -356,8 +359,13 @@ class TestRenderAscii(unittest.TestCase):
             net=-1,
         )
         out = lib.render_ascii(result)
-        self.assertNotIn("{", out)
-        self.assertNotIn("}", out)
+        self.assertNotIn("{red}", out)
+        self.assertNotIn("{/red}", out)
+        self.assertNotIn("{yellow}", out)
+        # Frame markers are still emitted as echo commands.
+        self.assertIn("{ulcorner}", out)
+        self.assertIn("{llcorner}", out)
+        self.assertIn("{vline}", out)
 
     def test_renders_empty(self):
         result = lib.SpinResult(
@@ -427,7 +435,10 @@ class TestRenderAscii(unittest.TestCase):
     # Extended coverage: structural invariants and io.echo round-trip
     # ------------------------------------------------------------------
 
-    BOX_CHARS = set("┌┐└┘├┤┬┴┼─│")
+    ACS_COMMANDS = {
+        "{ulcorner}", "{urcorner}", "{llcorner}", "{lrcorner}",
+        "{rtee}", "{ltee}", "{ttee}", "{btee}", "{plus}",
+    }
     GLYPHS = set("CLPB=7.")
 
     def _synthetic(self, names):
@@ -499,7 +510,7 @@ class TestRenderAscii(unittest.TestCase):
 
     def test_grid_shape_default_5x3(self):
         """Default dealer produces a 5-column, 3-row grid framed by
-        box-drawing corners and T/plus separators.
+        ACS box-drawing commands and T/plus separators.
         """
         rng = lib.RNG(random.Random(20240101))
         dealer = SlotDealer(
@@ -508,15 +519,33 @@ class TestRenderAscii(unittest.TestCase):
         out = lib.render_ascii(dealer.play(bet=1))
         lines = out.splitlines()
         self.assertEqual(len(lines), 7)
-        self.assertTrue(lines[0].startswith("┌") and lines[0].endswith("┐"), lines[0])
-        self.assertTrue(lines[-1].startswith("└") and lines[-1].endswith("┘"), lines[-1])
-        self.assertTrue(lines[2].startswith("├") and lines[2].endswith("┤"), lines[2])
-        self.assertTrue(lines[4].startswith("├") and lines[4].endswith("┤"), lines[4])
+        self.assertTrue(
+            lines[0].startswith("{ulcorner}") and lines[0].endswith("{urcorner}"),
+            lines[0],
+        )
+        self.assertTrue(
+            lines[-1].startswith("{llcorner}") and lines[-1].endswith("{lrcorner}"),
+            lines[-1],
+        )
+        self.assertTrue(
+            lines[2].startswith("{rtee}") and lines[2].endswith("{ltee}"),
+            lines[2],
+        )
+        self.assertTrue(
+            lines[4].startswith("{rtee}") and lines[4].endswith("{ltee}"),
+            lines[4],
+        )
         for ln in (lines[0], lines[2], lines[4], lines[-1]):
-            self.assertEqual(ln.count("┬") + ln.count("┼") + ln.count("┴"), 4, ln)
+            self.assertEqual(
+                ln.count("{ttee}") + ln.count("{plus}") + ln.count("{btee}"),
+                4,
+                ln,
+            )
         for ln in (lines[1], lines[3], lines[5]):
-            self.assertTrue(ln.startswith("│") and ln.endswith("│"), ln)
-            self.assertEqual(ln.count("│"), 6, ln)
+            self.assertTrue(
+                ln.startswith("{vline}") and ln.endswith("{vline}"), ln
+            )
+            self.assertEqual(ln.count("{vline}"), 6, ln)
 
     def test_glyph_padding_to_cell_w(self):
         """With a 3-wide WIDE symbol and 1-wide default glyphs, every
@@ -570,8 +599,11 @@ class TestRenderAscii(unittest.TestCase):
         self.assertNotIn("{red}", echoed, "{red} opener not interpreted by io.echo")
 
     def test_io_echo_preserves_glyphs_and_box_drawing(self):
-        """After echo, every box-drawing char and every symbol glyph
-        present in the raw render must survive in the output.
+        """After echo, every ACS box-drawing command must produce the
+        VT100 alternate-character-set escape sequence (``ESC ( 0``
+        ... ``ESC ( B``) so a real terminal renders the box
+        characters natively, and every symbol glyph in the raw render
+        must survive in the output.
         """
         from bbsengine6 import io
         from bbsengine6.io import common
@@ -591,8 +623,10 @@ class TestRenderAscii(unittest.TestCase):
         finally:
             common.set_output_stream(old)
 
-        for ch in self.BOX_CHARS:
-            self.assertIn(ch, echoed, f"box char {ch!r} lost in echo round-trip")
+        acs_on = "\x1b(0"
+        acs_off = "\x1b(B"
+        self.assertIn(acs_on, echoed, "ACS_ON escape missing in echo round-trip")
+        self.assertIn(acs_off, echoed, "ACS_OFF escape missing in echo round-trip")
         for ch in out_raw:
             if ch in self.GLYPHS:
                 self.assertIn(ch, echoed, f"glyph {ch!r} lost in echo round-trip")

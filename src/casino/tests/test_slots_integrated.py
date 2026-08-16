@@ -293,9 +293,12 @@ class TestSpinResultRender(unittest.TestCase):
         # 3 rows + 2 borders + 2 internal separators = 7 lines.
         self.assertEqual(len(out.split("\n")), 7)
         # Top border, middle separator, bottom border.
-        self.assertIn("\u250c", out)
-        self.assertIn("\u251c", out)
-        self.assertIn("\u2514", out)
+        # Box-drawing characters are emitted as bbsengine6 echo
+        # ACS commands so the grid is drawn with native VT100 ACS
+        # escapes when the output is piped through io.echo.
+        self.assertIn("{ulcorner}", out)
+        self.assertIn("{rtee}", out)
+        self.assertIn("{llcorner}", out)
         # Center row glyphs should be present
         for sym in center:
             self.assertIn(sym.glyph, out)
