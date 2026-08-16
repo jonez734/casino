@@ -706,19 +706,30 @@ class TestServiceAtomicTransaction(unittest.TestCase):
         _dealers["t1"] = StubDealer()
         self.addCleanup(invalidate_dealer, "t1")
 
-        cursor = _StubCursor(
-            initial={"id": 1, "balance": 1000},
-            insert_returning={"id": 42},
-        )
+        # Bank mutation now goes through bbsengine6.bank.BankService;
+        # mock it so the casino cursor only sees casino-specific SQL.
+        cursor = _StubCursor(insert_returning={"id": 42})
         conn = _StubConn(cursor)
 
         @contextlib.contextmanager
         def fake_connect(*a, **kw):
             yield conn
 
+        bank_calls = []
+
+        class StubBank:
+            def add_funds(self, moniker, amount, **kwargs):
+                bank_calls.append(("add", moniker, amount, kwargs))
+                return {"success": True, "new_balance": 1000 + amount}
+
+            def remove_funds(self, moniker, amount, **kwargs):
+                bank_calls.append(("remove", moniker, amount, kwargs))
+                return {"success": True, "new_balance": 1000 - amount}
+
         with patch("casino.services.slots.database.connect", fake_connect), \
              patch("casino.services.slots.database.cursor",
                    side_effect=lambda c, **kw: c.cursor()), \
+             patch("bbsengine6.bank.BankService", lambda args: StubBank()), \
              patch("casino.services.slots.dal_table.get_table",
                    return_value={"type": "slots", "minimumbet": 1,
                                  "maximumbet": 1000}):
@@ -731,13 +742,24 @@ class TestServiceAtomicTransaction(unittest.TestCase):
         self.assertEqual(r["spin"]["net"], 1440)
         self.assertEqual(r["spin"]["new_balance"], 1000 + 1440)
 
-        # SELECT FOR UPDATE -> UPDATE bank -> INSERT spin ->
-        # UPDATE stats (slots.spins/wins/net) -> UPDATE biggest_win
-        self.assertEqual(len(cursor.executed), 5)
+        # Bank mutation routed through bbsengine6.bank.BankService
+        # (the bank service bed.api.bank.BankService wraps) with the
+        # net delta. ``conn=conn`` keeps it in the spin's atomic
+        # transaction alongside the casino audit + stats writes.
+        self.assertEqual(len(bank_calls), 1)
+        op, moniker, amount, kwargs = bank_calls[0]
+        self.assertEqual(op, "add")
+        self.assertEqual(moniker, "alice")
+        self.assertEqual(amount, 1440)
+        self.assertIs(kwargs.get("conn"), conn)
+        self.assertEqual(kwargs.get("transaction_type"), "slots_payout")
+
+        # Casino-side SQL trace: INSERT __slot_spin, UPDATE stats,
+        # UPDATE biggest_win (winning case). The bank SQL happens
+        # inside the StubBank mock, not on the casino cursor.
+        self.assertEqual(len(cursor.executed), 3)
         sqls = [_sql_text(s) for s, _ in cursor.executed]
         joined = " | ".join(sqls)
-        self.assertIn("FOR UPDATE", joined)
-        self.assertIn("UPDATE", joined)
         self.assertIn("__slot_spin", joined)
         self.assertIn("INSERT", joined)
         self.assertIn("biggest_win", joined)
@@ -768,19 +790,24 @@ class TestServiceAtomicTransaction(unittest.TestCase):
         _dealers["t1"] = StubDealer()
         self.addCleanup(invalidate_dealer, "t1")
 
-        cursor = _StubCursor(
-            initial={"id": 1, "balance": 1000},
-            insert_returning={"id": 7},
-        )
+        cursor = _StubCursor(insert_returning={"id": 7})
         conn = _StubConn(cursor)
 
         @contextlib.contextmanager
         def fake_connect(*a, **kw):
             yield conn
 
+        class StubBank:
+            def remove_funds(self, moniker, amount, **kwargs):
+                return {"success": True, "new_balance": 1000 - amount}
+
+            def add_funds(self, moniker, amount, **kwargs):
+                return {"success": True, "new_balance": 1000 + amount}
+
         with patch("casino.services.slots.database.connect", fake_connect), \
              patch("casino.services.slots.database.cursor",
                    side_effect=lambda c, **kw: c.cursor()), \
+             patch("bbsengine6.bank.BankService", lambda args: StubBank()), \
              patch("casino.services.slots.dal_table.get_table",
                    return_value={"type": "slots", "minimumbet": 1,
                                  "maximumbet": 1000}):
@@ -790,8 +817,8 @@ class TestServiceAtomicTransaction(unittest.TestCase):
         self.assertEqual(r["spin"]["payout"], 0)
         self.assertEqual(r["spin"]["net"], -10)
         # No biggest_win UPDATE because payout == 0.
-        # Trace: SELECT, UPDATE bank, INSERT spin, UPDATE stats.
-        self.assertEqual(len(cursor.executed), 4)
+        # Trace: INSERT spin, UPDATE stats. 2 statements.
+        self.assertEqual(len(cursor.executed), 2)
         for s, _ in cursor.executed:
             self.assertNotIn("biggest_win", s)
 
@@ -826,16 +853,28 @@ class TestServiceRollbackInsufficientFunds(unittest.TestCase):
         _dealers["t1"] = StubDealer()
         self.addCleanup(invalidate_dealer, "t1")
 
-        cursor = _StubCursor(initial={"id": 1, "balance": 5})
+        cursor = _StubCursor()
         conn = _StubConn(cursor)
 
         @contextlib.contextmanager
         def fake_connect(*a, **kw):
             yield conn
 
+        # Bank service rejects the debit because balance < bet; this
+        # mirrors the real bbsengine6.bank.BankService.remove_funds
+        # path when the player's balance is below the requested
+        # amount.
+        class StubBank:
+            def remove_funds(self, moniker, amount, **kwargs):
+                return {"success": False, "message": "Insufficient funds. Balance: 5"}
+
+            def add_funds(self, moniker, amount, **kwargs):
+                return {"success": True, "new_balance": amount}
+
         with patch("casino.services.slots.database.connect", fake_connect), \
              patch("casino.services.slots.database.cursor",
                    side_effect=lambda c, **kw: c.cursor()), \
+             patch("bbsengine6.bank.BankService", lambda args: StubBank()), \
              patch("casino.services.slots.dal_table.get_table",
                    return_value={"type": "slots", "minimumbet": 1,
                                  "maximumbet": 1000}):
@@ -843,9 +882,9 @@ class TestServiceRollbackInsufficientFunds(unittest.TestCase):
 
         self.assertFalse(r["success"])
         self.assertEqual(r["code"], "insufficient_funds")
-        # Only the SELECT FOR UPDATE executed; no audit, no stats.
-        self.assertEqual(len(cursor.executed), 1)
-        self.assertIn("FOR UPDATE", cursor.executed[0][0])
+        # No casino SQL executed: bank failure short-circuits before
+        # the audit/stats write inside the same transaction.
+        self.assertEqual(len(cursor.executed), 0)
 
     def test_wrong_game_type_returns_error(self):
         from casino.services.slots import handle_spin
@@ -937,20 +976,27 @@ class TestHandlerFullMessageFlow(unittest.TestCase):
             net=90,
         ))
 
-        cursor = _StubCursor(
-            initial={"id": 1, "balance": 100},
-            insert_returning={"id": 1},
-        )
+        # Bank mutation routes through bbsengine6.bank.BankService;
+        # mock it so the casino cursor only sees casino-specific SQL.
+        cursor = _StubCursor(insert_returning={"id": 1})
         conn = _StubConn(cursor)
 
         @contextlib.contextmanager
         def fake_connect(*a, **kw):
             yield conn
 
+        class StubBank:
+            def add_funds(self, moniker, amount, **kwargs):
+                return {"success": True, "new_balance": 100 + amount}
+
+            def remove_funds(self, moniker, amount, **kwargs):
+                return {"success": True, "new_balance": 100 - amount}
+
         server = AsyncMock()
         with patch("casino.services.slots.database.connect", fake_connect), \
              patch("casino.services.slots.database.cursor",
                    side_effect=lambda c, **kw: c.cursor()), \
+             patch("bbsengine6.bank.BankService", lambda args: StubBank()), \
              patch("casino.services.slots.dal_table.get_table",
                    return_value={"type": "slots", "minimumbet": 1,
                                  "maximumbet": 1000}):

@@ -1186,7 +1186,21 @@ class SlotServiceHandler(BaseService):
         if not table_moniker:
             return {"type": "error", "code": "not_at_table"}
 
-        result = self._handle_spin(self.args, table_moniker, state.moniker, bet)
+        # Thread the auth context through to the slot service so the
+        # bank mutation can re-verify the bearer-token claims against
+        # ``bbsengine6.bank.access``. The wire call already carries the
+        # token (injected by ``CasinoClient.send`` on the client side
+        # and validated by ``casino.api._auth.check_access`` here);
+        # passing ``message`` + ``state`` is the defense-in-depth check
+        # that mirrors ``bed.api.bank.BankService._check_access``.
+        result = self._handle_spin(
+            self.args,
+            table_moniker,
+            state.moniker,
+            bet,
+            message=message,
+            state=state,
+        )
 
         if not result.get("success"):
             return {

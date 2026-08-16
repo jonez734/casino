@@ -10,11 +10,37 @@
 # on resolution) because slots has no inter-player settlement window.
 # Disconnect mid-spin is a non-event: the transaction either commits
 # or doesn't happen, so there is no in-flight bet to recover.
+#
+# Bank service + auth token
+# -------------------------
+# The bank mutation routes through ``bbsengine6.bank.BankService``
+# (the same bank service ``bed.api.bank.BankService`` wraps) so the
+# spin's ledger write uses the project's bank-account bookkeeping
+# (atomic SQL, ``bank.__transaction`` audit row, etc.) and goes
+# through the same code path as every other bed bank op. When the
+# spin handler is invoked from the bed WS handler with an auth
+# context (``message`` carrying validated token ``claims`` and
+# ``state`` carrying the bound session), the bank op is gated by
+# ``bbsengine6.bank.access`` so the claim-derived moniker /
+# ``is_sysop`` authorize the debit/credit. This mirrors the
+# defense-in-depth check ``bed.api.bank.BankService._check_access``
+# runs on every wire op, so a token revoked since WS open cannot
+# drive a slots bank move even if the casino slot-spin policy
+# already admitted the request.
+#
+# The call from the casino WS handler goes through the bed
+# WebSocket (``casino.api.handler.SlotServiceHandler``); the
+# ``token`` field is already injected on every wire call by
+# ``CasinoClient.send`` (token-file flow) and the WS handler
+# validates it before ``handle_spin`` runs. ``handle_spin``
+# receives the resulting ``state`` + ``message["claims"]`` as
+# ``state`` and ``message`` kwargs and feeds them to the bank
+# access policy.
 
 from __future__ import annotations
 
 import uuid
-from typing import Any
+from typing import Any, Dict, Optional
 
 from bbsengine6 import database, io
 
@@ -141,6 +167,9 @@ def handle_spin(
     table_moniker: str,
     player_moniker: str,
     bet: int,
+    *,
+    message: Optional[Dict[str, Any]] = None,
+    state: Optional[Any] = None,
 ) -> dict[str, Any]:
     """End-to-end spin: validate, debit, spin, credit, record, stats.
 
@@ -148,6 +177,21 @@ def handle_spin(
     ``{"success": False, "code": "<reason>", "message": "..."}`` on any
     precondition failure. All side effects happen in a single atomic
     transaction.
+
+    When invoked from the bed WS handler (``message`` and ``state``
+    are passed through), the bank mutation is gated by
+    ``bbsengine6.bank.access`` so the claim-derived moniker /
+    ``is_sysop`` authorize the debit/credit. The wire call already
+    carries the bearer token (injected by ``CasinoClient.send`` on
+    the client side, validated by ``casino.api._auth.check_access``
+    on the server side); the bank policy reads ``message["claims"]``
+    rather than the in-memory session attributes so the second
+    authorization step matches the cryptographically verified
+    source.
+
+    Door-mode callers and direct unit-test callers leave ``message``
+    and ``state`` at their default ``None`` and the bank gate is
+    skipped; the slot-spin policy has already admitted the request.
     """
     correlation_id = uuid.uuid4().hex
     if not isinstance(bet, int) or isinstance(bet, bool) or bet <= 0:
@@ -184,51 +228,122 @@ def handle_spin(
     result = dealer.play(bet=bet)
 
     net = result.net  # payout - bet; may be negative
-    # In an atomic transaction: move the net delta into the player account,
-    # write the spin row, bump stats. If anything fails, the whole spin
-    # is rolled back and the player keeps their credits.
+
+    # Per-call defense-in-depth: re-verify the bearer-token claims
+    # against the bank access policy when an auth context is present.
+    # Mirrors bed.api.bank.BankService._check_access: the slot spin's
+    # bank move is gated by the same claim-derived authorization the
+    # bank's own add/remove handlers run, so a token revoked since WS
+    # open cannot drive a slots bank move even if the casino slot-spin
+    # policy admitted the request. Skipped when message/state are
+    # absent (door mode / unit tests where the slot-spin policy is
+    # the sole gate).
+    if message is not None and state is not None and net != 0:
+        from bbsengine6.bank import access as _bank_access
+
+        bank_op = "add" if net > 0 else "remove"
+        bank_msg: Dict[str, Any] = {
+            "moniker": player_moniker,
+            "amount": int(abs(net)),
+            "claims": dict(message.get("claims") or {}),
+        }
+        if not _bank_access(
+            args, bank_op, session=state, message=bank_msg
+        ):
+            io.echo(
+                f"slots: bank_access_denied member={player_moniker} "
+                f"op={bank_op} amount={bank_msg['amount']} "
+                f"corr={correlation_id}",
+                level="warning",
+            )
+            return {
+                "success": False,
+                "code": "forbidden",
+                "message": "Bank operation not permitted for this session",
+            }
+
+    # In an atomic transaction: move the net delta into the player
+    # account via bbsengine6.bank.BankService (the bank service bed
+    # wraps), write the casino spin row, bump stats. If anything
+    # fails, the whole spin is rolled back and the player keeps
+    # their credits.
+    reels_json = [[s.name for s in col] for col in result.reels]
+    wins_json = [w.to_dict() for w in result.wins]
+    spin_id: int | None = None
+    new_balance: int | None = None
     try:
-        with database.connect(args) as conn, database.cursor(conn) as cur:
-                # Check & lock the player account
-                cur.execute(
-                    database.query(
-                        "SELECT id, balance FROM bank.__account WHERE moniker = :moniker FOR UPDATE",
-                        moniker=player_moniker,
-                    )
+        from bbsengine6.bank import BankService as _BankService
+
+        with database.connect(args) as conn:
+            # Route the bank move through bbsengine6.bank.BankService so
+            # the SQL is atomic (no read-then-write TOCTOU) and the
+            # bank.__transaction audit row is written next to the
+            # casino.__slot_spin audit row below. ``conn=conn`` keeps
+            # the move inside the spin's atomic transaction.
+            bank = _BankService(args)
+            if net > 0:
+                bank_result = bank.add_funds(
+                    player_moniker,
+                    int(net),
+                    transaction_type="slots_payout",
+                    description=(
+                        f"Slots spin payout at {table_moniker} "
+                        f"(spin corr={correlation_id})"
+                    ),
+                    member_moniker=player_moniker,
+                    conn=conn,
                 )
-                row = cur.fetchone()
-                if row is None:
-                    # Auto-create at zero so we have a place to credit
-                    try:
-                        cur.execute(
-                            database.query(
-                                "INSERT INTO bank.__account (moniker, balance) VALUES (:moniker, 0) RETURNING id, balance",
-                                moniker=player_moniker,
-                            )
-                        )
-                        row = cur.fetchone()
-                    except Exception as e:
-                        io.echo(f"slots: bank_account_auto_create_failed member={player_moniker} corr={correlation_id}: {e}", level="error")
-                        raise
-                account_id = int(row["id"])
-                current_balance = int(row["balance"])
-                if current_balance < bet:
-                    io.echo(f"slots: insufficient_funds member={player_moniker} balance={current_balance} bet={bet} corr={correlation_id}", level="warning")
+            elif net < 0:
+                bank_result = bank.remove_funds(
+                    player_moniker,
+                    int(-net),
+                    transaction_type="slots_bet",
+                    description=(
+                        f"Slots spin debit at {table_moniker} "
+                        f"(spin corr={correlation_id})"
+                    ),
+                    member_moniker=player_moniker,
+                    conn=conn,
+                )
+            else:
+                # net == 0: push, no bank move. Read balance for the
+                # response so the client sees the unchanged figure.
+                bank_result = {
+                    "success": True,
+                    "new_balance": bank.get_balance(player_moniker),
+                }
+            if not bank_result.get("success"):
+                msg = bank_result.get("message", "") or ""
+                if (
+                    "Insufficient funds" in msg
+                    or "Account not found" in msg
+                    or "balance" in msg.lower()
+                ):
+                    io.echo(
+                        f"slots: insufficient_funds member={player_moniker} "
+                        f"bet={bet} corr={correlation_id}: {msg}",
+                        level="warning",
+                    )
                     return {
                         "success": False,
                         "code": "insufficient_funds",
-                        "message": f"Balance {current_balance} below bet {bet}",
+                        "message": msg or f"Balance below bet {bet}",
                     }
-                new_balance = current_balance + net
-                cur.execute(
-                    database.query(
-                        "UPDATE bank.__account SET balance = :bal WHERE id = :id",
-                        bal=new_balance, id=account_id,
-                    )
+                io.echo(
+                    f"slots: bank_op_failed member={player_moniker} "
+                    f"op={'add' if net > 0 else 'remove'} "
+                    f"corr={correlation_id}: {msg}",
+                    level="error",
                 )
+                return {
+                    "success": False,
+                    "code": "service_error",
+                    "message": msg or "Bank operation failed",
+                }
+            new_balance = int(bank_result.get("new_balance", 0))
+
+            with database.cursor(conn) as cur:
                 # Audit row
-                reels_json = [[s.name for s in col] for col in result.reels]
-                wins_json = [w.to_dict() for w in result.wins]
                 cur.execute(
                     database.query(
                         """INSERT INTO $casino.__slot_spin
