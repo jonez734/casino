@@ -225,6 +225,81 @@ class CasinoClient:
                     f"{t['moniker']:<20} {t['owner']:<15} {t['bank']:<10} {t['max_transfer']:<12} {t['type']:<10}\n"
                 )
 
+        elif msg_type == "slot_result":
+            spin = msg.get("spin") or {}
+            util.heading(f"Slot spin at {msg.get('table_moniker')}")
+            io.echo(
+                f"{{var:labelcolor}}bet:      {{var:valuecolor}}{spin.get('bet', 0)}"
+            )
+            io.echo(
+                f"{{var:labelcolor}}payout:   {{var:valuecolor}}{spin.get('payout', 0)}"
+            )
+            io.echo(
+                f"{{var:labelcolor}}net:      {{var:valuecolor}}{spin.get('net', 0):+d}"
+            )
+            new_balance = spin.get("new_balance")
+            if new_balance is not None:
+                self.balance = int(new_balance)
+                io.echo(
+                    f"{{var:labelcolor}}balance:  {{var:valuecolor}}{new_balance}"
+                )
+            center = spin.get("center_row") or []
+            if center:
+                io.echo(
+                    f"{{var:labelcolor}}center:   {{var:valuecolor}}{' '.join(str(s) for s in center)}"
+                )
+
+        elif msg_type == "slot_paytable":
+            table_moniker = msg.get("moniker", "")
+            payouts = msg.get("payouts", []) or []
+            util.heading(f"Paytable for {table_moniker}")
+            if not payouts:
+                io.echo("{var:labelcolor}(no payouts defined)")
+            else:
+                io.echo(
+                    f"{{var:labelcolor}}{'symbols':<30} {{var:valuecolor}}{'multiplier'}"
+                )
+                util.hr(end="")
+                for p in payouts:
+                    syms = " ".join(p.get("symbols") or [])
+                    mult = p.get("multiplier", 0)
+                    io.echo(
+                        f"{syms:<30} {mult}"
+                    )
+
+        elif msg_type == "slot_history":
+            spins = msg.get("spins", []) or []
+            util.heading("Slot history")
+            if not spins:
+                io.echo("{var:labelcolor}(no spins recorded)")
+            else:
+                io.echo(
+                    f"{{var:labelcolor}}{'when':<20} {{var:valuecolor}}{'bet':>6} {'payout':>7} {'net':>7} {{var:labelcolor}}{'table'}"
+                )
+                util.hr(end="")
+                for s in spins:
+                    when = (s.get("spun_at") or "")[:19]
+                    io.echo(
+                        f"{when:<20} {s.get('bet', 0):>6} {s.get('payout', 0):>7} {s.get('net', 0):>+7} {s.get('table_moniker', '')}"
+                    )
+
+        elif msg_type == "slot_table_history":
+            table_moniker = msg.get("table_moniker", "")
+            spins = msg.get("spins", []) or []
+            util.heading(f"Slot history for {table_moniker}")
+            if not spins:
+                io.echo("{var:labelcolor}(no spins recorded)")
+            else:
+                io.echo(
+                    f"{{var:labelcolor}}{'when':<20} {{var:valuecolor}}{'bet':>6} {'payout':>7} {'net':>7} {{var:labelcolor}}{'player'}"
+                )
+                util.hr(end="")
+                for s in spins:
+                    when = (s.get("spun_at") or "")[:19]
+                    io.echo(
+                        f"{when:<20} {s.get('bet', 0):>6} {s.get('payout', 0):>7} {s.get('net', 0):>+7} {s.get('player_moniker', '')}"
+                    )
+
         else:
             io.echo(f"Unknown message type: {msg_type}: {msg}", level="debug")
 
@@ -272,6 +347,54 @@ class CasinoClient:
     def cmd_list_tables(self) -> None:
         """Handle list_tables command."""
         self._loop.run_until_complete(self.send({"type": "list_tables"}))
+
+    def cmd_slot_spin(self) -> None:
+        """Handle slot_spin command.
+
+        Prompts for the bet amount and sends a ``slot_spin`` wire
+        message. ``CasinoClient.send`` auto-injects the bearer token
+        when one is bound (``self._bearer_token``), so the WS handler
+        re-verifies it on every op. The reply arrives as a
+        ``slot_result`` message routed through ``handle_message``.
+        """
+        if self.current_table is None:
+            io.echo("Not at a table. Use Join first.", level="error")
+            return
+        bet = io.inputinteger("{var:promptcolor}Bet amount: {var:inputcolor}", minimum=1)
+        if bet is None:
+            return
+        self._loop.run_until_complete(
+            self.send(
+                {
+                    "type": "slot_spin",
+                    "bet": int(bet),
+                }
+            )
+        )
+
+    def cmd_slot_paytable(self) -> None:
+        """Handle slot_paytable command."""
+        if self.current_table is None:
+            io.echo("Not at a table. Use Join first.", level="error")
+            return
+        self._loop.run_until_complete(self.send({"type": "slot_paytable"}))
+
+    def cmd_slot_history(self) -> None:
+        """Handle slot_history command."""
+        limit = io.inputinteger(
+            "{var:promptcolor}Number of recent spins (default 20): {var:inputcolor}",
+            default=20,
+        )
+        if limit is None:
+            limit = 20
+        self._loop.run_until_complete(
+            self.send(
+                {
+                    "type": "slot_history",
+                    "limit": int(limit),
+                }
+            )
+        )
 
     def cmd_create_table(self) -> None:
         """Handle create_table command."""
