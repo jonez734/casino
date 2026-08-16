@@ -46,14 +46,42 @@ def _build_paytable_from_config(config: dict[str, Any]) -> Paytable:
     ``config.paytable_override``. Everything else (reel set, target RTP)
     is informational / validation; the default reel strips + paytable
     are used unless an override is supplied.
+
+    The override accepts two formats so it can survive a round trip
+    through the database (PostgreSQL JSONB does not allow tuple keys):
+
+    - **list-of-dicts** (DB-friendly): ``[{"symbols": ["CHERRY"],
+      "multiplier": 99}]``. This is the recommended format for any
+      override that needs to be stored in ``attrs.paytable_override``.
+    - **dict with list/tuple keys** (in-memory legacy):
+      ``{("CHERRY",): 99}``. Useful for callers that construct the
+      config in-process without round-tripping through the DB.
     """
     override = config.get("paytable_override")
     if override is None:
         return Paytable()
-    if not isinstance(override, dict):
-        io.echo(f"slots: paytable_override rejected: not a dict (got {type(override).__name__})", level="error")
-        raise ValueError("paytable_override must be a dict of {symbol_tuple: multiplier}")
     parsed: dict[tuple[str, ...], int] = {}
+    if isinstance(override, list):
+        for entry in override:
+            if not isinstance(entry, dict):
+                io.echo(f"slots: paytable_override entry not a dict: {entry!r}", level="error")
+                raise ValueError(f"paytable_override entries must be dicts, got {entry!r}")
+            symbols = entry.get("symbols")
+            multiplier = entry.get("multiplier")
+            if not isinstance(symbols, list):
+                io.echo(f"slots: paytable_override entry symbols not a list: {symbols!r}", level="error")
+                raise ValueError(f"paytable_override 'symbols' must be a list, got {symbols!r}")
+            if not all(isinstance(s, str) and s for s in symbols):
+                io.echo(f"slots: paytable_override bad symbols: {symbols!r}", level="error")
+                raise ValueError(f"paytable_override 'symbols' entries must be non-empty strings, got {symbols!r}")
+            if not isinstance(multiplier, int) or multiplier < 0:
+                io.echo(f"slots: paytable_override bad multiplier {multiplier!r}", level="error")
+                raise ValueError(f"paytable_override 'multiplier' must be a non-negative int, got {multiplier!r}")
+            parsed[tuple(symbols)] = multiplier
+        return Paytable(parsed)
+    if not isinstance(override, dict):
+        io.echo(f"slots: paytable_override rejected: not a dict or list (got {type(override).__name__})", level="error")
+        raise ValueError("paytable_override must be a list of {symbols, multiplier} dicts or a dict of {symbol_tuple: multiplier}")
     for key, mult in override.items():
         if not isinstance(key, (list, tuple)):
             io.echo(f"slots: paytable_override rejected: key not list/tuple: {key!r}", level="error")
@@ -74,7 +102,7 @@ def _build_dealer_for_table(args: Any, table_moniker: str) -> SlotDealer | None:
         return None
     if table.get("type") != "slots":
         return None
-    config = table.get("config") or {}
+    config = table.get("attrs")
     if not isinstance(config, dict):
         config = {}
     paytable = _build_paytable_from_config(config)

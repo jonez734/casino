@@ -9,6 +9,25 @@ from bbsengine6 import database
 from bbsengine6.database import Jsonb
 
 
+def _coerce_row(row: dict[str, Any]) -> dict[str, Any]:
+    """Cast psycopg-native types to JSON-safe values.
+
+    - NUMERIC columns (``bet``, ``payout``) come back as
+      :class:`decimal.Decimal`; ``json.dumps`` cannot serialize them.
+      The DB stores them as integer cents-equivalents so a cast is safe.
+    - Timestamp columns (``spun_at``) come back as
+      :class:`datetime.datetime`; stringify as ISO-8601 so the wire
+      envelope stays JSON-clean.
+    """
+    out = dict(row)
+    for key in ("bet", "payout"):
+        if key in out and not isinstance(out[key], int):
+            out[key] = int(out[key])
+    if "spun_at" in out and out["spun_at"] is not None and not isinstance(out["spun_at"], str):
+        out["spun_at"] = out["spun_at"].isoformat()
+    return out
+
+
 def record_spin(
     args: Any,
     table_moniker: str,
@@ -58,7 +77,7 @@ def get_spin_history(
                 limit=limit,
             )
         )
-        return [dict(row) for row in cur]
+        return [_coerce_row(dict(row)) for row in cur]
 
 
 def get_table_history(
@@ -81,4 +100,4 @@ def get_table_history(
                 limit=limit,
             )
         )
-        return [dict(row) for row in cur]
+        return [_coerce_row(dict(row)) for row in cur]
