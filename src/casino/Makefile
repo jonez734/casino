@@ -7,11 +7,11 @@
 # or from src/casino/:        `make <target>`
 
 PROJECT = casino
-OUTDIR = dist
+OUTDIR = /srv/repo/$(PROJECT)/
 VERSION = $(shell date +%Y%m%d%H%M)
 PYTHON = python3
 
-.PHONY: build version
+.PHONY: version
 .PHONY: clean buildclean rename-sdist sign release all
 .PHONY: push tag
 
@@ -32,9 +32,6 @@ clean:
 buildclean:
 	-rm -rf build dist *.egg-info
 
-build: version
-	cd ../.. && $(PYTHON) -m build --outdir $(OUTDIR)
-
 rename-sdist:
 	@cd ../.. && for f in $(OUTDIR)/*.tar.gz; do \
 		if [ -f "$$f" ] && echo "$$f" | grep -vq '\-src\.tar\.gz' ; then \
@@ -51,7 +48,8 @@ sign:
 		fi \
 	done
 
-release: buildclean build rename-sdist sign
+release:
+	$(MAKE) -C ../.. release
 
 version:
 	@echo '__version__ = "0.0.1.dev$(VERSION)"' > _version.py
@@ -69,5 +67,4 @@ tag:
 		echo "Tag v$(VERSION) created locally."; \
 	fi
 
-# TODO: standardize OUTDIR across packages (../../dist/ vs ../dist/ vs /srv/repo/$(PROJECT)/)
 # TODO: standardize version label names across packages (drop __ prefix/suffix on __datestamp__/__version__)

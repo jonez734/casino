@@ -1,3 +1,6 @@
+PROJECT = casino
+OUTDIR = /srv/repo/$(PROJECT)/
+
 all:
 
 clean:

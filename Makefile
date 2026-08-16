@@ -20,12 +20,14 @@ export RSYNC = rsync --chmod=Dg=rwxs,Fgu=rw,Fo=r --verbose \
 
 PYTHON = python3
 VERSION = $(shell date +%Y%m%d%H%M)
+OUTDIR = /srv/repo/$(PROJECT)/
 
 .PHONY: all build version install sdist clean push
 .PHONY: deploy-www deploy-tui
 .PHONY: test test-unit test-integration test-all test-phase-1 test-phase-2 test-phase-3
 .PHONY: test-quick test-file help
 .PHONY: commit-version
+.PHONY: ensure-repo ensure-build-dir rename-sdist sign release
 
 all:
 
@@ -47,11 +49,40 @@ version:
 	@echo 'githash = "'`git log -1 --format='%H' 2>/dev/null | cut -c 1-16`'"' >> src/casino/_version.py
 	@echo 'datestamp = "'`date +%Y%m%d%H%M`'"' >> src/casino/_version.py
 
-build: version
-	$(PYTHON) -m build --outdir dist
+.PHONY: ensure-repo
+ensure-repo:
+	@stat -c '%G' /srv/repo 2>/dev/null | grep -qx repo || sudo chgrp repo /srv/repo
+	@stat -c '%a' /srv/repo 2>/dev/null | grep -q '^2775$$' || sudo chmod 2775 /srv/repo
 
-sdist: version
-	$(PYTHON) -m build --sdist --outdir dist
+.PHONY: ensure-build-dir
+ensure-build-dir: ensure-repo
+	@mkdir -p /srv/repo/$(PROJECT)/
+	@stat -c '%G' /srv/repo/$(PROJECT)/ 2>/dev/null | grep -qx repo || sudo chgrp repo /srv/repo/$(PROJECT)/
+	@stat -c '%a' /srv/repo/$(PROJECT)/ 2>/dev/null | grep -q '^2775$$' || sudo chmod 2775 /srv/repo/$(PROJECT)/
+
+build: version ensure-build-dir
+	$(PYTHON) -m build --outdir $(OUTDIR)
+
+sdist: version ensure-build-dir
+	$(PYTHON) -m build --sdist --outdir $(OUTDIR)
+
+rename-sdist:
+	@for f in $(OUTDIR)/*.tar.gz; do \
+		if [ -f "$$f" ] && echo "$$f" | grep -vq '\-src\.tar\.gz' ; then \
+			mv "$$f" "$${f%.tar.gz}-src.tar.gz"; \
+			echo "Renamed $$f -> $${f%.tar.gz}-src.tar.gz"; \
+		fi \
+	done
+
+sign:
+	@for f in $(OUTDIR)/*; do \
+		if [ -f "$$f" ] && [ ! -f "$$f.asc" ] && [ "$${f##*.}" != "asc" ]; then \
+			gpg --armor --detach-sign "$$f"; \
+			echo "Signed $$f"; \
+		fi \
+	done
+
+release: clean version build rename-sdist sign
 
 install:
 	$(PYTHON) -m pip install .
@@ -105,9 +136,9 @@ deploy-tui: install
 
 help:
 	@echo "Available build targets:"
-	@echo "  make build        - Bump version, run python -m build into ./dist"
+	@echo "  make build        - Bump version, run python -m build into $(OUTDIR)"
 	@echo "  make version      - Rewrite src/casino/_version.py from git + date"
-	@echo "  make sdist        - Build sdist only into ./dist"
+	@echo "  make sdist        - Build sdist only into $(OUTDIR)"
 	@echo "  make install      - pip install . in current env"
 	@echo "  make deploy-tui   - install casino into the active venv (shared zoid6 venv)"
 	@echo "  make deploy-www   - build www and rsync to $(HOST)"
