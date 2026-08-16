@@ -238,15 +238,31 @@ def add_player_to_table(
 
 
 def remove_player_from_table(args: Any, moniker: str, player_moniker: str) -> bool:
-    """Remove player from table (standing up)."""
+    """Remove player from table (standing up).
+
+    Cleans both ``map_game_player`` (game-level seat; blackjack) and
+    ``map_cardtable_player`` (table-level seat; single-seater games
+    such as slots). Returns True iff at least one row was removed.
+    """
     with database.connect(args) as conn, database.cursor(conn) as cur:
-            cur.execute(
-                database.query(
-                    "DELETE FROM $casino.map_game_player m USING $casino.__game g WHERE m.gameid = g.id AND g.tablemoniker = :moniker AND m.playermoniker = :player_moniker",
-                    moniker=moniker, player_moniker=player_moniker
-                )
+        cur.execute(
+            database.query(
+                "DELETE FROM $casino.map_game_player m USING $casino.__game g "
+                "WHERE m.gameid = g.id AND g.tablemoniker = :moniker "
+                "AND m.playermoniker = :player_moniker",
+                moniker=moniker, player_moniker=player_moniker,
             )
-            return cur.rowcount > 0
+        )
+        game_rows = cur.rowcount
+        cur.execute(
+            database.query(
+                "DELETE FROM $casino.map_cardtable_player "
+                "WHERE cardtablemoniker = :moniker AND playermoniker = :player_moniker",
+                moniker=moniker, player_moniker=player_moniker,
+            )
+        )
+        ct_rows = cur.rowcount
+        return (game_rows + ct_rows) > 0
 
 
 def delete_table(args: Any, moniker: str) -> bool:
