@@ -133,6 +133,17 @@ class TestSlotSpinUsesClient(unittest.TestCase):
     agrees with the server's per-op authorization.
     """
 
+    def _authed_client(self) -> MagicMock:
+        client = MagicMock()
+        client.authenticated = True
+        client.moniker = "alice"
+        client.current_table_moniker = "t1"
+        client.cmd_slot_spin = MagicMock()
+        client.cmd_slot_paytable = MagicMock()
+        client.cmd_slot_history = MagicMock()
+        client._loop = MagicMock()
+        return client
+
     def test_slot_spin_requires_a_connected_client(self):
         from casino.commands.slots import lib
 
@@ -140,14 +151,38 @@ class TestSlotSpinUsesClient(unittest.TestCase):
             result = lib.slot_spin(_make_args())
         self.assertFalse(result)
 
-    def test_slot_spin_gates_through_casino_access(self):
+    def test_slot_spin_rejects_unauthenticated_client(self):
+        """A client in the registry that hasn't actually finished
+        authenticating must not be able to spin."""
         from casino.commands.slots import lib
 
         client = MagicMock()
+        client.authenticated = False
         client.moniker = "alice"
-        client.current_table_moniker = "t1"
         client.cmd_slot_spin = MagicMock()
-        client._loop = MagicMock()
+
+        with patch("casino.commands.slots.lib.get_client", return_value=client):
+            result = lib.slot_spin(_make_args())
+        self.assertFalse(result)
+        client.cmd_slot_spin.assert_not_called()
+
+    def test_slot_spin_rejects_client_with_empty_moniker(self):
+        from casino.commands.slots import lib
+
+        client = MagicMock()
+        client.authenticated = True
+        client.moniker = ""
+        client.cmd_slot_spin = MagicMock()
+
+        with patch("casino.commands.slots.lib.get_client", return_value=client):
+            result = lib.slot_spin(_make_args())
+        self.assertFalse(result)
+        client.cmd_slot_spin.assert_not_called()
+
+    def test_slot_spin_gates_through_casino_access(self):
+        from casino.commands.slots import lib
+
+        client = self._authed_client()
 
         with patch(
             "casino.commands.slots.lib.get_client", return_value=client
@@ -165,11 +200,7 @@ class TestSlotSpinUsesClient(unittest.TestCase):
     def test_slot_spin_denied_when_access_denies(self):
         from casino.commands.slots import lib
 
-        client = MagicMock()
-        client.moniker = "alice"
-        client.current_table_moniker = "t1"
-        client.cmd_slot_spin = MagicMock()
-        client._loop = MagicMock()
+        client = self._authed_client()
 
         with patch(
             "casino.commands.slots.lib.get_client", return_value=client
@@ -184,11 +215,7 @@ class TestSlotSpinUsesClient(unittest.TestCase):
     def test_slot_spin_denied_without_session_moniker(self):
         from casino.commands.slots import lib
 
-        client = MagicMock()
-        client.moniker = "alice"
-        client.current_table_moniker = "t1"
-        client.cmd_slot_spin = MagicMock()
-        client._loop = MagicMock()
+        client = self._authed_client()
 
         result = lib.slot_spin(_make_args())  # no _session_moniker
         self.assertFalse(result)
@@ -199,11 +226,7 @@ class TestSlotSpinUsesClient(unittest.TestCase):
         ``slots.play`` subcommand path keeps working."""
         from casino.commands.slots import lib
 
-        client = MagicMock()
-        client.moniker = "alice"
-        client.current_table_moniker = "t1"
-        client.cmd_slot_spin = MagicMock()
-        client._loop = MagicMock()
+        client = self._authed_client()
 
         with patch(
             "casino.commands.slots.lib.get_client", return_value=client
@@ -213,6 +236,147 @@ class TestSlotSpinUsesClient(unittest.TestCase):
             result = lib.play(_make_args(_session_moniker="alice"))
         self.assertTrue(result)
         client.cmd_slot_spin.assert_called_once()
+
+
+class TestSlotPaytableUsesClient(unittest.TestCase):
+    """slot_paytable must mirror slot_spin's auth gate."""
+
+    def _authed_client(self) -> MagicMock:
+        client = MagicMock()
+        client.authenticated = True
+        client.moniker = "alice"
+        client.current_table_moniker = "t1"
+        client.cmd_slot_paytable = MagicMock()
+        client._loop = MagicMock()
+        return client
+
+    def test_slot_paytable_requires_a_connected_client(self):
+        from casino.commands.slots import lib
+
+        with patch("casino.commands.slots.lib.get_client", return_value=None):
+            self.assertFalse(lib.slot_paytable(_make_args()))
+
+    def test_slot_paytable_rejects_unauthenticated_client(self):
+        from casino.commands.slots import lib
+
+        client = MagicMock()
+        client.authenticated = False
+        client.moniker = "alice"
+        client.cmd_slot_paytable = MagicMock()
+
+        with patch("casino.commands.slots.lib.get_client", return_value=client):
+            self.assertFalse(lib.slot_paytable(_make_args()))
+        client.cmd_slot_paytable.assert_not_called()
+
+    def test_slot_paytable_gates_through_casino_access(self):
+        from casino.commands.slots import lib
+
+        client = self._authed_client()
+        with patch(
+            "casino.commands.slots.lib.get_client", return_value=client
+        ), patch(
+            "casino.commands.slots.lib._casino_access", return_value=True
+        ) as mock_access:
+            self.assertTrue(
+                lib.slot_paytable(_make_args(_session_moniker="alice"))
+            )
+        mock_access.assert_called_once()
+        self.assertEqual(mock_access.call_args.args[1], "slot_paytable")
+        client.cmd_slot_paytable.assert_called_once()
+
+
+class TestSlotHistoryUsesClient(unittest.TestCase):
+    """slot_history must mirror slot_spin's auth gate."""
+
+    def _authed_client(self) -> MagicMock:
+        client = MagicMock()
+        client.authenticated = True
+        client.moniker = "alice"
+        client.current_table_moniker = "t1"
+        client.cmd_slot_history = MagicMock()
+        client._loop = MagicMock()
+        return client
+
+    def test_slot_history_requires_a_connected_client(self):
+        from casino.commands.slots import lib
+
+        with patch("casino.commands.slots.lib.get_client", return_value=None):
+            self.assertFalse(lib.slot_history(_make_args()))
+
+    def test_slot_history_rejects_unauthenticated_client(self):
+        from casino.commands.slots import lib
+
+        client = MagicMock()
+        client.authenticated = False
+        client.moniker = "alice"
+        client.cmd_slot_history = MagicMock()
+
+        with patch("casino.commands.slots.lib.get_client", return_value=client):
+            self.assertFalse(lib.slot_history(_make_args()))
+        client.cmd_slot_history.assert_not_called()
+
+    def test_slot_history_gates_through_casino_access(self):
+        from casino.commands.slots import lib
+
+        client = self._authed_client()
+        with patch(
+            "casino.commands.slots.lib.get_client", return_value=client
+        ), patch(
+            "casino.commands.slots.lib._casino_access", return_value=True
+        ) as mock_access:
+            self.assertTrue(
+                lib.slot_history(_make_args(_session_moniker="alice"))
+            )
+        mock_access.assert_called_once()
+        self.assertEqual(mock_access.call_args.args[1], "slot_history")
+        client.cmd_slot_history.assert_called_once()
+
+
+class TestSlotsMenuRefusesUnauthenticated(unittest.TestCase):
+    """The slots submenu must refuse to open without an authenticated
+    client. The gate fires before the heading / help / prompt so a
+    user who hasn't connected cannot even see the [S]pin option.
+    """
+
+    def test_menu_refuses_when_no_client(self):
+        from casino.commands.slots import lib
+
+        with patch("casino.commands.slots.lib.get_client", return_value=None), \
+             patch("bbsengine6.io.inputchoice") as mock_ic, \
+             patch("bbsengine6.io.echo"):
+            result = lib.menu(_make_args())
+        mock_ic.assert_not_called()
+        self.assertTrue(result)
+
+    def test_menu_refuses_when_client_not_authenticated(self):
+        from casino.commands.slots import lib
+
+        client = MagicMock()
+        client.authenticated = False
+        client.moniker = ""
+
+        with patch("casino.commands.slots.lib.get_client", return_value=client), \
+             patch("bbsengine6.io.inputchoice") as mock_ic, \
+             patch("bbsengine6.io.echo"):
+            result = lib.menu(_make_args())
+        mock_ic.assert_not_called()
+        self.assertTrue(result)
+
+    def test_menu_opens_for_authenticated_client(self):
+        from casino.commands.slots import lib
+
+        client = MagicMock()
+        client.authenticated = True
+        client.moniker = "alice"
+        client.current_table_moniker = "t1"
+        client.cmd_slot_spin = MagicMock()
+        client._loop = MagicMock()
+
+        with patch("casino.commands.slots.lib.get_client", return_value=client), \
+             patch("bbsengine6.io.inputchoice", return_value="q") as mock_ic:
+            result = lib.menu(_make_args(_session_moniker="alice"))
+        mock_ic.assert_called_once()
+        self.assertTrue(result)
 
 
 class TestSlotsPackageMainUsesModuleRun(unittest.TestCase):
@@ -278,13 +442,30 @@ class TestModuleCheckPasses(unittest.TestCase):
 class TestSlotsMenuHelpWiring(unittest.TestCase):
     """commands/slots/lib.py:menu() must wire help= so KEY_HELP redraws the
     option list. The help callback must call util.heading() exactly once
-    per display of help (one F1 press -> one heading)."""
+    per display of help (one F1 press -> one heading). The menu gate
+    requires an authenticated client, so the help-wiring tests inject
+    one before invoking menu."""
+
+    @staticmethod
+    def _authed_client():
+        client = MagicMock()
+        client.authenticated = True
+        client.moniker = "alice"
+        client.current_table_moniker = "t1"
+        client.cmd_slot_spin = MagicMock()
+        client._loop = MagicMock()
+        return client
 
     def test_menu_passes_help_to_inputchoice(self):
         from casino.commands.slots import lib
 
-        with patch("bbsengine6.io.inputchoice", return_value="q") as mock_ic:
-            lib.menu(_make_args())
+        client = self._authed_client()
+        with patch(
+            "casino.commands.slots.lib.get_client", return_value=client
+        ), patch(
+            "bbsengine6.io.inputchoice", return_value="q"
+        ) as mock_ic:
+            lib.menu(_make_args(_session_moniker="alice"))
 
         mock_ic.assert_called_once()
         kwargs = mock_ic.call_args.kwargs
@@ -295,9 +476,15 @@ class TestSlotsMenuHelpWiring(unittest.TestCase):
         """Simulate one F1 press: util.heading() must be called exactly once."""
         from casino.commands.slots import lib
 
-        with patch("bbsengine6.io.inputchoice") as mock_ic, \
-             patch("casino.commands.slots.lib.util.heading") as mock_heading:
-            lib.menu(_make_args())
+        client = self._authed_client()
+        with patch(
+            "casino.commands.slots.lib.get_client", return_value=client
+        ), patch(
+            "bbsengine6.io.inputchoice"
+        ) as mock_ic, patch(
+            "casino.commands.slots.lib.util.heading"
+        ) as mock_heading:
+            lib.menu(_make_args(_session_moniker="alice"))
             mock_heading.reset_mock()
             mock_ic.call_args.kwargs["help"]()
         self.assertEqual(mock_heading.call_count, 1)
@@ -306,9 +493,15 @@ class TestSlotsMenuHelpWiring(unittest.TestCase):
         """The heading title must be 'Slots' so F1 shows the right banner."""
         from casino.commands.slots import lib
 
-        with patch("bbsengine6.io.inputchoice") as mock_ic, \
-             patch("casino.commands.slots.lib.util.heading") as mock_heading:
-            lib.menu(_make_args())
+        client = self._authed_client()
+        with patch(
+            "casino.commands.slots.lib.get_client", return_value=client
+        ), patch(
+            "bbsengine6.io.inputchoice"
+        ) as mock_ic, patch(
+            "casino.commands.slots.lib.util.heading"
+        ) as mock_heading:
+            lib.menu(_make_args(_session_moniker="alice"))
             mock_heading.reset_mock()
             mock_ic.call_args.kwargs["help"]()
         self.assertEqual(mock_heading.call_args.args[0], "Slots")

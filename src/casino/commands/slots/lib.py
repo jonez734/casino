@@ -134,6 +134,46 @@ def _check_access(
     return False
 
 
+def _require_authenticated_client(
+    client, op: str
+) -> Optional[Any]:
+    """Defense-in-depth: refuse if no client or the client hasn't
+    actually finished authenticating.
+
+    ``get_client()`` only returns a registered client after a
+    successful connect, so ``client is None`` already covers the
+    never-connected case. The extra checks here cover edge cases
+    where the registry holds a half-built client (auth aborted,
+    token rejected, disconnect in flight): if
+    ``client.authenticated`` is False or ``client.moniker`` is empty,
+    the wire op would not carry a valid claim-derived identity and
+    the server-side ``bbsengine6.casino.access`` gate would deny it
+    anyway. We short-circuit here so the CLI matches.
+    """
+    if client is None:
+        io.echo(
+            f"Operation '{op}' requires an authenticated session. "
+            f"Use Connect first.",
+            level="error",
+        )
+        return None
+    if not getattr(client, "authenticated", False):
+        io.echo(
+            f"Operation '{op}' requires an authenticated session. "
+            f"Authentication did not complete.",
+            level="error",
+        )
+        return None
+    if not (getattr(client, "moniker", "") or "").strip():
+        io.echo(
+            f"Operation '{op}' requires an authenticated session. "
+            f"Client has no moniker.",
+            level="error",
+        )
+        return None
+    return client
+
+
 def play(args: argparse.Namespace, client=None, **kwargs) -> bool:
     """Start a slot spin via the WS client.
 
@@ -154,9 +194,10 @@ def slot_spin(args: argparse.Namespace, client=None, **kwargs) -> bool:
     server's ``casino.api._auth.check_access`` re-verifies it on
     every op (defense in depth, mirroring ``bed.api.bank.BankService``).
     """
-    client = client or get_client()
+    client = _require_authenticated_client(
+        client or get_client(), "slot_spin"
+    )
     if client is None:
-        io.echo("Not connected. Use Connect first.", level="error")
         return False
     if not _check_access(
         args,
@@ -172,9 +213,10 @@ def slot_spin(args: argparse.Namespace, client=None, **kwargs) -> bool:
 
 def slot_paytable(args: argparse.Namespace, client=None, **kwargs) -> bool:
     """Send a slot_paytable wire op through the connected client."""
-    client = client or get_client()
+    client = _require_authenticated_client(
+        client or get_client(), "slot_paytable"
+    )
     if client is None:
-        io.echo("Not connected. Use Connect first.", level="error")
         return False
     if not _check_access(
         args,
@@ -195,9 +237,10 @@ def slot_history(args: argparse.Namespace, client=None, **kwargs) -> bool:
     ``message["moniker"]`` as the target. We pass the actor's own
     moniker so the server returns the actor's spins.
     """
-    client = client or get_client()
+    client = _require_authenticated_client(
+        client or get_client(), "slot_history"
+    )
     if client is None:
-        io.echo("Not connected. Use Connect first.", level="error")
         return False
     if not _check_access(
         args,
@@ -227,10 +270,20 @@ def _render_help(**kwargs) -> None:
 def menu(args: argparse.Namespace, client=None, **kwargs):
     """Show the slots submenu and dispatch the chosen subcommand.
 
-    Every option goes through the WS client, so the bearer token is
-    auto-injected on every wire call (see ``CasinoClient.send``) and
-    the server-side ``bbsengine6.casino.access`` re-verifies it.
+    Refuses to open if no authenticated client is registered. The
+    gate fires before the heading / help / prompt so a user who
+    hasn't connected cannot even see the [S]pin option. Every
+    option that does run goes through the WS client, so the bearer
+    token is auto-injected on every wire call (see
+    ``CasinoClient.send``) and the server-side
+    ``bbsengine6.casino.access`` re-verifies it.
     """
+    client = _require_authenticated_client(
+        client or get_client(), "slots menu"
+    )
+    if client is None:
+        return True
+
     util.heading("Slots")
     _render_help()
     cmd = io.inputchoice(
