@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### casino: slots color-tag consistency + box-render reset
+
+Slots echo statements are migrated to the established color-tag
+vocabulary used by blackjack and yahtzee, and the box render is
+preceded by a `{/all}` reset so per-symbol colors don't inherit
+stray attributes from prior echoes.
+
+`casino/slots/__main__.py:_smoke_spin`:
+
+- The bare `print("theoretical RTP:", ...)` line is converted to
+  `io.echo(f"{{var:labelcolor}}theoretical RTP:{{var:valuecolor}} ...")`
+  for consistency with the `target RTP` line above it. The previous
+  `print()` form would have leaked `{var:labelcolor}` markup
+  verbatim (AGENTS.md anti-pattern).
+- An `io.echo("{/all}")` is inserted immediately before the box
+  render so the grid starts from a clean attribute state.
+
+`casino/slots/__main__.py:_run_demo`:
+
+- All 11 summary-stat lines are converted from `print()` to
+  `io.echo()` with `{{var:labelcolor}}/{{var:valuecolor}}`
+  wrapping, matching the yahtzee stat-display pattern. The
+  trailing `(theoretical)` annotation on the target RTP line is
+  re-wrapped in `{{var:labelcolor}}` so the value stays visually
+  distinct from its label.
+
+`casino/slots/play.py`:
+
+- `{title}` → `{var:titlecolor}` and `{normal}` → `{var:normalcolor}`
+  on the "Spin result:" banner.
+- `{error}` → `{level.error}` on the validation-error echo (in
+  `_prompt_bet`) and on the no-win branch (in `run_one_spin`), as
+  well as on the missing-arguments error (in `main`).
+- `{success}` → `{level.ok}` on the win branch.
+- An `io.echo("{/all}")` is inserted immediately before the box
+  render in `run_one_spin`.
+
+No new tests; the existing
+`test_smoke_spin_emits_color_escapes` (test_slots_unit.py:699) and
+the door-mode end-to-end tests (test_slots_integrated.py:421)
+continue to pass without modification.
+
 ### casino: yahtzee door-mode parity
 
 Yahtzee now ships door-mode parity with blackjack and slots,

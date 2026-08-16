@@ -66,7 +66,7 @@ def _prompt_bet(player: SlotPlayer) -> int | None:
             return None
         err = player.validate_bet(bet)
         if err is not None:
-            io.echo(f"{{error}}{err}{{normal}}")
+            io.echo(f"{{level.error}}{err}{{var:normalcolor}}")
             continue
         return bet
 
@@ -81,12 +81,13 @@ def run_one_spin(player: SlotPlayer) -> dict | None:
     if bet is None:
         return None
     result = player.play(bet)
-    io.echo("{title}Spin result:{normal}")
+    io.echo("{var:titlecolor}Spin result:{var:normalcolor}")
+    io.echo("{/all}")
     io.echo(render_ascii(result))
     if result.did_win:
-        io.echo(f"{{success}}Won {result.payout}!{{normal}}  net: {result.net:+d}")
+        io.echo(f"{{level.ok}}Won {result.payout}!{{var:normalcolor}}  net: {result.net:+d}")
     else:
-        io.echo(f"{{error}}No win.{{normal}}  net: {result.net:+d}")
+        io.echo(f"{{level.error}}No win.{{var:normalcolor}}  net: {result.net:+d}")
     io.echo(f"Credits: {player.credits}")
     return result
 
@@ -96,7 +97,7 @@ def main(args: Any, **kw: dict) -> bool:
     dealer: SlotDealer | None = kw.get("dealer")
     if player is None or dealer is None:
         io.echo(
-            "{error}Error: missing required arguments (player, dealer){normal}"
+            "{level.error}Error: missing required arguments (player, dealer){var:normalcolor}"
         )
         return False
 

@@ -98,7 +98,7 @@ def _smoke_spin(seed: int | None, rtp_progress: int) -> int:
     )
     io.echo(f"{{var:labelcolor}}total reels: {{var:valuecolor}}{len(dealer._reels)}x{dealer.num_rows}")
     io.echo(f"{{var:labelcolor}}target RTP:  {{var:valuecolor}}{lib.RTP_DEFAULT:.2%}")
-    print("theoretical RTP:", f"{dealer.paytable.theoretical_rtp(dealer._reels, progress_every=rtp_progress):.4f}")
+    io.echo(f"{{var:labelcolor}}theoretical RTP:{{var:valuecolor}} {dealer.paytable.theoretical_rtp(dealer._reels, progress_every=rtp_progress):.4f}")
 
     player = SlotPlayer(
         moniker="smoke",
@@ -108,6 +108,7 @@ def _smoke_spin(seed: int | None, rtp_progress: int) -> int:
         max_bet=10,
     )
     result = player.play(bet=5)
+    io.echo("{/all}")
     io.echo(lib.render_ascii(result))
     print(
         f"bet={result.bet}  payout={result.payout}  "
@@ -150,18 +151,18 @@ def _run_demo(n: int, bet: int, seed: int | None, rtp_progress: int) -> int:
     realized_rtp = (total_payout / total_wagered) if total_wagered else 0.0
     target_rtp = dealer.paytable.theoretical_rtp(dealer._reels, progress_every=rtp_progress)
 
-    print(f"spins:          {n}")
-    print(f"bet per spin:   {bet}")
-    print(f"total wagered:  {total_wagered}")
-    print(f"total payout:   {total_payout}")
-    print(f"net:            {total_payout - total_wagered:+d}")
-    print(f"win rate:       {wins / n:.2%}")
-    print(f"realized RTP:   {realized_rtp:.4f}")
-    print(f"target RTP:     {target_rtp:.4f} (theoretical)")
-    print(f"RTP delta:      {realized_rtp - target_rtp:+.4f}")
-    print(f"biggest win:    {biggest_win}")
+    io.echo(f"{{var:labelcolor}}spins:          {{var:valuecolor}}{n}")
+    io.echo(f"{{var:labelcolor}}bet per spin:   {{var:valuecolor}}{bet}")
+    io.echo(f"{{var:labelcolor}}total wagered:  {{var:valuecolor}}{total_wagered}")
+    io.echo(f"{{var:labelcolor}}total payout:   {{var:valuecolor}}{total_payout}")
+    io.echo(f"{{var:labelcolor}}net:            {{var:valuecolor}}{total_payout - total_wagered:+d}")
+    io.echo(f"{{var:labelcolor}}win rate:       {{var:valuecolor}}{wins / n:.2%}")
+    io.echo(f"{{var:labelcolor}}realized RTP:   {{var:valuecolor}}{realized_rtp:.4f}")
+    io.echo(f"{{var:labelcolor}}target RTP:     {{var:valuecolor}}{target_rtp:.4f} {{var:labelcolor}}(theoretical)")
+    io.echo(f"{{var:labelcolor}}RTP delta:      {{var:valuecolor}}{realized_rtp - target_rtp:+.4f}")
+    io.echo(f"{{var:labelcolor}}biggest win:    {{var:valuecolor}}{biggest_win}")
     if biggest_win_payline is not None:
-        print(f"biggest pay:    {biggest_win_payline}")
+        io.echo(f"{{var:labelcolor}}biggest pay:    {{var:valuecolor}}{biggest_win_payline}")
     return 0
 
 
