@@ -667,6 +667,11 @@ class TestEchoMarkup(unittest.TestCase):
         literals; Python's f-string escaping reduces them to
         ``{var:labelcolor}`` and ``io.echo`` must expand them into
         ANSI CSI sequences.
+
+        Also guards against accidentally routing the rendered grid
+        through Python's ``print()`` instead of ``io.echo()`` -- the
+        grid carries per-symbol ``{purple}P{/purple}``-style markup
+        that only ``io.echo`` resolves into ANSI escapes.
         """
         from casino.slots.__main__ import _smoke_spin
 
@@ -680,6 +685,18 @@ class TestEchoMarkup(unittest.TestCase):
         )
         self.assertNotIn(
             "var:valuecolor", out, "{var:valuecolor} not interpreted by io.echo"
+        )
+        # The grid must go through io.echo -- if a future change routes
+        # it through print() instead, the per-symbol color markup
+        # (e.g. {purple}P{/purple}) will leak through verbatim.
+        self.assertNotIn(
+            "{purple}", out, "per-symbol color markup leaked through (print() instead of io.echo())"
+        )
+        self.assertNotIn(
+            "{red}", out, "per-symbol color markup leaked through (print() instead of io.echo())"
+        )
+        self.assertNotIn(
+            "{/purple}", out, "per-symbol close tag leaked through (print() instead of io.echo())"
         )
         self.assertIn("total reels:", out)
         self.assertIn("target RTP:", out)

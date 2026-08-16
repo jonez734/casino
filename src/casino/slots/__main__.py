@@ -108,7 +108,7 @@ def _smoke_spin(seed: int | None, rtp_progress: int) -> int:
         max_bet=10,
     )
     result = player.play(bet=5)
-    print(lib.render_ascii(result))
+    io.echo(lib.render_ascii(result))
     print(
         f"bet={result.bet}  payout={result.payout}  "
         f"net={result.net:+d}  credits={player.credits}"
@@ -203,7 +203,7 @@ def _run_door(args: argparse.Namespace) -> int:
             continue
         result = player.play(bet=bet)
         print()
-        print(lib.render_ascii(result))
+        io.echo(lib.render_ascii(result))
         if result.did_win:
             print(f"  won {result.payout}  net={result.net:+d}")
         else:
