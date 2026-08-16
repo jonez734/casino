@@ -392,16 +392,20 @@ def default_reels(symbols: dict[str, Symbol], rng: RNG) -> list[Reel]:
 
 
 def render_ascii(result: SpinResult) -> str:
-    """Render a 5x3 grid with box-drawing characters. Center row is
-    highlighted with ``{inverse}`` so the player can see what was
-    evaluated. Each cell is wrapped in its symbol's color (bbsengine6
-    echo color name) so cherries read as red, lemons yellow, etc.
+    """Render a 5x3 grid as a string of ``bbsengine6.io.echo``
+    commands. Box-drawing characters use the full ACS set
+    (``{ulcorner}``, ``{vline}``, ``{hline:N}``, ``{ttee}``,
+    ``{plus}``, ``{ltee}``, ``{rtee}``, ``{btee}``, ``{llcorner}``,
+    ``{lrcorner}``). Center row is highlighted with ``{inverse}`` so
+    the player can see what was evaluated. Each cell is wrapped in
+    its symbol's color (``{red}``, ``{yellow}``, ...) so cherries
+    read as red, lemons yellow, etc.
 
     The output is intended to be passed through ``bbsengine6.io.echo``
-    for color resolution. When echoed, ``{red}`` becomes an ANSI red
-    foreground and ``{/inverse}`` returns to normal video. If the
-    string is printed directly to a terminal that interprets
-    ``{name}``-style escapes, the same colors will display.
+    for command resolution. When echoed, ``{red}`` becomes an ANSI
+    red foreground, ``{/inverse}`` returns to normal video, and
+    ``{ulcorner}`` emits the VT100 ACS escape sequence so the grid
+    draws with native box characters on supporting terminals.
     """
     if not result.reels:
         return ""
@@ -426,9 +430,10 @@ def render_ascii(result: SpinResult) -> str:
             return f"{{inverse}}{{{sym.color}}}{text}{{/inverse}}{{/{sym.color}}}"
         return f"{{inverse}}{text}{{/inverse}}"
 
-    top = "┌" + "┬".join("─" * (cell_w + 2) for _ in result.reels) + "┐"
-    mid = "├" + "┼".join("─" * (cell_w + 2) for _ in result.reels) + "┤"
-    bot = "└" + "┴".join("─" * (cell_w + 2) for _ in result.reels) + "┘"
+    hline = "{hline:" + str(cell_w + 2) + "}"
+    top = "{ulcorner}" + "{ttee}".join(hline for _ in result.reels) + "{urcorner}"
+    mid = "{rtee}" + "{plus}".join(hline for _ in result.reels) + "{ltee}"
+    bot = "{llcorner}" + "{btee}".join(hline for _ in result.reels) + "{lrcorner}"
 
     lines = [top]
     for r in range(num_rows):
@@ -437,7 +442,7 @@ def render_ascii(result: SpinResult) -> str:
             sym = col[r] if r < len(col) else Symbol("BLANK", 1, ".")
             text = " " + (cell(sym) if r != 1 else inverse_cell(sym)) + " "
             row_parts.append(text)
-        lines.append("│" + "│".join(row_parts) + "│")
+        lines.append("{vline}" + "{vline}".join(row_parts) + "{vline}")
         if r < num_rows - 1:
             lines.append(mid)
     lines.append(bot)
