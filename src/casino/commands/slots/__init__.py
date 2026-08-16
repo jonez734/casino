@@ -1,14 +1,21 @@
 # commands/slots/__init__.py
-# Slots commands module. Mirrors commands/blackjack/__init__.py.
+# Slots commands module. WS-backed: every subcommand delegates to a
+# function in ``lib`` that sends through the connected ``CasinoClient``
+# so the bearer token is auto-injected on every wire call. The
+# legacy door-mode play loop still lives at ``casino/slots/play.py``
+# (reachable via ``casino.slots --door``) but is not wired here.
 
 from bbsengine6 import io, register_module
 
 from . import lib
 
-__version__ = "202601011000"
+__version__ = "202608161200"
 
 SUBCOMMANDS = {
+    "spin": lib.slot_spin,
     "play": lib.play,
+    "paytable": lib.slot_paytable,
+    "history": lib.slot_history,
 }
 
 
