@@ -43,7 +43,7 @@ def main(args: Namespace, **kwargs) -> bool | None:
     options = (
         ("B", "Blackjack", "blackjack.play"),
         ("P", "Poker", "poker.play"),
-        ("S", "Slots", "slots.play"),
+        ("S", "Slots", "slots"),
         ("Y", "Yahtzee", "yahtzee.play"),
         ("C", "Connect", "auth"),
         ("L", "List tables", "table.list"),

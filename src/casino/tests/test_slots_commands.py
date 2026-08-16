@@ -33,17 +33,25 @@ class TestCommandsSlotsPackage(unittest.TestCase):
         self.assertTrue(hasattr(casino.commands.slots, "access"))
         self.assertTrue(hasattr(casino.commands.slots, "buildargs"))
 
-    def test_subcommands_dict_has_play(self):
+    def test_subcommands_dict_has_ws_backed_ops(self):
         from casino.commands.slots import SUBCOMMANDS
 
-        self.assertIn("play", SUBCOMMANDS)
-        self.assertTrue(callable(SUBCOMMANDS["play"]))
+        for name in ("spin", "paytable", "history", "play"):
+            self.assertIn(name, SUBCOMMANDS)
+            self.assertTrue(callable(SUBCOMMANDS[name]))
 
     def test_lib_exports(self):
-        from casino.commands.slots.lib import menu, play
+        from casino.commands.slots import lib
 
-        self.assertTrue(callable(play))
-        self.assertTrue(callable(menu))
+        for name in (
+            "menu",
+            "play",
+            "slot_spin",
+            "slot_paytable",
+            "slot_history",
+            "_check_access",
+        ):
+            self.assertTrue(callable(getattr(lib, name, None)), f"missing {name}")
 
 
 class TestCommandsSlotsResolveSubcommand(unittest.TestCase):
@@ -81,16 +89,31 @@ class TestCommandsSlotsMainDispatch(unittest.TestCase):
         mock_menu.assert_called_once()
         self.assertTrue(result)
 
-    def test_known_subcommand_invokes_callback(self):
+    def test_spin_subcommand_invokes_callback(self):
         from casino.commands.slots import SUBCOMMANDS, main
 
         mock_cb = MagicMock(return_value=True)
-        original = SUBCOMMANDS["play"]
+        original = SUBCOMMANDS["spin"]
+        SUBCOMMANDS["spin"] = mock_cb
+        try:
+            result = main(_make_args(), subcommand="spin")
+        finally:
+            SUBCOMMANDS["spin"] = original
+        mock_cb.assert_called_once()
+        self.assertTrue(result)
+
+    def test_play_subcommand_still_routes_to_spin(self):
+        """The legacy ``play`` subcommand is kept as an alias for spin
+        so existing callers (e.g. ``slots.play``) keep working."""
+        from casino.commands.slots import SUBCOMMANDS, main
+
+        mock_cb = MagicMock(return_value=True)
+        original_play = SUBCOMMANDS["play"]
         SUBCOMMANDS["play"] = mock_cb
         try:
             result = main(_make_args(), subcommand="play")
         finally:
-            SUBCOMMANDS["play"] = original
+            SUBCOMMANDS["play"] = original_play
         mock_cb.assert_called_once()
         self.assertTrue(result)
 
@@ -103,29 +126,93 @@ class TestCommandsSlotsMainDispatch(unittest.TestCase):
         self.assertTrue(result)
 
 
-class TestPlayUsesModuleRun(unittest.TestCase):
-    """commands/slots/lib.py:play() must delegate to module.run() so the
-    standard init/buildargs/main flow applies."""
+class TestSlotSpinUsesClient(unittest.TestCase):
+    """commands/slots/lib.py:slot_spin() must go through the WS client
+    so the bearer token is auto-injected on every wire call. The
+    access gate uses ``bbsengine6.casino.access`` so the local CLI
+    agrees with the server's per-op authorization.
+    """
 
-    def test_play_calls_module_run_with_correct_target(self):
+    def test_slot_spin_requires_a_connected_client(self):
         from casino.commands.slots import lib
 
-        sentinel = object()
-        with patch("bbsengine6.module.run", return_value=sentinel) as mock_run:
-            result = lib.play(_make_args(), extra_kw="value")
+        with patch("casino.commands.slots.lib.get_client", return_value=None):
+            result = lib.slot_spin(_make_args())
+        self.assertFalse(result)
 
-        self.assertIs(result, sentinel)
-        mock_run.assert_called_once()
-        args, kwargs = mock_run.call_args
-        self.assertEqual(args[1], "game")
-        self.assertEqual(kwargs.get("package"), "casino.slots")
-        self.assertEqual(kwargs.get("extra_kw"), "value")
-        self.assertNotIn(
-            "subcommand",
-            kwargs,
-            "subcommand kwarg is for the commands dispatcher and must not "
-            "leak into the inner game module.",
-        )
+    def test_slot_spin_gates_through_casino_access(self):
+        from casino.commands.slots import lib
+
+        client = MagicMock()
+        client.moniker = "alice"
+        client.current_table_moniker = "t1"
+        client.cmd_slot_spin = MagicMock()
+        client._loop = MagicMock()
+
+        with patch(
+            "casino.commands.slots.lib.get_client", return_value=client
+        ), patch(
+            "casino.commands.slots.lib._casino_access", return_value=True
+        ) as mock_access:
+            result = lib.slot_spin(_make_args(_session_moniker="alice"))
+
+        self.assertTrue(result)
+        mock_access.assert_called_once()
+        op_arg = mock_access.call_args.args[1]
+        self.assertEqual(op_arg, "slot_spin")
+        client.cmd_slot_spin.assert_called_once()
+
+    def test_slot_spin_denied_when_access_denies(self):
+        from casino.commands.slots import lib
+
+        client = MagicMock()
+        client.moniker = "alice"
+        client.current_table_moniker = "t1"
+        client.cmd_slot_spin = MagicMock()
+        client._loop = MagicMock()
+
+        with patch(
+            "casino.commands.slots.lib.get_client", return_value=client
+        ), patch(
+            "casino.commands.slots.lib._casino_access", return_value=False
+        ):
+            result = lib.slot_spin(_make_args(_session_moniker="alice"))
+
+        self.assertFalse(result)
+        client.cmd_slot_spin.assert_not_called()
+
+    def test_slot_spin_denied_without_session_moniker(self):
+        from casino.commands.slots import lib
+
+        client = MagicMock()
+        client.moniker = "alice"
+        client.current_table_moniker = "t1"
+        client.cmd_slot_spin = MagicMock()
+        client._loop = MagicMock()
+
+        result = lib.slot_spin(_make_args())  # no _session_moniker
+        self.assertFalse(result)
+        client.cmd_slot_spin.assert_not_called()
+
+    def test_play_aliases_slot_spin(self):
+        """``lib.play`` must delegate to ``slot_spin`` so the legacy
+        ``slots.play`` subcommand path keeps working."""
+        from casino.commands.slots import lib
+
+        client = MagicMock()
+        client.moniker = "alice"
+        client.current_table_moniker = "t1"
+        client.cmd_slot_spin = MagicMock()
+        client._loop = MagicMock()
+
+        with patch(
+            "casino.commands.slots.lib.get_client", return_value=client
+        ), patch(
+            "casino.commands.slots.lib._casino_access", return_value=True
+        ):
+            result = lib.play(_make_args(_session_moniker="alice"))
+        self.assertTrue(result)
+        client.cmd_slot_spin.assert_called_once()
 
 
 class TestSlotsPackageMainUsesModuleRun(unittest.TestCase):
@@ -249,22 +336,22 @@ class TestSlotsPlayHelpWiring(unittest.TestCase):
 
 
 class TestEndToEndDispatch(unittest.TestCase):
-    """The full path: casino.commands.slots.main (subcommand='play')
-    -> commands/slots/lib.py:play() -> module.run('game',
-    package='casino.slots') -> casino.slots.game.main."""
+    """The full path: casino.commands.slots.main (subcommand='spin')
+    -> commands/slots/lib.py:slot_spin() -> client.cmd_slot_spin() ->
+    CasinoClient.send (which auto-injects the bearer token).
+    """
 
-    def test_play_subcommand_resolves_game_module(self):
-        from bbsengine6 import module
+    def test_spin_subcommand_resolves_ws_client_dispatch(self):
+        from casino.commands.slots import SUBCOMMANDS
 
-        from casino.slots import game
-
-        m = module.get("game", None, package="casino.slots")
-        self.assertIs(m, game)
+        self.assertIs(SUBCOMMANDS["spin"].__name__, "slot_spin")
+        self.assertTrue(callable(SUBCOMMANDS["spin"]))
 
 
 class TestMainmenuHookup(unittest.TestCase):
-    """The main menu entry ('S', 'Slots', 'slots.play') must parse cleanly
-    and resolve to a callable subcommand."""
+    """The main menu entry ('S', 'Slots', 'slots') must parse cleanly
+    and resolve to a callable subcommand. ``slots`` (no subcommand)
+    drops into the WS-backed submenu in ``commands/slots/lib.py:menu``."""
 
     def test_mainmenu_path_loads(self):
         from casino.commands import slots
@@ -272,12 +359,12 @@ class TestMainmenuHookup(unittest.TestCase):
         self.assertTrue(hasattr(slots, "main"))
         self.assertTrue(callable(slots.main))
 
-    def test_parse_module_path_yields_slots_play(self):
+    def test_parse_module_path_yields_slots(self):
         from casino.main import parse_module_path
 
-        module, subcommand = parse_module_path("slots.play")
+        module, subcommand = parse_module_path("slots")
         self.assertEqual(module, "slots")
-        self.assertEqual(subcommand, "play")
+        self.assertIsNone(subcommand)
 
 
 if __name__ == "__main__":
