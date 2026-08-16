@@ -42,6 +42,7 @@ def _make_args(**overrides) -> argparse.Namespace:
 
 def _make_client(moniker: str = "alice", is_sysop: bool = False) -> MagicMock:
     c = MagicMock()
+    c.authenticated = True
     c.moniker = moniker
     c.is_sysop = is_sysop
     c.balance = 0
@@ -346,3 +347,162 @@ def test_bank_balance_no_client_returns_false():
     with patch.object(lib, "get_client", return_value=None):
         ok = lib.bank_balance(args, client=None)
     assert ok is False
+
+
+# ---------------------------------------------------------------------
+# _require_authenticated_client gate (commands/_auth.py)
+
+
+def test_bank_balance_rejects_unauthenticated_client():
+    """A client in the registry that hasn't actually finished
+    authenticating must not be able to drive any bank op."""
+    from casino.commands.bank import lib
+
+    client = _make_client(moniker="alice")
+    client.authenticated = False
+
+    args = _make_args(_session_moniker="alice")
+    ok = lib.bank_balance(args, client=client)
+    assert ok is False
+    client.cmd_bank_balance.assert_not_called()
+
+
+def test_bank_add_rejects_client_with_empty_moniker():
+    from casino.commands.bank import lib
+
+    client = _make_client(moniker="")
+
+    args = _make_args(_session_moniker="alice")
+    ok = lib.bank_add(args, client=client)
+    assert ok is False
+    client.cmd_bank_add.assert_not_called()
+
+
+def test_bank_remove_rejects_unauthenticated_client():
+    from casino.commands.bank import lib
+
+    client = _make_client(moniker="alice")
+    client.authenticated = False
+
+    args = _make_args(_session_moniker="alice")
+    ok = lib.bank_remove(args, client=client)
+    assert ok is False
+    client.cmd_bank_remove.assert_not_called()
+
+
+def test_bank_transfer_rejects_unauthenticated_client():
+    from casino.commands.bank import lib
+
+    client = _make_client(moniker="alice")
+    client.authenticated = False
+
+    args = _make_args(_session_moniker="alice")
+    ok = lib.bank_transfer(args, client=client)
+    assert ok is False
+    client.cmd_bank_transfer.assert_not_called()
+
+
+def test_bank_approve_rejects_unauthenticated_client():
+    from casino.commands.bank import lib
+
+    client = _make_client(moniker="alice")
+    client.authenticated = False
+
+    args = _make_args(_session_moniker="alice")
+    ok = lib.bank_approve(args, client=client)
+    assert ok is False
+    client.cmd_bank_approve.assert_not_called()
+
+
+def test_bank_reject_rejects_unauthenticated_client():
+    from casino.commands.bank import lib
+
+    client = _make_client(moniker="alice")
+    client.authenticated = False
+
+    args = _make_args(_session_moniker="alice")
+    ok = lib.bank_reject(args, client=client)
+    assert ok is False
+    client.cmd_bank_reject.assert_not_called()
+
+
+def test_bank_pending_rejects_unauthenticated_client():
+    from casino.commands.bank import lib
+
+    client = _make_client(moniker="alice")
+    client.authenticated = False
+
+    args = _make_args(_session_moniker="alice")
+    ok = lib.bank_pending(args, client=client)
+    assert ok is False
+    client.cmd_bank_pending.assert_not_called()
+
+
+def test_bank_history_rejects_unauthenticated_client():
+    from casino.commands.bank import lib
+
+    client = _make_client(moniker="alice")
+    client.authenticated = False
+
+    args = _make_args(_session_moniker="alice")
+    ok = lib.bank_history(args, client=client)
+    assert ok is False
+    client.cmd_bank_history.assert_not_called()
+
+
+def test_bank_list_all_rejects_unauthenticated_client():
+    from casino.commands.bank import lib
+
+    client = _make_client(moniker="root", is_sysop=True)
+    client.authenticated = False
+
+    args = _make_args(_session_moniker="root", _session_is_sysop=True)
+    ok = lib.bank_list_all(args, client=client)
+    assert ok is False
+    client.cmd_bank_list_all.assert_not_called()
+
+
+def test_bank_menu_refuses_no_client():
+    """The bank submenu must refuse to open without an
+    authenticated client -- the gate fires before the heading
+    / help / prompt so a user who hasn't connected cannot
+    see [B] / [A] / [W] etc."""
+    from casino.commands.bank import lib
+
+    args = _make_args(_session_moniker="alice")
+    with patch.object(lib, "get_client", return_value=None), \
+         patch("bbsengine6.io.inputchoice") as mock_ic, \
+         patch("bbsengine6.io.echo"):
+        ok = lib.menu(args, client=None)
+    assert ok is False
+    mock_ic.assert_not_called()
+
+
+def test_bank_menu_refuses_unauthenticated_client():
+    from casino.commands.bank import lib
+
+    client = _make_client(moniker="alice")
+    client.authenticated = False
+
+    args = _make_args(_session_moniker="alice")
+    with patch.object(lib, "get_client", return_value=client), \
+         patch("bbsengine6.io.inputchoice") as mock_ic, \
+         patch("bbsengine6.io.echo"):
+        ok = lib.menu(args, client=None)
+    assert ok is False
+    mock_ic.assert_not_called()
+
+
+def test_bank_menu_opens_for_authenticated_client():
+    from casino.commands.bank import lib
+
+    client = _make_client(moniker="alice")
+    args = _make_args(_session_moniker="alice")
+    # inputchoice normally uppercases its return via ch.upper(); the
+    # mock bypasses that path, so return uppercase directly so the
+    # loop's ``if cmd == "Q": break`` fires on the first iteration.
+    with patch.object(lib, "get_client", return_value=client), \
+         patch("bbsengine6.io.inputchoice", return_value="Q") as mock_ic:
+        ok = lib.menu(args, client=None)
+    assert ok is True
+    mock_ic.assert_called_once()

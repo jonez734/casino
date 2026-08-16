@@ -21,6 +21,8 @@ from typing import Any, Dict, Optional
 from bbsengine6 import io, util
 from casino.access import access as _casino_access
 
+from casino.commands._auth import _require_authenticated_client
+
 
 # Subcommand -> domain verb understood by ``bbsengine6.casino.access``.
 # The casino module owns the verb vocabulary; this dict is the only
@@ -137,41 +139,16 @@ def _check_access(
 def _require_authenticated_client(
     client, op: str
 ) -> Optional[Any]:
-    """Defense-in-depth: refuse if no client or the client hasn't
-    actually finished authenticating.
+    """Re-export of :func:`casino.commands._auth._require_authenticated_client`.
 
-    ``get_client()`` only returns a registered client after a
-    successful connect, so ``client is None`` already covers the
-    never-connected case. The extra checks here cover edge cases
-    where the registry holds a half-built client (auth aborted,
-    token rejected, disconnect in flight): if
-    ``client.authenticated`` is False or ``client.moniker`` is empty,
-    the wire op would not carry a valid claim-derived identity and
-    the server-side ``bbsengine6.casino.access`` gate would deny it
-    anyway. We short-circuit here so the CLI matches.
+    Kept in ``commands.slots.lib`` so existing imports and patch
+    paths (e.g. ``patch("casino.commands.slots.lib._require_authenticated_client")``
+    in tests) keep working after the helper was extracted to a
+    shared module. New callers should import from
+    ``casino.commands._auth`` directly.
     """
-    if client is None:
-        io.echo(
-            f"Operation '{op}' requires an authenticated session. "
-            f"Use Connect first.",
-            level="error",
-        )
-        return None
-    if not getattr(client, "authenticated", False):
-        io.echo(
-            f"Operation '{op}' requires an authenticated session. "
-            f"Authentication did not complete.",
-            level="error",
-        )
-        return None
-    if not (getattr(client, "moniker", "") or "").strip():
-        io.echo(
-            f"Operation '{op}' requires an authenticated session. "
-            f"Client has no moniker.",
-            level="error",
-        )
-        return None
-    return client
+    from casino.commands._auth import _require_authenticated_client as _impl
+    return _impl(client, op)
 
 
 def play(args: argparse.Namespace, client=None, **kwargs) -> bool:

@@ -18,6 +18,8 @@ from typing import Any, Dict, Optional
 from bbsengine6 import io
 from bbsengine6.bank import access as _bank_access
 
+from casino.commands._auth import _require_authenticated_client
+
 
 # Subcommand -> domain verb understood by ``bbsengine6.bank.access``.
 # The bank module owns the verb vocabulary; this dict is the only
@@ -127,9 +129,10 @@ def _check_access(
 
 def bank_balance(args, client=None, **kwargs) -> bool:
     """Handle bank balance query."""
-    client = client or get_client()
+    client = _require_authenticated_client(
+        client or get_client(), _SUBCMD_TO_OP["balance"]
+    )
     if client is None:
-        io.echo("Not connected. Use Connect first.", level="error")
         return False
     if not _check_access(
         args,
@@ -145,9 +148,10 @@ def bank_balance(args, client=None, **kwargs) -> bool:
 
 def bank_add(args, client=None, **kwargs) -> bool:
     """Handle add funds to bank."""
-    client = client or get_client()
+    client = _require_authenticated_client(
+        client or get_client(), _SUBCMD_TO_OP["add"]
+    )
     if client is None:
-        io.echo("Not connected. Use Connect first.", level="error")
         return False
     if not _check_access(
         args,
@@ -163,9 +167,10 @@ def bank_add(args, client=None, **kwargs) -> bool:
 
 def bank_remove(args, client=None, **kwargs) -> bool:
     """Handle remove funds from bank."""
-    client = client or get_client()
+    client = _require_authenticated_client(
+        client or get_client(), _SUBCMD_TO_OP["remove"]
+    )
     if client is None:
-        io.echo("Not connected. Use Connect first.", level="error")
         return False
     if not _check_access(
         args,
@@ -181,9 +186,10 @@ def bank_remove(args, client=None, **kwargs) -> bool:
 
 def bank_transfer(args, client=None, **kwargs) -> bool:
     """Handle transfer request between tables."""
-    client = client or get_client()
+    client = _require_authenticated_client(
+        client or get_client(), _SUBCMD_TO_OP["transfer"]
+    )
     if client is None:
-        io.echo("Not connected. Use Connect first.", level="error")
         return False
     if not _check_access(
         args,
@@ -199,9 +205,10 @@ def bank_transfer(args, client=None, **kwargs) -> bool:
 
 def bank_approve(args, client=None, **kwargs) -> bool:
     """Handle approve transfer."""
-    client = client or get_client()
+    client = _require_authenticated_client(
+        client or get_client(), _SUBCMD_TO_OP["approve"]
+    )
     if client is None:
-        io.echo("Not connected. Use Connect first.", level="error")
         return False
     if not _check_access(
         args,
@@ -217,9 +224,10 @@ def bank_approve(args, client=None, **kwargs) -> bool:
 
 def bank_reject(args, client=None, **kwargs) -> bool:
     """Handle reject transfer."""
-    client = client or get_client()
+    client = _require_authenticated_client(
+        client or get_client(), _SUBCMD_TO_OP["reject"]
+    )
     if client is None:
-        io.echo("Not connected. Use Connect first.", level="error")
         return False
     if not _check_access(
         args,
@@ -235,9 +243,10 @@ def bank_reject(args, client=None, **kwargs) -> bool:
 
 def bank_pending(args, client=None, **kwargs) -> bool:
     """Handle list pending transfers."""
-    client = client or get_client()
+    client = _require_authenticated_client(
+        client or get_client(), _SUBCMD_TO_OP["pending"]
+    )
     if client is None:
-        io.echo("Not connected. Use Connect first.", level="error")
         return False
     if not _check_access(
         args,
@@ -253,9 +262,10 @@ def bank_pending(args, client=None, **kwargs) -> bool:
 
 def bank_history(args, client=None, **kwargs) -> bool:
     """Handle bank history query."""
-    client = client or get_client()
+    client = _require_authenticated_client(
+        client or get_client(), _SUBCMD_TO_OP["history"]
+    )
     if client is None:
-        io.echo("Not connected. Use Connect first.", level="error")
         return False
     if not _check_access(
         args,
@@ -271,9 +281,10 @@ def bank_history(args, client=None, **kwargs) -> bool:
 
 def bank_list_all(args, client=None, **kwargs) -> bool:
     """Handle list all table balances (sysop only)."""
-    client = client or get_client()
+    client = _require_authenticated_client(
+        client or get_client(), _SUBCMD_TO_OP["list_all"]
+    )
     if client is None:
-        io.echo("Not connected. Use Connect first.", level="error")
         return False
     if not _check_access(
         args,
@@ -288,9 +299,10 @@ def bank_list_all(args, client=None, **kwargs) -> bool:
 
 def menu(args, client=None, **kwargs):
     """Show bank operations submenu."""
-    client = client or get_client()
+    client = _require_authenticated_client(
+        client or get_client(), "bank menu"
+    )
     if client is None:
-        io.echo("Not connected. Use Connect first.", level="error")
         return False
 
     while True:
