@@ -587,6 +587,17 @@ def check_access(
     open to anonymous viewers, mirroring the legacy door-mode
     behavior. The token / shape / policy gates still run so a
     malformed request never reaches the service layer.
+
+    Every other op requires a cryptographically verified token
+    (wire or session-bound) to be present. When neither validates
+    AND ``message["claims"]`` stays unset, the call is rejected
+    with ``not_authenticated`` even if a session is bound: the
+    session binding alone is no longer enough to authorize
+    gameplay. Door-mode tests that drive the service without
+    token wiring must opt back into the legacy session-only
+    fallback via ``self_ref.allow_legacy_session_only = True``
+    so the existing test surface keeps working without
+    re-minting tokens for every fixture.
     """
     state, err = _get_or_bind_session_for(self_ref, websocket, message)
     if err is not None and op == "list_tables":
@@ -595,18 +606,32 @@ def check_access(
     if err is not None:
         return None, err
 
-    if "claims" not in message:
+    claims_were_set = "claims" in message
+
+    if not claims_were_set:
         claims, err = _validate_wire_token(self_ref, message)
         if err is not None:
             return state, err
         if claims is not None:
             message["claims"] = claims
+            claims_were_set = True
         elif state is not None:
             claims, err = _validate_session_token(self_ref, state)
             if err is not None:
                 return state, err
             if claims is not None:
                 message["claims"] = claims
+                claims_were_set = True
+
+    # Public / read-only ops are intentionally authless (lobby
+    # listing). Every other op requires a token so the downstream
+    # policy decision rests on cryptographically verified claims,
+    # not on the in-memory session snapshot. Door-mode tests opt
+    # back into the legacy session-only fallback via
+    # ``self_ref.allow_legacy_session_only``.
+    if not claims_were_set and op != "list_tables":
+        if not getattr(self_ref, "allow_legacy_session_only", False):
+            return state, not_authenticated()
 
     # Normalize wire shape for the policy: ``kick_player`` carries
     # ``table_monikers`` (plural list) on the wire, but the policy in

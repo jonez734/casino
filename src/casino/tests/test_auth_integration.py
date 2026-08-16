@@ -447,3 +447,210 @@ def test_casino_access_seat_at_check_uses_session_attribute():
 
     state.table_moniker = "t1"
     assert access(args, "bet", session=state, message=msg) is True
+
+
+# ---------------------------------------------------------------------
+# casino.api._auth.check_access -- token gate for gameplay ops
+#
+# These tests pin the gate that rejects gameplay ops when no
+# cryptographically-verified token is present, even if a session is
+# bound. The session-bound ``moniker`` attribute alone is no longer
+# enough to authorize ``slot_spin`` / ``bet`` / ``hit`` / etc. -- the
+# in-memory snapshot could have been mutated without the token store
+# being notified, so we require the token round-trip.
+
+
+class _StubSelfRef:
+    """Stand-in for a service handler passed to ``check_access``.
+
+    Carries the token wiring (``secret`` / ``token_store`` /
+    ``instance_id``) so the gate's no-token / has-token branches are
+    exercised; the rest of the handler API is irrelevant to these
+    tests.
+    """
+
+    def __init__(self, *, secret=None, token_store=None, instance_id=None,
+                 allow_legacy_session_only=False):
+        self.args = argparse.Namespace()
+        self.sessions = None  # unused; _get_or_bind_session_for is patched
+        self.secret = secret
+        self.token_store = token_store
+        self.instance_id = instance_id
+        self.allow_legacy_session_only = allow_legacy_session_only
+
+
+class _StubWS:
+    """Stand-in for a websocket. ``id`` is what
+    :func:`_get_or_bind_session_for` reads first.
+    """
+
+    def __init__(self, ws_id: str = "ws-1"):
+        self.id = ws_id
+        self._bbsengine6_session_id = None
+
+
+def _make_token_store_with(secret, *, instance_id="inst-1", moniker="alice",
+                            session_id="s-alice"):
+    """Return an in-memory ``token_store`` with one valid record."""
+    from casino.api._auth import mint_token_record
+
+    record = mint_token_record(
+        secret=secret,
+        instance_id=instance_id,
+        moniker=moniker,
+        session_id=session_id,
+        websocket_id="ws-1",
+    )
+    store = MagicMock()
+    store.get = MagicMock(return_value=record)
+    store.delete = MagicMock()
+    return store
+
+
+def test_check_access_rejects_gameplay_with_session_but_no_token():
+    """The user's bug: a session is bound but no wire / session
+    token validates. The session-only snapshot (in-memory
+    ``moniker``) must NOT be enough to authorize ``slot_spin``.
+
+    Before the gate was tightened, ``_casino_access._auth_moniker``
+    fell back to ``session.moniker`` when ``message["claims"]`` was
+    unset, so a session-bound player could spin without ever
+    presenting a token. This test pins the new behavior.
+    """
+    import asyncio
+
+    from casino.api._auth import check_access
+
+    secret = b"test-secret-do-not-use-in-prod"
+    store = _make_token_store_with(secret)
+    self_ref = _StubSelfRef(secret=secret, token_store=store, instance_id="inst-1")
+    ws = _StubWS()
+    # Session bound to alice -- but the wire message has NO token AND
+    # the session snapshot's ``auth_service_token`` is None (so the
+    # session-token validator can't mint claims either). This is the
+    # exact path a CLI player hits if they bypassed ``auth connect``
+    # but a session was created by some other code path.
+    state = SimpleNamespace(
+        moniker="alice",
+        is_sysop=False,
+        table_moniker="slots-alice",
+        auth_service_token=None,
+    )
+
+    # Patch _get_or_bind_session_for so the test does not need a real
+    # session registry / ws-bind plumbing.
+    with patch("casino.api._auth._get_or_bind_session_for",
+               return_value=(state, None)):
+        _, err = check_access(self_ref, ws, "slot_spin", {"bet": 10})
+
+    assert err is not None
+    assert err["code"] == "not_authenticated"
+
+
+def test_check_access_allows_gameplay_with_valid_wire_token():
+    """When a valid wire token is present, ``slot_spin`` passes
+    through the gate and reaches the policy layer (which then decides
+    on seat-at / perms).
+    """
+    import asyncio
+
+    from casino.api._auth import check_access, encode_token
+
+    secret = b"test-secret-do-not-use-in-prod"
+    store = _make_token_store_with(secret)
+    self_ref = _StubSelfRef(secret=secret, token_store=store, instance_id="inst-1")
+    ws = _StubWS()
+    state = SimpleNamespace(
+        moniker="alice",
+        is_sysop=False,
+        table_moniker=None,
+        auth_service_token=None,
+    )
+
+    token = encode_token(
+        {
+            "version": 1,
+            "moniker": "alice",
+            "is_sysop": False,
+            "session_id": "s-alice",
+            "bed_instance_id": "inst-1",
+            "websocket_id": "ws-1",
+            "expires_at": 1_000_000.0,
+            "issued_at": 1_000.0,
+        },
+        secret,
+    )
+
+    with patch("casino.api._auth._get_or_bind_session_for",
+               return_value=(state, None)):
+        _, err = check_access(
+            self_ref, ws, "slot_spin",
+            {"bet": 10, "token": token, "table_moniker": "slots-alice"},
+        )
+
+    # Claims were set by the wire-token validator; the gate passes.
+    # The policy then denies because the session is not seated, but
+    # the denial is "forbidden", not "not_authenticated" -- the gate
+    # itself let us through.
+    assert err is None or err["code"] != "not_authenticated"
+
+
+def test_check_access_allows_list_tables_without_token():
+    """The public ``list_tables`` op bypasses the token gate so the
+    lobby listing remains visible to anonymous viewers.
+    """
+    from casino.api._auth import check_access
+
+    secret = b"test-secret-do-not-use-in-prod"
+    # Token store empty / not consulted -- the gate should still
+    # short-circuit before the token branches because the op is
+    # whitelisted.
+    store = MagicMock()
+    store.get = MagicMock(return_value=None)
+    self_ref = _StubSelfRef(secret=secret, token_store=store, instance_id="inst-1")
+    ws = _StubWS()
+    state = SimpleNamespace(moniker=None, is_sysop=False, table_moniker=None,
+                            auth_service_token=None)
+
+    with patch("casino.api._auth._get_or_bind_session_for",
+               return_value=(state, None)):
+        _, err = check_access(self_ref, ws, "list_tables", {})
+
+    # Either no error (allow), or a policy denial (forbidden /
+    # not_authenticated from bbsengine6.casino.access) -- but
+    # *NOT* the gate's not_authenticated.
+    assert err is None or err["code"] != "not_authenticated"
+
+
+def test_check_access_legacy_session_only_opt_in_passes_gate():
+    """Door-mode / legacy tests opt back into session-only auth via
+    ``self_ref.allow_legacy_session_only = True``. The gate must
+    skip the token branch in that case so the existing test surface
+    keeps working without minting tokens for every fixture.
+    """
+    from casino.api._auth import check_access
+
+    secret = b"test-secret-do-not-use-in-prod"
+    store = MagicMock()
+    store.get = MagicMock(return_value=None)  # no valid token in store
+    self_ref = _StubSelfRef(
+        secret=secret, token_store=store, instance_id="inst-1",
+        allow_legacy_session_only=True,
+    )
+    ws = _StubWS()
+    state = SimpleNamespace(
+        moniker="alice",
+        is_sysop=False,
+        table_moniker=None,
+        auth_service_token=None,
+    )
+
+    with patch("casino.api._auth._get_or_bind_session_for",
+               return_value=(state, None)):
+        _, err = check_access(
+            self_ref, ws, "slot_paytable", {"table_moniker": "slots-alice"},
+        )
+
+    # Gate passed; the policy decides next. We expect either no
+    # error or a non-"not_authenticated" denial.
+    assert err is None or err["code"] != "not_authenticated"

@@ -54,6 +54,14 @@ class YahtzeeServiceHandler:
         "yahtzee_score",
     )
 
+    #: When ``True``, :func:`casino.api._auth.check_access` skips the
+    #: cryptographically-verified token gate so door-mode fixtures
+    #: that drive the service without a real ``secret`` /
+    #: ``token_store`` / ``instance_id`` keep working. Production
+    #: handlers under BED leave this ``False``; every gameplay op
+    #: then requires a valid wire or session-bound token.
+    allow_legacy_session_only: bool = False
+
     def __init__(
         self,
         args: Any,

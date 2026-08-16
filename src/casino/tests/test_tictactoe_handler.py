@@ -44,6 +44,8 @@ def _make_handler():
     sessions = make_sessions_mock(moniker="alice")
     service = _make_service()
     handler = TictactoeServiceHandler(_make_args(), sessions, service=service)
+    # Door-mode test: no token wiring, fall back to session-only auth.
+    handler.allow_legacy_session_only = True
     return handler, sessions, service
 
 

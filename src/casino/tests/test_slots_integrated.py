@@ -946,6 +946,8 @@ class TestHandlerFullMessageFlow(unittest.TestCase):
             moniker="alice", table_moniker="slots-alice"
         )
         self.handler = SlotServiceHandler(self.args, self.sessions, channel_state=None)
+        # Door-mode test: no token wiring, fall back to session-only auth.
+        self.handler.allow_legacy_session_only = True
         self.ws = _StubWS()
         self.sessions.register_session(id(self.ws), "alice", is_sysop=False)
         self.sessions.set_table_moniker(id(self.ws), "slots-alice")
@@ -1069,6 +1071,8 @@ class TestHandlerFullMessageFlow(unittest.TestCase):
         sysop_handler = self.handler.__class__(
             self.args, sysop_sessions, channel_state=None
         )
+        # Door-mode test: no token wiring, fall back to session-only auth.
+        sysop_handler.allow_legacy_session_only = True
         sysop_ws = _StubWS()
         sysop_sessions.register_session(id(sysop_ws), "root", is_sysop=True)
 

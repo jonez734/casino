@@ -362,6 +362,8 @@ class TestSlotServiceHandler(unittest.TestCase):
         self.args = argparse.Namespace(databasename="test", database="test")
         self.sessions = make_sessions_mock(moniker="alice")
         self.handler = SlotServiceHandler(self.args, self.sessions, channel_state=None)
+        # Door-mode test: no token wiring, fall back to session-only auth.
+        self.handler.allow_legacy_session_only = True
         # Use a stable WS object and register its id() as session 1
         self.ws = stable_ws()
         self.sessions.register_session(id(self.ws), "alice", is_sysop=False)
@@ -396,6 +398,8 @@ class TestSlotServiceHandler(unittest.TestCase):
         from casino.tests._session_mock import make_sessions_mock
         sessions = make_sessions_mock(moniker=None)
         handler = SlotServiceHandler(self.args, sessions, channel_state=None)
+        # Door-mode test: no token wiring, fall back to session-only auth.
+        handler.allow_legacy_session_only = True
         other_ws = stable_ws()
         r = asyncio.run(handler.handle_message(
             None, other_ws, "/", {"type": "slot_history"}
@@ -424,6 +428,8 @@ class TestSlotServiceHandlerSpinBroadcast(unittest.TestCase):
         self.args = argparse.Namespace(databasename="test", database="test")
         self.sessions = make_sessions_mock(moniker="alice", table_moniker="slots-test")
         self.handler = SlotServiceHandler(self.args, self.sessions, channel_state=None)
+        # Door-mode test: no token wiring, fall back to session-only auth.
+        self.handler.allow_legacy_session_only = True
         self.ws = stable_ws()
         self.sessions.register_session(id(self.ws), "alice", is_sysop=False)
         self.sessions.set_table_moniker(id(self.ws), "slots-test")
