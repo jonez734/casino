@@ -57,6 +57,10 @@ def buildargs(args, **kw):
 def main(args, **kw) -> bool:
     subcommand = kw.get("subcommand")
 
+    if kw.get("version"):
+        io.echo(f"casino.slots {__version__} (WS-backed submenu)")
+        return True
+
     if subcommand is None:
         lib.menu(args, **kw)
     else:

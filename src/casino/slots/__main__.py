@@ -29,11 +29,18 @@ from . import lib
 from .dealer import SlotDealer
 from .player import SlotPlayer
 
+__version__ = "202608161652"
+
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="casino.slots",
         description="Slot machine subpackage entry point",
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"casino.slots {__version__} (legacy door-mode entry)",
     )
     parser.add_argument(
         "--door",
