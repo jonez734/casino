@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### casino: capture bearer token from `auth_result` envelope
+
+`CasinoClient.handle_message` now stashes the `token` field from
+the server's `auth_result` reply into `self._bearer_token`. The
+existing `CasinoClient.send` already injects that token on every
+wire call (defense-in-depth vs. the WS-bound session), but the
+prompt-based legacy flow was throwing it away — the server minted
+it, the client logged it as a print, and the very next op went out
+without it. Result: `check_access` rejected the op as
+`not_authenticated` even though `auth_result.success` was true.
+
+Wired end-to-end with `bed.main.BED.start` forwarding
+`session_registry` + `secret` + `token_store` + `instance_id` to
+the router constructor (see `bed/docs/BED_AUTH.md` "Adopting
+AuthService in a custom router" for the contract), and
+`zoid6.api.handler.MessageRouter._register_module` forwarding
+the same kwargs to sub-routers. The prompt-based flow now keeps
+the token across the session; the door-mode legacy `AuthService`
+envelope (no `token` field) is unchanged — `_bearer_token` stays
+`None` and `send` falls back to session-only payloads.
+
 ### casino: slots color-tag consistency + box-render reset
 
 Slots echo statements are migrated to the established color-tag

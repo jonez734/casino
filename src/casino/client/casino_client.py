@@ -115,6 +115,18 @@ class CasinoClient:
                 self.authenticated = True
                 self.moniker = msg.get("moniker", "")
                 self.balance = msg.get("balance", 0)
+                # Stash the bearer token so ``send`` auto-injects it
+                # on every subsequent wire call. Bed's AuthService
+                # mints the token at auth time; without this capture
+                # the prompt-based legacy flow loses it on the very
+                # next op and the per-op wire-token gate rejects the
+                # call as ``not_authenticated``. The legacy standalone
+                # / door-mode AuthService envelope has no ``token``
+                # field, in which case ``_bearer_token`` stays None
+                # and ``send`` falls back to session-only payloads.
+                token = (msg.get("token") or "").strip()
+                if token:
+                    self._bearer_token = token
                 io.echo(f"Authenticated as {self.moniker}, balance: {self.balance}")
             else:
                 reason = (msg.get("message") or "").lower()
