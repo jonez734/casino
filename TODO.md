@@ -2735,3 +2735,124 @@ awaits `self.server.stop()` and releases the port.
   get_player_balance and place_bet` — the casino-side
   fix for the NULL credits crash (already landed).
 
+## Casino schema bootstrap fix
+
+Fix for the `relation "casino.__bank_table" does not exist` error
+when creating a casino table from the BED-mode casino client
+against the production `zoid6` database. Three latent gaps in
+`casino.startup.main()`:
+
+- The `citext` extension was never installed by `casino.startup`,
+  even though `casino.__player.membermoniker` (and the new
+  `__bank_player.membermoniker`) use citext columns. Fresh-DB
+  bootstrap crashes on the first table creation.
+- Schema-level GRANTs came solely from the inline GRANT in
+  `src/casino/sql/schema.sql`. If the schema was created by another
+  path (manual psql, `bootstrap_opencode.sql`), privs were never
+  re-asserted — non-superuser roles (`web`, `term`, `opencode`) saw
+  no `USAGE` on `casino`.
+- The 18-entry classlist omitted all 8 bank-related classes added
+  in `f978b1e`: `__bank_table`, `bank_table`, `__bank_player`,
+  `bank_player`, `__banktransaction`, `banktransaction`,
+  `__tabletransfer`, `tabletransfer`.
+
+### Files to edit
+
+- [ ] `git mv casino/scripts/opencode.sql
+      casino/scripts/bootstrap_opencode.sql`
+- [ ] Edit `casino/src/casino/startup.py:29-79` (`main()`):
+  - [ ] Add citext extension block before schema creation
+        (`database.extensionavailable` →
+        `database.extensioninstalled` → `database.creatextension`,
+        hard-fail on missing/inability).
+  - [ ] Add schema privs loop after schema creation
+        (`database.manage_schema_priv` for
+        `sysop=USAGE+CREATE`, `web/term/opencode=USAGE`).
+        Hybrid: keeps inline GRANT in `src/casino/sql/schema.sql`.
+        Roles assumed to already exist (`bbsengine6.checkroles`).
+  - [ ] Expand classlist from 18 → 26 entries in FK-safe order:
+    - [ ] Existing 18 (preserve): `__player`/`player`,
+          `__table`/`table`, `map_cardtable_player`,
+          `__game`/`map_game_player`/`game`,
+          `__account`/`account`, `__hand`/`hand`,
+          `__betlog`/`betlog`, `__log`/`log`,
+          `__slot_spin`/`slot_spin`.
+    - [ ] New 8: `__bank_table`/`bank_table` (from
+          `bank_table.sql`), `__bank_player`/`bank_player` (from
+          `bank_player.sql`), `__banktransaction`/`banktransaction`
+          and `__tabletransfer`/`tabletransfer` (from
+          `bank_migration.sql`). All four `bank_migration.sql`
+          classes FK to `casino.__table(moniker)` — must follow
+          `table.sql`.
+    - [ ] Migration files (`hidden_table_migration.sql`,
+          `table_shoe_migration.sql`) deliberately omitted —
+          columns already in `table.sql:14-15,19`.
+  - [ ] Add explicit `return failcount == 0` (preserve
+        best-effort classlist semantics; extension/priv/schema
+        failures still hard-fail via `return False`).
+- [ ] Edit `casino/scripts/bootstrap_opencode.sql` (after rename):
+  - [ ] Update header comment: new filename, run command
+        `psql -d <db> -U postgres -f scripts/bootstrap_opencode.sql`
+        from the casino repo root (so `\i 'src/casino/sql/casino.sql'`
+        resolves correctly).
+  - [ ] Add `CREATE EXTENSION IF NOT EXISTS citext;` before the
+        schema bootstrap.
+  - [ ] Add `\i 'src/casino/sql/casino.sql'` to load the canonical
+        driver (same driver `casino.startup.main` uses via
+        `importsql` — one source of truth).
+  - [ ] Delete the broken `DO $$ … END $$;` block (old lines
+        131‑175) — wrong `__bank_table` schema, missing 7 tables.
+  - [ ] Keep verbatim: `ALTER SCHEMA … OWNER TO opencode` and
+        table/sequence GRANTs (old lines 5‑66),
+        `bank.setup_constraints()` and
+        `engine.setup_member_constraints()` SECURITY DEFINER
+        helpers (old lines 67‑126), and the
+        `casino.__player.stats jsonb` migration (old line 129).
+- [ ] Edit `bed/src/bed/startup.py`:
+  - [ ] Add `module as bbsmodule` to existing
+        `from bbsengine6 import database, io` import line.
+  - [ ] Extend `ensure_startup` to dispatch to
+        `bbsmodule.runmodule(args, "casino.startup.main")` after
+        the bed role setup commits and the conn is released. The
+        `"bed startup complete"` status message moves out of the
+        `with database.connect(...)` block. `casino.startup.main`
+        opens its own pool/conn lifecycle — no shared conn.
+
+### CHANGELOG entries (prepend under `## [Unreleased]` / `## Unreleased`)
+
+- [ ] `casino/CHANGELOG.md`:
+  - [ ] `### casino: bring startup.main() up to bbsengine6
+        check-module standard` — citext install, schema privs,
+        26-entry classlist, hybrid schema GRANT, dropped
+        migration files.
+  - [ ] `### casino: replace scripts/opencode.sql with
+        scripts/bootstrap_opencode.sql` — citext extension, `\i`
+        canonical driver, broken `DO $$` block removed, helpers
+        and stats migration preserved.
+- [ ] `bed/CHANGELOG.md`:
+  - [ ] `### bed: ensure_startup also drives casino.startup.main`
+        — lazy `bbsengine6.module.runmodule` dispatch, casino
+        owns its own pool, idempotent so repeat calls are safe.
+
+### Verification (after execute)
+
+- [ ] `ruff check casino/src/casino/startup.py
+        bed/src/bed/startup.py` — clean.
+- [ ] `psql -d zoid6test -U postgres -f
+        casino/scripts/bootstrap_opencode.sql` — citext
+        installed, all 26 classes + opencode GRANTs.
+- [ ] `python -m bed.startup --database zoid6test` — bbsengine6 →
+        bed role → casino schema, ends with `bed startup complete`.
+- [ ] Re-run the BED-mode casino client path that originally
+        triggered `relation "casino.__bank_table" does not exist`
+        — succeeds.
+- [ ] `find casino bed -name __pycache__ -exec rm -rf {} +`
+        (per AGENTS.md stale-pyc guard) before re-running tests.
+- [ ] `pytest casino/tests/
+        bed/src/bed/tests/test_casino_service.py` — all pass
+        (especially `test_render_ascii_ends_with_acs_off` per
+        AGENTS.md).
+- [ ] Idempotency: re-run `python -m bed.startup` against the
+        same DB — all classes show `ok` via `classexists`, no
+        failures.
+
