@@ -12,8 +12,10 @@
 #   :class:`bed.tools._routing.BedNotReachable`.
 
 import argparse
+import io
 import sys
 import unittest
+from contextlib import redirect_stdout
 from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, "/home/opencode/data/work/casino/src")
@@ -236,6 +238,61 @@ class TestMainDispatchBlackjackSubcommand(unittest.TestCase):
         module_args = module_run.call_args[0][0]
         self.assertEqual(module_args.databasename, "bjdb")
         self.assertEqual(module_run.call_args.kwargs.get("package"), "casino.blackjack")
+
+
+class TestMainDispatchVersionAndHelp(unittest.TestCase):
+    """``--version`` and ``--help`` must not require a bed connection.
+
+    argparse's ``action="version"`` (and the default ``--help`` action)
+    short-circuits inside ``parse_known_args`` via ``parser.exit()``,
+    so the dispatcher must never reach ``_routing.select_backend`` or
+    ``probe_bed``. Regression test for the bug where ``casino --version``
+    raised :class:`bed.tools._routing.BedNotReachable` because ``--version``
+    was not a registered action and slipped into ``remaining_argv``.
+    """
+
+    def test_version_action_does_not_probe_bed(self):
+        from casino.__main__ import main
+
+        with patch("casino._routing.probe_bed") as probe, \
+             patch("casino._routing.select_backend") as sel:
+            with self.assertRaises(SystemExit) as ctx:
+                main(["--version"])
+            self.assertEqual(ctx.exception.code, 0)
+        probe.assert_not_called()
+        sel.assert_not_called()
+
+    def test_help_action_does_not_probe_bed(self):
+        from casino.__main__ import main
+
+        for flag in ("--help", "-h"):
+            with patch("casino._routing.probe_bed") as probe, \
+                 patch("casino._routing.select_backend") as sel:
+                with self.assertRaises(SystemExit) as ctx:
+                    main([flag])
+                self.assertEqual(ctx.exception.code, 0)
+            probe.assert_not_called()
+            sel.assert_not_called()
+
+    def test_parser_prints_canonical_version(self):
+        """The version string is sourced from ``casino._version``.
+
+        Pins the contract that ``--version`` advertises the
+        setuptools-scm-managed version (the same one
+        ``pyproject.toml`` reads via ``tool.setuptools.dynamic.version``)
+        rather than the legacy ``casino.__init__.__version__`` literal.
+        """
+        from casino import _version as casino_version
+        from casino.lib import buildargs
+
+        parser = buildargs()
+        buf = io.StringIO()
+        with redirect_stdout(buf), self.assertRaises(SystemExit) as ctx:
+            parser.parse_known_args(["--version"])
+        self.assertEqual(ctx.exception.code, 0)
+        output = buf.getvalue().strip()
+        self.assertIn("casino", output)
+        self.assertIn(casino_version.__version__, output)
 
 
 class _StubParser:

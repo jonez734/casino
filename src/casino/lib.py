@@ -601,7 +601,20 @@ class CasinoPlayer:
 
 
 def buildargs(args: Namespace | None = None, **kwargs: Any) -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser("skel")
+    from . import _version as casino_version
+
+    parser = argparse.ArgumentParser(
+        prog="casino",
+        description=(
+            "Casino CLI: blackjack, slots, poker, yahtzee, tictactoe. "
+            "Defaults to the bed WebSocket; pass --direct for door mode."
+        ),
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"casino {casino_version.__version__}",
+    )
     parser.add_argument("--verbose", action="store_true", dest="verbose")
     parser.add_argument("--debug", action="store_true", dest="debug")
 
