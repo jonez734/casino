@@ -10,8 +10,8 @@
 \echo player_view
 \i player_view.sql
 
-\echo bank
-\i /home/opencode/data/work/bbsengine6/py/src/bbsengine6/sql/bank.sql
+--\echo bank
+--\i /home/opencode/data/work/bbsengine6/py/src/bbsengine6/sql/bank.sql
 
 \echo bank_table
 \i bank_table.sql
