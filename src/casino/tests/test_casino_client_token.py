@@ -129,3 +129,115 @@ def test_bearer_token_defaults_to_none():
     """
     client = _make_client(_make_args())
     assert client._bearer_token is None
+
+
+def test_handle_message_captures_token_on_auth_result():
+    """``handle_message`` extracts ``token`` from a successful
+    ``auth_result`` and stashes it on ``self._bearer_token``.
+    Pins the casino-side fix that the prompt-based legacy flow
+    was throwing the token away — ``CasinoClient.send`` then
+    re-injects it on every op so the server's per-op wire-token
+    gate stops rejecting subsequent calls as
+    ``not_authenticated``. See
+    ``casino/docs/AUTH.md`` §4.
+    """
+    from unittest.mock import patch
+
+    client = _make_client(_make_args())
+    # Stub io.echo so the test does not depend on the echo pipeline.
+    with patch("casino.client.casino_client.io.echo"):
+        _run(
+            client.handle_message(
+                {
+                    "type": "auth_result",
+                    "success": True,
+                    "moniker": "alice",
+                    "balance": 42,
+                    "token": "p.s",
+                    "expires_at": "2099-01-01T00:00:00Z",
+                }
+            )
+        )
+    assert client._bearer_token == "p.s"
+    assert client.authenticated is True
+    assert client.moniker == "alice"
+    assert client.balance == 42
+
+
+def test_handle_message_omits_token_when_auth_result_has_none():
+    """When the server's ``auth_result`` has no ``token`` field
+    (legacy standalone / door-mode AuthService envelope), the
+    client leaves ``_bearer_token`` at None. ``send`` then
+    falls back to session-only payloads so the legacy shape is
+    preserved.
+    """
+    from unittest.mock import patch
+
+    client = _make_client(_make_args())
+    assert client._bearer_token is None
+    with patch("casino.client.casino_client.io.echo"):
+        _run(
+            client.handle_message(
+                {
+                    "type": "auth_result",
+                    "success": True,
+                    "moniker": "bob",
+                    "balance": 0,
+                }
+            )
+        )
+    assert client._bearer_token is None
+    assert client.authenticated is True
+
+
+def test_handle_message_strips_whitespace_on_capture():
+    """The captured token is stripped of surrounding whitespace
+    so a trailing newline from the token file (or a noisy log
+    re-emit) does not leak onto the wire.
+    """
+    from unittest.mock import patch
+
+    client = _make_client(_make_args())
+    with patch("casino.client.casino_client.io.echo"):
+        _run(
+            client.handle_message(
+                {
+                    "type": "auth_result",
+                    "success": True,
+                    "moniker": "alice",
+                    "balance": 0,
+                    "token": "  p.s\n",
+                }
+            )
+        )
+    assert client._bearer_token == "p.s"
+
+
+def test_handle_message_does_not_capture_token_on_failed_auth():
+    """A failed ``auth_result`` (``success: false``) leaves
+    ``_bearer_token`` untouched. Tokens from a previous
+    successful login on the same client are preserved (re-auth
+    after disconnect should keep working), but a fresh client
+    that fails login does not pick up a junk token from a
+    server-supplied error envelope.
+    """
+    from unittest.mock import patch
+
+    client = _make_client(_make_args())
+    assert client._bearer_token is None
+    with patch("casino.client.casino_client.io.echo"):
+        _run(
+            client.handle_message(
+                {
+                    "type": "auth_result",
+                    "success": False,
+                    "moniker": "alice",
+                    "message": "bad credentials",
+                    # Some servers echo a stale token field on error;
+                    # we must not capture it.
+                    "token": "evil.injected",
+                }
+            )
+        )
+    assert client._bearer_token is None
+    assert client.authenticated is False

@@ -1,3 +1,6 @@
-#!/bin/sh
+#!/usr/bin/env python3.12
+from casino.__main__ import blackjack_main
+import sys
 
-python -W all -m "casino.blackjack" "$@"
+if __name__ == "__main__":
+    sys.exit(blackjack_main())

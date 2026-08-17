@@ -1,5 +1,5 @@
 #!/usr/bin/env python3.12
-from casino.__main__ import main
+from casino.slots.__main__ import main
 import sys
 
 if __name__ == "__main__":

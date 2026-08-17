@@ -48,17 +48,17 @@ omaha = "casino.poker.variant.omaha:Omaha"
 omaha_hi_lo = "casino.poker.variant.omaha:OmahaHiLo"
 seven_card_stud = "casino.poker.variant.seven_card_stud:SevenCardStud"
 
-[project.scripts]
-casino = "casino.__main__:main"
-blackjack = "casino.__main__:blackjack_main"
-yahtzee = "casino.yahtzee.__main__:main"
-slots = "casino.slots.__main__:main"
-
 [project.urls]
 Homepage = "https://github.com/jonez734/casino"
 Issues = "https://github.com/jonez734/casino/issues"
 
 [tool.setuptools]
+script-files = [
+    "bin/casino",
+    "bin/blackjack",
+    "bin/yahtzee",
+    "bin/slots",
+]
 package-dir = { "" = "src" }
 
 [tool.setuptools.packages.find]

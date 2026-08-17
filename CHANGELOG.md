@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### casino: capture bearer token from `auth_result` envelope
 
+See `casino/docs/AUTH.md` for the full casino-side contract
+(connection model, capture path, per-op re-injection, door-vs-BED
+diagnostic). The BED-side kwargs-forwarding contract that makes
+this work end-to-end lives in `bed/docs/BED_AUTH.md` "Adopting
+AuthService in a custom router"; the sub-router half lives in
+`zoid6/SPEC.md` §3.2.
+
 `CasinoClient.handle_message` now stashes the `token` field from
 the server's `auth_result` reply into `self._bearer_token`. The
 existing `CasinoClient.send` already injects that token on every
