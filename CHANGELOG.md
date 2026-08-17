@@ -7,6 +7,69 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### casino: move `bootstrap_opencode.sql` into `src/casino/sql/` and add existence guards
+
+The script previously crashed with `No such file or directory` on the
+inner `\i 'src/casino/sql/casino.sql'` when invoked from any directory
+other than the casino repo root, and on a totally fresh DB (no
+`bank` / `engine` schemas) the `ALTER SCHEMA bank OWNER TO opencode`,
+`ALTER TABLE bank.__account OWNER TO opencode`, and
+`GRANT … ON ALL TABLES IN SCHEMA bank TO opencode` lines produced
+roughly 60 cascade errors (`schema "bank" does not exist`,
+`relation "bank.__account" does not exist`, etc.) before the
+`CREATE EXTENSION IF NOT EXISTS citext` and `\i casino.sql` ever ran.
+
+Three changes:
+
+1. **Moved to `src/casino/sql/`.** The script now lives alongside
+   the canonical casino driver (`casino.sql`) and the per-table
+   `*.sql` files. Run command becomes:
+
+   ```
+   cd casino/src/casino/sql
+   psql -d <dbname> -U postgres -f bootstrap_opencode.sql
+   ```
+
+   psql CWD must be `casino/src/casino/sql` so the bare `\i casino.sql`
+   resolves, and so the inner bare-relative `\i schema.sql`,
+   `\i player.sql`, etc. inside `casino.sql` also resolve. **This
+   supersedes the run-command note in the prior "replace
+   `scripts/opencode.sql` with `scripts/bootstrap_opencode.sql`"
+   entry** — that entry described an `scripts/` location and a
+   quoted `\i 'src/casino/sql/casino.sql'` path; both are gone.
+
+   No `\cd` machinery is needed: the script and the files it loads
+   share a directory, so a single CWD is sufficient.
+
+2. **Existence guards everywhere.** Every per-schema DDL statement
+   is wrapped in a `DO $bootstrap$ … LOOP … END LOOP;` block that
+   checks `pg_namespace` first, so missing `bank` / `engine`
+   schemas no-op cleanly on a totally fresh DB. Table ownership is
+   resolved dynamically via `information_schema.tables` rather
+   than a hard-coded list, so newly-added tables get picked up
+   when the script is re-run. The `bank.setup_constraints()` and
+   `engine.setup_member_constraints()` `SECURITY DEFINER` helpers
+   are wrapped in a single `DO $helpers$` block that creates each
+   function only if its schema exists. The `stats jsonb` migration
+   on `casino.__player` is wrapped in a `DO $stats$` block that
+   checks both the table and the column.
+
+3. **Idempotent.** Re-running on an already-bootstrapped DB is a
+   no-op (all statements either have `IF NOT EXISTS` / `IF EXISTS`
+   guards or are inside the DO-block checks). Verified against a
+   fresh `bootstrap_smoketest` DB on PostgreSQL 18.6: first run
+   applies all schema owners, GRANTs, helper functions, and the
+   `stats` column; second run produces no errors.
+
+Caveat: on a totally fresh DB without `bank` / `engine` schemas,
+the `\i casino.sql` step still produces FK-cascade errors
+(`schema "engine" does not exist` on `__player`, etc.) — that is
+intrinsic to the casino driver's design (FKs to
+`engine.__member`, `bank.__account`), not something this script
+can fix. The documented use case is a DB where
+`bbsengine6.startup` has already run; on that DB the cascade
+doesn't fire and `bootstrap_opencode.sql` succeeds end-to-end.
+
 ### casino: bring `startup.main()` up to bbsengine6 check-module standard
 
 `casino.startup.main()` previously mirrored only the classlist portion
