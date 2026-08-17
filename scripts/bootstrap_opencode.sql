@@ -1,6 +1,15 @@
--- casino/scripts/opencode.sql
--- Grant permissions to opencode user for testing
--- Run this as a superuser (postgres or jam): psql -d zoid6test -U postgres -f opencode.sql
+-- casino/scripts/bootstrap_opencode.sql
+-- Bootstrap opencode user test database.
+--
+-- Run as a superuser (postgres or jam) from the casino repo root so
+-- the \i path below resolves:
+--   psql -d <dbname> -U postgres -f scripts/bootstrap_opencode.sql
+--
+-- The script assumes bbsengine6.startup has already run on the target
+-- database (so the bank, engine, and base roles exist); it adds the
+-- casino schema, the opencode privs, and the SECURITY DEFINER helpers
+-- that scripts/setup_test_db.py invokes to seed constraints and the
+-- casino:house account.
 
 -- Change schema owners (must be superuser)
 ALTER SCHEMA bank OWNER TO opencode;
@@ -125,51 +134,16 @@ BEGIN
 END;
 $$;
 
--- Add stats JSONB column to __player if not exists
-ALTER TABLE casino.__player ADD COLUMN IF NOT EXISTS stats jsonb default '{}'::jsonb;
+-- Install citext (required by casino.__player.membermoniker and
+-- casino.__bank_player.membermoniker).
+CREATE EXTENSION IF NOT EXISTS citext;
 
--- Create missing tables if not exists
-DO $$
-BEGIN
-    -- Create bank tables if not exists
-    IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'bank' AND table_name = '__account') THEN
-        CREATE TABLE bank.__account (moniker text primary key, balance numeric(10,0), maxtransfer numeric(10,0), overdraft_limit numeric(10,0));
-    END IF;
-    
-    -- Create casino tables if not exists
-    IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'casino' AND table_name = '__bank_table') THEN
-        CREATE TABLE casino.__bank_table (table_moniker text primary key, minbet numeric(10,0), maxbet numeric(10,0), shoe_decks integer, shoe_threshold numeric(5,4), attrs jsonb);
-    END IF;
-    
-    IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'casino' AND table_name = '__table') THEN
-        CREATE TABLE casino.__table (moniker text primary key, game_type text, minbet numeric(10,0), maxbet numeric(10,0), attrs jsonb);
-    END IF;
-    
-    IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'casino' AND table_name = '__game') THEN
-        CREATE TABLE casino.__game (id bigserial primary key, tablemoniker text, status text, attrs jsonb);
-    END IF;
-    
-    IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'casino' AND table_name = '__hand') THEN
-        CREATE TABLE casino.__hand (id bigserial primary key, gameid bigint, playermoniker text, cards text[], attrs jsonb);
-    END IF;
-    
-    IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'casino' AND table_name = '__player') THEN
-        CREATE TABLE casino.__player (id bigserial primary key, membermoniker citext, location text, lastplayed timestamptz, attrs jsonb, stats jsonb default '{}'::jsonb);
-    END IF;
-    
-    IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'casino' AND table_name = '__account') THEN
-        CREATE TABLE casino.__account (id bigserial primary key, gameid bigint, playermoniker text, amount numeric(10,0), type text, status text, attrs jsonb);
-    END IF;
-    
-    IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'casino' AND table_name = 'map_cardtable_player') THEN
-        CREATE TABLE casino.map_cardtable_player (cardtablemoniker text, playermoniker text, role text);
-    END IF;
-    
-    IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'casino' AND table_name = 'map_game_player') THEN
-        CREATE TABLE casino.map_game_player (gameid bigint, playermoniker text, role text);
-    END IF;
-    
-    IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'casino' AND table_name = '__betlog') THEN
-        CREATE TABLE casino.__betlog (id bigserial primary key, membermoniker text, cardtablemoniker text, gameid bigint, playermoniker text, hand_id bigint, amount numeric(10,0), status text, dateposted timestamptz, notes text, currenthand text, description text, attrs jsonb);
-    END IF;
-END $$;
+-- Bootstrap casino schema via the canonical driver. This is the same
+-- driver casino.startup.main uses via importsql, so a new casino table
+-- added to src/casino/sql/casino.sql flows through both bootstrap
+-- paths automatically. Order matters: this must run before the stats
+-- migration below so casino.__player exists.
+\i 'src/casino/sql/casino.sql'
+
+-- Add stats JSONB column to __player if not exists.
+ALTER TABLE casino.__player ADD COLUMN IF NOT EXISTS stats jsonb default '{}'::jsonb;

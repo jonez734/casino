@@ -7,6 +7,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### casino: bring `startup.main()` up to bbsengine6 check-module standard
+
+`casino.startup.main()` previously mirrored only the classlist portion
+of `bbsengine6.backend.checkbank.main()`. After the recent addition of
+`__bank_table` and friends (`f978b1e`), three latent gaps remained:
+
+- The `citext` extension was never installed by `casino.startup`, even
+  though `casino.__player.membermoniker` (and the new
+  `__bank_player.membermoniker`) use citext columns. Fresh-DB bootstrap
+  crashed on the first table creation.
+- Schema-level GRANTs came solely from the inline GRANT in
+  `src/casino/sql/schema.sql`. If the schema was created by another
+  path (manual psql, `bootstrap_opencode.sql`), the privs were never
+  re-asserted — non-superuser roles (`web`, `term`, `opencode`) saw no
+  `USAGE` on `casino`.
+- The 18-entry classlist omitted all 8 bank-related classes
+  (`__bank_table`, `bank_table`, `__bank_player`, `bank_player`,
+  `__banktransaction`, `banktransaction`, `__tabletransfer`,
+  `tabletransfer`). On any DB whose casino schema predated `f978b1e`,
+  `INSERT INTO casino.__bank_table` failed with
+  `relation "casino.__bank_table" does not exist`.
+
+`casino.startup.main()` now installs `citext` via
+`database.extensionavailable`/`extensioninstalled`/`creatextension`,
+re-asserts `USAGE[, CREATE] ON SCHEMA casino TO {sysop,web,term,opencode}`
+via `database.manage_schema_priv` (hybrid: keeps the inline GRANT in
+`schema.sql` so a fresh install works without a prior startup run), and
+iterates the full 26-entry classlist in FK-safe order. Migration files
+(`hidden_table_migration.sql`, `table_shoe_migration.sql`) are
+deliberately skipped — their columns are already in `table.sql:14-15,19`.
+
+### casino: replace `scripts/opencode.sql` with `scripts/bootstrap_opencode.sql`
+
+Renamed and updated:
+
+- `CREATE EXTENSION IF NOT EXISTS citext` is added before the schema
+  bootstrap — the previous version crashed the first time it tried to
+  create `casino.__player`.
+- The trailing 44-line `DO $$ … END $$;` block (old lines 131‑175) that
+  inlined a stale copy of the casino schema — wrong `__bank_table`
+  columns, missing `__bank_player` / `__banktransaction` /
+  `__tabletransfer` / `__slot_spin` / `__log` — is replaced with
+  `\i 'src/casino/sql/casino.sql'`, which loads the canonical driver
+  (the same driver `casino.startup.main` uses via `importsql`). One
+  source of truth for casino schema; a new table added to `casino.sql`
+  flows through both paths automatically.
+- The `bank.setup_constraints()` and `engine.setup_member_constraints()`
+  SECURITY DEFINER helpers and the `casino.__player.stats jsonb`
+  migration are preserved verbatim — `scripts/setup_test_db.py` still
+  calls the helper functions and seeds the `casino:house` account.
+
+Run command is unchanged in spirit: `psql -d <dbname> -U postgres -f
+scripts/bootstrap_opencode.sql`, but must be run from the casino repo
+root so the `\i 'src/casino/sql/casino.sql'` path resolves.
+
 ### casino: capture bearer token from `auth_result` envelope
 
 See `casino/docs/AUTH.md` for the full casino-side contract
