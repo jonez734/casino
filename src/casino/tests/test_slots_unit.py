@@ -331,7 +331,14 @@ class TestRenderAscii(unittest.TestCase):
 
     def test_renders_with_color_wrappers(self):
         """When a symbol has a color, its cell wraps the glyph in
-        {color}...{/color} so bbsengine6.io.echo can resolve it.
+        ``{color}`` ... ``{/fgcolor}`` so bbsengine6.io.echo opens the
+        per-symbol color and resets the foreground to default before
+        the surrounding border characters. The reset is ``{/fgcolor}``
+        (not ``{/color}``) because bbsengine6's ``_handle_command``
+        does ``lstrip('/')`` before resolving palette commands, so
+        ``{/red}`` resolves to the same opener as ``{red}`` and never
+        closes the foreground -- leaving the border characters to
+        inherit the last cell's color.
         """
         result = lib.SpinResult(
             reels=[[lib.Symbol("CHERRY", 1, "C", "red")]],
@@ -343,7 +350,7 @@ class TestRenderAscii(unittest.TestCase):
         )
         out = lib.render_ascii(result)
         self.assertIn("{red}", out)
-        self.assertIn("{/red}", out)
+        self.assertIn("{/fgcolor}", out)
 
     def test_renders_without_color_when_symbol_has_none(self):
         """Empty color string means no color wrappers are emitted

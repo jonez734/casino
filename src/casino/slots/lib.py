@@ -399,13 +399,18 @@ def render_ascii(result: SpinResult) -> str:
     ``{lrcorner}``). Center row is highlighted with ``{inverse}`` so
     the player can see what was evaluated. Each cell is wrapped in
     its symbol's color (``{red}``, ``{yellow}``, ...) so cherries
-    read as red, lemons yellow, etc.
+    read as red, lemons yellow, etc. Each colored cell ends with
+    ``{/fgcolor}`` so the foreground is reset to default before the
+    surrounding border / padding characters are drawn -- otherwise the
+    last cell's color would bleed into the box frame.
 
     The output is intended to be passed through ``bbsengine6.io.echo``
     for command resolution. When echoed, ``{red}`` becomes an ANSI
-    red foreground, ``{/inverse}`` returns to normal video, and
-    ``{ulcorner}`` emits the VT100 ACS escape sequence so the grid
-    draws with native box characters on supporting terminals.
+    red foreground, ``{/fgcolor}`` resets the foreground to the
+    terminal default (``ESC [ 39 m``), ``{/inverse}`` returns to
+    normal video, and ``{ulcorner}`` emits the VT100 ACS escape
+    sequence so the grid draws with native box characters on
+    supporting terminals.
     """
     if not result.reels:
         return ""
@@ -417,7 +422,7 @@ def render_ascii(result: SpinResult) -> str:
         if len(text) < cell_w:
             text = text + " " * (cell_w - len(text))
         if sym.color:
-            return f"{{{sym.color}}}{text}{{/{sym.color}}}"
+            return f"{{{sym.color}}}{text}{{/fgcolor}}"
         return text
 
     def inverse_cell(sym: Symbol) -> str:
@@ -425,9 +430,15 @@ def render_ascii(result: SpinResult) -> str:
         if len(text) < cell_w:
             text = text + " " * (cell_w - len(text))
         # Inverse video + the symbol's own color so it pops on the
-        # highlighted row.
+        # highlighted row. {/fgcolor} resets the foreground after the
+        # cell so the surrounding border characters (spaces, {vline},
+        # {plus}, ...) inherit the default fg instead of the last
+        # cell's color -- a per-symbol {{/{color}}} close would not
+        # actually emit a default-fg reset because bbsengine6's
+        # _handle_command does lstrip('/') before resolving palette
+        # commands, so {/red} resolves to the same opener as {red}.
         if sym.color:
-            return f"{{inverse}}{{{sym.color}}}{text}{{/inverse}}{{/{sym.color}}}"
+            return f"{{inverse}}{{{sym.color}}}{text}{{/inverse}}{{/fgcolor}}"
         return f"{{inverse}}{text}{{/inverse}}"
 
     hline = "{hline:" + str(cell_w + 2) + "}"

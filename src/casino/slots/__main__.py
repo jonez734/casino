@@ -213,6 +213,7 @@ def _run_door(args: argparse.Namespace) -> int:
             continue
         result = player.play(bet=bet)
         print()
+        io.echo("{/all}")
         io.echo(lib.render_ascii(result))
         if result.did_win:
             io.echo(f"{{var:labelcolor}}  won {{var:valuecolor}}{result.payout}  {{var:labelcolor}}net={{var:valuecolor}}{result.net:+d}")
