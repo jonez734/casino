@@ -218,7 +218,7 @@ def view_table(args, client=None, **kwargs) -> bool:
     if client is None:
         io.echo("Not connected. Use Connect first.", level="error")
         return False
-    if client.current_table is None:
+    if getattr(client, "current_table_moniker", None) is None:
         io.echo("Not at a table.", level="error")
         return False
     if not _check_access(
@@ -229,7 +229,12 @@ def view_table(args, client=None, **kwargs) -> bool:
     ):
         return False
     client._loop.run_until_complete(
-        client.send({"type": "view_table", "table_id": client.current_table})
+        client.send(
+            {
+                "type": "view_table",
+                "moniker": getattr(client, "current_table_moniker", None),
+            }
+        )
     )
     client._loop.run_until_complete(asyncio.sleep(0.1))
     return True

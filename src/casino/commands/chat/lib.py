@@ -29,7 +29,7 @@ def table_chat(args, client=None, **kwargs) -> bool:
     if client is None:
         io.echo("Not connected. Use Connect first.", level="error")
         return False
-    if client.current_table is None:
+    if getattr(client, "current_table_moniker", None) is None:
         io.echo("Not at a table.", level="error")
         return False
     client.cmd_table_chat()
