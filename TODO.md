@@ -1015,6 +1015,42 @@ No core code changes needed - just install the package.
 
 ---
 
+## Duplicate-Table Short-Circuit + Per-Table Stats (Completed)
+
+**Status:** COMPLETED (commits `5586723`, `ca01ff7`)
+
+This is the work that landed in `[Unreleased]` of `CHANGELOG.md`:
+the `__exists__` sentinel in `dal.table.create_table`, the
+`table_exists` envelope with owner-or-sysop gate, the game-type-aware
+`get_table_stats` aggregator, and the per-casino nested
+configuration block in `bed.json` (surrender_multiplier=0.5 default).
+See `SPEC.md` §9 and §10 for the canonical description.
+
+### Bed wiring (deferred)
+
+`MessageRouter._bootstrap_casino_config(args)` auto-discovers the
+`casino` section from `args.config_file` so the feature works
+without a bed change, but the idiomatic place to wire it is
+`bed/main.py` via an `_apply_casino_config(args, cfg)` that mirrors
+the existing `_apply_database_config` / `_apply_auth_config` blocks
+and forwards `args._casino_config` to `db_args` before constructing
+the casino `MessageRouter`. That work is intentionally out of scope
+for the casino PR — it should land as a separate bed commit that
+also bumps `bed._version.py`.
+
+### Poker stats (deferred)
+
+`get_table_stats` returns `{}` for `game_type="poker"` because
+poker runs in-memory in `services.poker.PokerService._tables` and
+hand outcomes are awarded via `winner.credits += table.pot` —
+nothing is written to `casino.__game` or `casino.__betlog`. A real
+poker settlement path that persists per-hand outcomes to
+`casino.__game.attrs` (like blackjack / yahtzee / tictactoe now do)
+would unlock a non-empty poker stats block. That is its own
+workstream.
+
+---
+
 ## BED (BBS Engine Daemon) Improvements
 
 **File:** `casino/src/casino/bed.py`

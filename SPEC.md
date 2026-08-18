@@ -1,6 +1,6 @@
 # casino — Specification
 
-> **Last updated:** 2026-08-03.
+> **Last updated:** 2026-08-18.
 > **Status:** Alpha (`Development Status :: 3 - Alpha`); production
 > wiring (MessageRouter + CasinoSessionManager + bed-native auth)
 > in place; games are feature-complete per their READMEs.
@@ -18,9 +18,11 @@
 6. [Standalone TUI client](#6-standalone-tui-client)
 7. [Poker variant plugin system](#7-poker-variant-plugin-system)
 8. [SQL schema](#8-sql-schema)
-9. [Cross-reference map](#9-cross-reference-map)
-10. [Authoritative file index](#10-authoritative-file-index)
-11. [Out of scope](#11-out-of-scope)
+9. [Per-table stats & duplicate-table short-circuit](#9-per-table-stats--duplicate-table-short-circuit)
+10. [Configuration](#10-configuration)
+11. [Cross-reference map](#11-cross-reference-map)
+12. [Authoritative file index](#12-authoritative-file-index)
+13. [Out of scope](#13-out-of-scope)
 
 ---
 
@@ -262,7 +264,123 @@ Two schema locations exist:
 - `zoidweb2-casino.sql` — orphaned Dec-2025 snapshot. **Do not
   use.**
 
-## 9. Cross-reference map
+## 9. Per-table stats & duplicate-table short-circuit
+
+### `create_table` short-circuit (owner-or-sysop)
+
+When `Moniker.create_table` is invoked with a moniker that is already
+taken by a table of the **same** game type, the second call no longer
+fails with a generic `create_failed` error. Instead:
+
+1. `dal.table.create_table` (sync + aiosql) pre-checks
+   `casino.__table` for an existing row and returns a sentinel dict
+   shaped like the normal table row but with ``"__exists__": True``.
+2. `services.table.TableService.create_table` strips the sentinel
+   key and returns ``{"success": False, "exists": True, "table":
+   existing_dict, "message": …}``.
+3. `api.handler.TableServiceHandler._handle_create_table` routes the
+   ``exists`` branch to a new ``table_exists`` envelope, gated by an
+   owner-or-sysop check:
+
+   - **Owner of the existing table** (case-insensitive moniker
+     match): receives the full payload + stats.
+   - **Sysop** (`state.is_sysop == True`): same payload, used to
+     inspect hidden tables owned by other monikers.
+   - **Anyone else**: receives ``type="error", code="create_failed"``,
+     indistinguishable from any other create failure so the existence
+     of the table is not leaked.
+
+A duplicate moniker with a **different** game type surfaces as
+``type="error", code="type_mismatch"`` so callers do not silently
+bind a yahtzee table to a blackjack moniker.
+
+### `table_exists` wire payload
+
+```json
+{
+  "type": "table_exists",
+  "moniker": "blackjack-jam",
+  "game_type": "blackjack",
+  "owner": "jam",
+  "min_bet": 10,
+  "max_bet": 1000,
+  "location": "NorthAlpha",
+  "hidden": false,
+  "stats": { ... per-table aggregate ... },
+  "message": "blackjack table 'blackjack-jam' already exists; showing stats"
+}
+```
+
+The client (`src/casino/client/casino_client.py`, `table_exists`
+branch in `handle_message`) renders this with the
+`{var:labelcolor}` / `{var:valuecolor}` label/value pattern
+established at `yahtzee/play.py:176-253`.
+
+### Per-table stats shape (game-type aware)
+
+`dal.table.get_table_stats(args, moniker, game_type, surrender_multiplier=0.5)`
+returns a dict keyed by `game_type`:
+
+| Game type  | Shape                                                            |
+|------------|------------------------------------------------------------------|
+| `blackjack` | `{hands_played, wins, losses, pushes, blackjacks, busts, surrenders, net}` |
+| `slots`    | `{spins, wins, losses, net}`                                     |
+| `yahtzee`  | `{hands_played, wins, losses, draws, net}`                       |
+| `tictactoe`| `{hands_played, wins, losses, draws, net}`                       |
+| `poker`    | `{}` (poker is in-memory; nothing to aggregate yet — see §11)    |
+
+The blackjack `net` honors the configured `surrender_multiplier`
+(§10) so per-table net stays consistent with what the settle path
+actually credited the player.
+
+Stats are sourced from `casino.__game` for blackjack / yahtzee /
+tictactoe and from `casino.__slot_spin` for slots. Settle paths
+write `attrs->'outcome'`, `attrs->'bet_amount'`, and (for
+yahtzee/tictactoe) `attrs->'net'` on the `__game` row via the new
+`dal.game.update_game_attrs` (sync + aiosql) merge helper.
+
+### Sysop hidden-table visibility
+
+A sysop issuing `create_table` with a moniker that is already a
+**hidden** table owned by another player receives the `table_exists`
+payload. The hidden-flag is preserved in the response so a sysop
+audit client can distinguish hidden from public tables in the
+display layer. The pre-check is done with a real measurement
+(`SELECT … FROM casino.__table`) — no in-memory guesswork.
+
+## 10. Configuration
+
+The casino config block is sourced from `bed.json` under the
+`casino` key (per-casino nested layout):
+
+```json
+{
+  "casino": {
+    "blackjack": {
+      "surrender_allowed": "early",
+      "surrender_multiplier": 0.5
+    }
+  }
+}
+```
+
+Helpers in `src/casino/config.py`:
+
+| Function                       | Purpose                                                                                  |
+|--------------------------------|------------------------------------------------------------------------------------------|
+| `load_config()`                | Read JSON / merge env (canonical casino config loader; unchanged)                        |
+| `get_postoffice_config()`      | Existing postoffice block helper                                                          |
+| `get_casino_config(args)`      | Return the casino-level block: prefers `args._casino_config` (wired by bed), falls back to `args._casino_config_file`, then `{}`. |
+| `get_surrender_multiplier(args)` | Read `casino.blackjack.surrender_multiplier`, defaulting to `0.5`. Honors `surrender_allowed` (`False` / `"none"` → `0.0`); clamps out-of-range and garbage values to the `0.5` default. |
+
+`MessageRouter.__init__` calls `_bootstrap_casino_config(args)`,
+which auto-discovers the `casino` section from `args.config_file`
+when bed has not wired it explicitly. This keeps door-mode and
+standalone tests working with the `0.5` default without requiring
+a bed wiring change. When bed later wires the section explicitly
+(planned), the auto-discovery short-circuits on the wired value.
+
+## 11. Cross-reference map
 
 | Concept                            | File                                          |
 |------------------------------------|-----------------------------------------------|
@@ -279,6 +397,9 @@ Two schema locations exist:
 | Bank wrapper                       | `src/casino/services/bank.py`                 |
 | Player auth                        | `src/casino/services/player.py`               |
 | Table CRUD                         | `src/casino/services/table.py`                |
+| `__exists__` sentinel / stats      | `src/casino/dal/table.py` (+ `dal/aiosql/table.py`) |
+| Outcome-attr writes                | `src/casino/dal/game.py` (`update_game_attrs`) |
+| Bed.json casino helpers            | `src/casino/config.py` (`get_casino_config`, `get_surrender_multiplier`) |
 | Backend selector                   | `src/casino/_routing.py`                      |
 | DAL (sync)                         | `src/casino/dal/{bet,game,player,slots,table}.py` |
 | DAL (async / aiosql)               | `src/casino/dal/aiosql/*`                     |
@@ -298,7 +419,7 @@ Two schema locations exist:
 | Per-host landing page              | `www/php/index.php` + `www/skin/{scss,tmpl}/` |
 | Console-script manifest            | `pyproject.toml`                              |
 
-## 10. Authoritative file index
+## 12. Authoritative file index
 
 | Path                                              | Role                                  |
 |---------------------------------------------------|---------------------------------------|
@@ -308,7 +429,7 @@ Two schema locations exist:
 | `src/casino/main.py`                              | Door-mode menu                        |
 | `src/casino/auth.py`                              | BED auth + BBS entry                  |
 | `src/casino/lib.py`                               | Card / Hand / Shoe / CasinoPlayer + bottombar |
-| `src/casino/config.py`                            | Env-var config loader                 |
+| `src/casino/config.py`                            | Env-var config loader + bed.json `casino` block helpers (`get_casino_config`, `get_surrender_multiplier`) |
 | `src/casino/client_cli.py`                        | legacy `python -m casino.client_cli` entry |
 | `src/casino/_routing.py`                          | bed / direct backend selector         |
 | `src/casino/startup.py`                           | Schema import                         |
@@ -328,6 +449,9 @@ Two schema locations exist:
 | `src/casino/commands/{admin,bank,chat,game,poker,table}/` | BBS CLI subcommands         |
 | `src/casino/sql/`                                 | Current canonical schema              |
 | `src/casino/tests/`                               | pytest (~50 modules)                  |
+| `src/casino/tests/test_blackjack_three_hands.py`  | Self-contained WS auth + create + join + 3 hands + duplicate-table scenario |
+| `src/casino/tests/test_blackjack_three_hands_bed.py` | Bed-targeted companion; skips when bed unreachable at `ws://127.0.0.1:8765/` |
+| `src/casino/tests/test_casino_config.py`          | Unit tests for `get_casino_config` / `get_surrender_multiplier` |
 | `scripts/opencode.sql`                            | opencode user grants                  |
 | `scripts/poker.sql`                               | Poker legacy migration                |
 | `scripts/setup_privileges.sql`                    | Helper functions                      |
@@ -336,7 +460,7 @@ Two schema locations exist:
 | `www/php/index.php`                               | Landing page                          |
 | `www/skin/{scss,tmpl}/`                           | Landing-page skin                     |
 
-## 11. Out of scope
+## 13. Out of scope
 
 - **Authentication wire-protocol** — bed's `AuthService`. Casino
   overrides it with its own `AuthService` because it must not depend

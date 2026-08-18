@@ -7,6 +7,123 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### casino: short-circuit `create_table` on duplicate moniker; surface per-table stats
+
+When a moniker already has a table of the requested `game_type`,
+the second `create_table` from the owner (or a sysop) now comes
+back as a new `type="table_exists"` envelope with the existing
+table's metadata and a per-table aggregate `stats` block, instead
+of failing with a generic `create_failed` error. Anyone else still
+sees `create_failed` so the existence of the table is not leaked;
+a duplicate moniker with a **different** game type surfaces as
+`code="type_mismatch"` so callers do not silently bind a yahtzee
+table to a blackjack moniker.
+
+Wiring:
+
+- `dal/table.py` + `dal/aiosql/table.py`: `create_table` pre-checks
+  `casino.__table` for an existing row and returns a sentinel dict
+  (`__exists__: True`) so callers can distinguish "already taken"
+  from "infrastructure error" without a second `SELECT`. Both
+  sync and async paths share a `_row_to_table_dict` mapper.
+- `services/table.py`: `TableService.create_table` strips the
+  sentinel key and returns `{"success": False, "exists": True,
+  "table": existing, "message": …}`. New `get_table_stats`
+  passthrough.
+- `api/handler.py`: `_handle_create_table` routes the `exists`
+  branch to the new `table_exists` envelope, with an owner-or-sysop
+  gate (case-insensitive moniker match against `state.moniker`,
+  or `state.is_sysop`). Sysop impersonation is fixed — the
+  comparison is between actual owner and actual caller, not the
+  requested game_type.
+- `MessageRouter._bootstrap_casino_config(args)` auto-discovers
+  the `casino` section from `args.config_file` (bed's `bed.json`)
+  when bed has not wired `args._casino_config` explicitly, so
+  door-mode / standalone tests fall back to the built-in defaults
+  cleanly.
+
+To make per-table stats meaningful, the settle paths now write
+`attrs->'outcome'` / `attrs->'bet_amount'` / `attrs->'net'` on the
+`casino.__game` row via a new `dal.game.update_game_attrs` (sync +
+aiosql) merge helper:
+
+- **blackjack**: `services/game.py` — surrender reads its forfeit
+  fraction from `bed.json` via `casino.config.get_surrender_multiplier`
+  (defaults to 0.5, matching the universal casino standard per
+  Wizard of Odds / Vegas Advantage). Settle writes
+  `outcome` / `bet_amount` / `net` per outcome (blackjack = 1.5x,
+  win = 1x, push = 0, loss/bust = -1x, surrender = -1x × multiplier).
+- **yahtzee**: `yahtzee/service.py` — writes at end-of-game
+  (`outcome = win if net > 0 else loss`).
+- **tictactoe**: `tictactoe/service.py` — writes at settle
+  (`outcome ∈ {win, loss, draw}`).
+- **poker**: in-memory only; `get_table_stats` returns `{}`
+  honestly (no fabricated `hands_played: 0`).
+
+Wire payload (game_type-aware stats shape):
+
+```json
+{
+  "type": "table_exists",
+  "moniker": "blackjack-jam",
+  "game_type": "blackjack",
+  "owner": "jam",
+  "min_bet": 10, "max_bet": 1000,
+  "location": "NorthAlpha",
+  "hidden": false,
+  "stats": {
+    "hands_played": 12, "wins": 7, "losses": 3, "pushes": 1,
+    "blackjacks": 0, "busts": 1, "surrenders": 0, "net": 24
+  },
+  "message": "blackjack table 'blackjack-jam' already exists; showing stats"
+}
+```
+
+`CasinoClient.handle_message` renders this with the
+`{var:labelcolor}` / `{var:valuecolor}` label/value pattern
+established at `yahtzee/play.py:176-253`. Per-game stat keys:
+blackjack → `{hands_played, wins, losses, pushes, blackjacks,
+busts, surrenders, net}`; slots → `{spins, wins, losses, net}`;
+yahtzee / tictactoe → `{hands_played, wins, losses, draws, net}`;
+poker → `{}`.
+
+Configuration (per-casino nested layout in `bed.json`):
+
+```json
+{
+  "casino": {
+    "blackjack": {
+      "surrender_allowed": "early",
+      "surrender_multiplier": 0.5
+    }
+  }
+}
+```
+
+`casino.config.get_surrender_multiplier` clamps out-of-range and
+garbage values to the `0.5` default, and honors
+`surrender_allowed: false` / `"none"` → `0.0`. See the
+test_casino_config suite for the full matrix.
+
+Tests:
+
+- `test_blackjack_three_hands.py`: new
+  `test_create_duplicate_table_returns_table_exists` exercises
+  the owner short-circuit and the type_mismatch branch.
+- `test_hidden_tables.py`: pre-existing `dal.table.create_table`
+  mocks updated for the new pre-check fetchone.
+- `test_casino_config.py` (new): 11 unit tests for
+  `get_casino_config` (wiring, fallback, file path, defaults)
+  and `get_surrender_multiplier` (honors config, allowed flag,
+  clamping, garbage values).
+- `test_blackjack_three_hands_bed.py` (new): bed-targeted
+  companion; auto-skips when bed is not reachable at
+  `ws://127.0.0.1:8765/`. Documented caveat: bed loads casino
+  modules at startup, so the daemon must be restarted to pick up
+  the new `__exists__` sentinel — without a restart the
+  duplicate-table scenario falls back to the unique-constraint
+  path on `casino.__bank_table_pkey`.
+
 ### casino: move `bootstrap_opencode.sql` into `src/casino/sql/` and add existence guards
 
 The script previously crashed with `No such file or directory` on the

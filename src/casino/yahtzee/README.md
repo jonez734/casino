@@ -39,6 +39,13 @@ existing WebSocket transport.
   `dal_bet.settle_bet`, writes one `__log` row, advances the
   round, resets `rolls_left = 2`. If the round was the 13th,
   closes the `__game` and returns `yahtzee_result` instead.
+  When the 13th round is scored, the server also merges
+  `{outcome, bet_amount, net}` into the `__game` row's
+  `attrs` JSONB (`outcome = "win" if net > 0 else "loss"`),
+  via `dal.game.update_game_attrs` (sync + aiosql) — this is
+  what feeds the per-table `get_table_stats` aggregate when
+  `Moniker.create_table` short-circuits on a duplicate moniker.
+  See `casino.SPEC.md` §9.
 
 ### Server → Client
 

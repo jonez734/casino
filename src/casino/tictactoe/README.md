@@ -116,7 +116,13 @@ messages use the existing WebSocket transport.
   str, "moves_played": int}`.
 - On game over, sets `__game.status = 'closed'`, sends
   `tictactoe_result` to the player, removes the game from
-  `_games`. `__table` stays open.
+  `_games`. `__table` stays open. The server also merges
+  `{outcome, bet_amount, net}` into the `__game` row's `attrs`
+  JSONB (`outcome ∈ {"win", "loss", "draw"}`), via
+  `dal.game.update_game_attrs` (sync + aiosql) — this is what
+  feeds the per-table `get_table_stats` aggregate when
+  `Moniker.create_table` short-circuits on a duplicate moniker.
+  See `casino.SPEC.md` §9.
 - Disconnect mid-game: `finalize_on_disconnect` settles the open
   bet as a loss (`payout=0`), sets `__game.status = 'cancelled'`.
   Mode 0 ignores disconnects. Mode 2 picks the leaver as the
