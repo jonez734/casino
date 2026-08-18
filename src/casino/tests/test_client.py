@@ -75,7 +75,7 @@ class TestClientMenuFlow(unittest.TestCase):
 
         self.assertEqual(client.moniker, "")
         self.assertEqual(client.balance, 0)
-        self.assertIsNone(client.current_table)
+        self.assertIsNone(client.current_table_moniker)
         self.assertEqual(len(client.watched_tables), 0)
 
     def test_casino_client_play_function_has_defaults(self):

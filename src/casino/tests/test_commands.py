@@ -185,7 +185,7 @@ class TestCommandFunctions(unittest.TestCase):
 
     def test_table_chat_not_at_table(self):
         mock_client = MagicMock()
-        mock_client.current_table = None
+        mock_client.current_table_moniker = None
 
         with patch("casino.commands.chat.lib.get_client", return_value=mock_client):
             from casino.commands.chat.lib import table_chat
