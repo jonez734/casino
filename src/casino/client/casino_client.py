@@ -28,9 +28,8 @@ class CasinoClient:
         self.authenticated = False
         self.moniker = ""
         self.balance = 0
-        self.current_table: int | None = None
-        self.watched_tables: set[str] = set()
         self.current_table_moniker: str | None = None
+        self.watched_tables: set[str] = set()
         self.current_table_game_type: str | None = None
         self.current_table_players: int = 0
         self.last_available_actions: list[str] = []
@@ -149,15 +148,45 @@ class CasinoClient:
                 io.echo("No tables available.")
             else:
                 io.echo(
-                    f"{'ID':<4} {'Game':<12} {'Min':<6} {'Max':<6} {'Players':<20}\n"
+                    f"{'Moniker':<20} {'Game':<12} {'Min':<6} {'Max':<6} {'Players':<20}"
                 )
                 util.hr(end="")
                 for t in tables:
                     players = ", ".join(t.get("players", [])) or "(empty)"
                     io.echo(
-                        f"{t['id']:<4} {t['game_type']:<12} "
-                        f"{t['min_bet']:<6} {t['max_bet']:<6} {players:<20}\n"
+                        f"{t['moniker']:<20} {t['game_type']:<12} "
+                        f"{t['min_bet']:<6} {t['max_bet']:<6} {players:<20}"
                     )
+
+        elif msg_type == "table_created":
+            moniker = msg.get("moniker", "")
+            location = msg.get("location", "")
+            hidden = bool(msg.get("hidden", False))
+            message = msg.get("message", f"Table {moniker} created")
+            util.heading(f"Table created: {moniker}")
+            io.echo(
+                f"{{var:labelcolor}}location:    {{var:valuecolor}}{location}"
+            )
+            io.echo(
+                f"{{var:labelcolor}}visibility:  {{var:valuecolor}}"
+                f"{'hidden' if hidden else 'public'}"
+            )
+            io.echo(
+                f"{{var:labelcolor}}status:      {{var:valuecolor}}{message}"
+            )
+            io.echo(
+                "{{var:labelcolor}}note:        "
+                "{{var:valuecolor}}use [J]oin with this moniker to sit down"
+            )
+
+        elif msg_type == "table_updated":
+            moniker = msg.get("moniker", "")
+            message = msg.get("message", "")
+            util.heading(f"Table updated: {moniker}")
+            if message:
+                io.echo(f"{{var:labelcolor}}status:  {{var:valuecolor}}{message}")
+            if self.current_table_moniker == moniker:
+                self.current_table_moniker = None
 
         elif msg_type == "game_state":
             await self.display_game_state(msg)
@@ -369,7 +398,7 @@ class CasinoClient:
         re-verifies it on every op. The reply arrives as a
         ``slot_result`` message routed through ``handle_message``.
         """
-        if self.current_table is None:
+        if self.current_table_moniker is None:
             io.echo("Not at a table. Use Join first.", level="error")
             return
         bet = io.inputinteger("{var:promptcolor}Bet amount: {var:inputcolor}", minimum=1)
@@ -386,7 +415,7 @@ class CasinoClient:
 
     def cmd_slot_paytable(self) -> None:
         """Handle slot_paytable command."""
-        if self.current_table is None:
+        if self.current_table_moniker is None:
             io.echo("Not at a table. Use Join first.", level="error")
             return
         self._loop.run_until_complete(self.send({"type": "slot_paytable"}))
@@ -454,17 +483,20 @@ class CasinoClient:
 
     def cmd_join_table(self) -> None:
         """Handle join_table command."""
-        table_id = io.inputinteger("{var:promptcolor}Table ID: {var:inputcolor}")
+        moniker = io.inputstring("{var:promptcolor}Table moniker: {var:inputcolor}")
+        if not moniker:
+            io.echo("{errorcolor}moniker required{/all}", level="error")
+            return
 
         self._loop.run_until_complete(
             self.send(
                 {
                     "type": "join_table",
-                    "table_id": table_id,
+                    "moniker": moniker,
                 }
             )
         )
-        self.current_table = table_id
+        self.current_table_moniker = moniker
 
     def cmd_leave_table(self) -> None:
         """Handle leave_table command."""
@@ -472,11 +504,11 @@ class CasinoClient:
             self.send(
                 {
                     "type": "leave_table",
-                    "table_id": self.current_table,
+                    "moniker": self.current_table_moniker,
                 }
             )
         )
-        self.current_table = None
+        self.current_table_moniker = None
 
     def cmd_bet(self) -> None:
         """Handle bet command."""
@@ -558,7 +590,7 @@ class CasinoClient:
             self.send(
                 {
                     "type": "chat_table",
-                    "table_id": self.current_table,
+                    "moniker": self.current_table_moniker,
                     "message": message,
                 }
             )
@@ -737,7 +769,7 @@ class CasinoClient:
         while self.connected and self.authenticated:
             cmd = io.inputchoice(
                 f"{{var:promptcolor}}[{self.moniker}] Balance: {self.balance}"
-                + (f" Table: {self.current_table}" if self.current_table else "")
+                + (f" Table: {self.current_table_moniker}" if self.current_table_moniker else "")
                 + f"{{var:optioncolor}}[T]ables  [C]reate  [U]pdate  [J]oin  [L]eave  [B]et  [H]it  [S]tand  [M]sg  [K]  [X]TicTac  [V]Move  [N]JoinT  [G]Resign  [Q]uit{{var:promptcolor}}: {{var:inputcolor}}",
                 "t,c,u,j,l,b,h,s,m,k,x,v,n,g,q",
                 default="q",
@@ -760,7 +792,7 @@ class CasinoClient:
             elif cmd == "S":
                 self._loop.run_until_complete(self.send({"type": "stand"}))
             elif cmd == "M":
-                if self.current_table:
+                if self.current_table_moniker:
                     self.cmd_table_chat()
                 else:
                     self.cmd_chat()
