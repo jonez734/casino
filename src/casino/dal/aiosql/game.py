@@ -81,6 +81,19 @@ async def update_game_status(args: Any, game_id: int, status: str) -> None:
     )
 
 
+async def update_game_attrs(args: Any, game_id: int, attrs: dict[str, Any]) -> None:
+    """Merge attributes into a game's ``attrs`` JSONB column.
+
+    Async mirror of :func:`casino.dal.game.update_game_attrs`. Uses
+    ``attrs || :attrs`` so existing keys are preserved.
+    """
+    await database.async_query(
+        args,
+        "UPDATE $casino.__game SET attrs = attrs || :attrs WHERE id = :game_id",
+        game_id=game_id, attrs=attrs,
+    )
+
+
 async def get_game_hands(args: Any, game_id: int) -> list[dict[str, Any]]:
     """Get all hands for a game."""
     rows = await database.async_query(

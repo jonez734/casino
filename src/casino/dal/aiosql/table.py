@@ -34,11 +34,50 @@ async def create_table(
 
     Args:
         hidden: If True, table is hidden from list_tables for non-sysop users.
+
+    Returns the new table dict, or a sentinel dict with
+    ``"__exists__": True`` when the moniker is already taken. The
+    sentinel carries the existing row's full payload so callers can
+    render stats without a second query.
     """
     if not moniker:
         moniker = f"{game_type}-{owner_moniker.lower()}"
 
     table_name = generate_table_name()
+
+    rows = await database.async_query(
+        args,
+        database.query(
+            "SELECT moniker, type, minimumbet, maximumbet, ownermoniker, "
+            "ownersince, accountid, cheat, cheatpercent, attrs, shoe_cards, "
+            "shoe_uses, location, status, hidden, dealermodule, playermodule "
+            "FROM $casino.__table WHERE moniker = :m",
+            m=moniker,
+        )
+    )
+    if rows:
+        row = rows[0]
+        sentinel = {
+            "moniker": row["moniker"],
+            "type": row["type"],
+            "minimumbet": row["minimumbet"],
+            "maximumbet": row["maximumbet"],
+            "ownermoniker": row["ownermoniker"],
+            "ownersince": row["ownersince"],
+            "accountid": row["accountid"],
+            "cheat": row["cheat"],
+            "cheatpercent": row["cheatpercent"],
+            "attrs": row["attrs"] or {},
+            "shoe_cards": row["shoe_cards"] or [],
+            "shoe_uses": row["shoe_uses"] or 0,
+            "location": row["location"],
+            "status": row["status"],
+            "hidden": bool(row.get("hidden", False)),
+            "dealermodule": row.get("dealermodule"),
+            "playermodule": row.get("playermodule"),
+            "__exists__": True,
+        }
+        return sentinel
 
     rows = await database.async_query(
         args,
@@ -110,6 +149,103 @@ async def create_table(
         "dealermodule": row.get("dealermodule"),
         "playermodule": row.get("playermodule"),
     }
+
+
+async def get_table_stats(
+    args: Any,
+    moniker: str,
+    game_type: str,
+    surrender_multiplier: float = 0.5,
+) -> dict[str, Any]:
+    """Async mirror of :func:`casino.dal.table.get_table_stats`.
+
+    Branches on ``game_type``; surrender_multiplier is forwarded to
+    the blackjack aggregate only.
+    """
+    if game_type == "slots":
+        rows = await database.async_query(
+            args,
+            database.query(
+                "SELECT COUNT(*) AS spins, "
+                "COALESCE(SUM(CASE WHEN payout > 0 THEN 1 ELSE 0 END), 0) AS wins, "
+                "COALESCE(SUM(CASE WHEN payout = 0 THEN 1 ELSE 0 END), 0) AS losses, "
+                "COALESCE(SUM(payout - bet), 0) AS net "
+                "FROM $casino.__slot_spin WHERE table_moniker = :m",
+                m=moniker,
+            )
+        )
+        if not rows or int(rows[0]["spins"] or 0) == 0:
+            return {}
+        row = rows[0]
+        return {
+            "spins": int(row["spins"]),
+            "wins": int(row["wins"]),
+            "losses": int(row["losses"]),
+            "net": int(row["net"]),
+        }
+    if game_type == "blackjack":
+        rows = await database.async_query(
+            args,
+            database.query(
+                "SELECT COUNT(*) AS hands_played, "
+                "COALESCE(SUM(CASE WHEN attrs->>'outcome' IN ('win','blackjack') THEN 1 ELSE 0 END), 0) AS wins, "
+                "COALESCE(SUM(CASE WHEN attrs->>'outcome' IN ('loss','bust') THEN 1 ELSE 0 END), 0) AS losses, "
+                "COALESCE(SUM(CASE WHEN attrs->>'outcome' = 'push' THEN 1 ELSE 0 END), 0) AS pushes, "
+                "COALESCE(SUM(CASE WHEN attrs->>'outcome' = 'blackjack' THEN 1 ELSE 0 END), 0) AS blackjacks, "
+                "COALESCE(SUM(CASE WHEN attrs->>'outcome' = 'bust' THEN 1 ELSE 0 END), 0) AS busts, "
+                "COALESCE(SUM(CASE WHEN attrs->>'outcome' = 'surrender' THEN 1 ELSE 0 END), 0) AS surrenders, "
+                "COALESCE(SUM(CASE "
+                "  WHEN attrs->>'outcome' = 'blackjack' THEN (attrs->>'bet_amount')::numeric * 1.5 "
+                "  WHEN attrs->>'outcome' = 'win'       THEN (attrs->>'bet_amount')::numeric "
+                "  WHEN attrs->>'outcome' = 'push'      THEN 0 "
+                "  WHEN attrs->>'outcome' IN ('loss','bust') THEN -(attrs->>'bet_amount')::numeric "
+                "  WHEN attrs->>'outcome' = 'surrender' THEN -(attrs->>'bet_amount')::numeric * :surr_mult "
+                "  ELSE 0 END), 0) AS net "
+                "FROM $casino.__game "
+                "WHERE tablemoniker = :m AND status = 'settled' "
+                "  AND attrs->>'outcome' IS NOT NULL",
+                m=moniker, surr_mult=surrender_multiplier,
+            )
+        )
+        if not rows or int(rows[0]["hands_played"] or 0) == 0:
+            return {}
+        row = rows[0]
+        return {
+            "hands_played": int(row["hands_played"]),
+            "wins": int(row["wins"]),
+            "losses": int(row["losses"]),
+            "pushes": int(row["pushes"]),
+            "blackjacks": int(row["blackjacks"]),
+            "busts": int(row["busts"]),
+            "surrenders": int(row["surrenders"]),
+            "net": int(row["net"]),
+        }
+    if game_type in ("yahtzee", "tictactoe"):
+        rows = await database.async_query(
+            args,
+            database.query(
+                "SELECT COUNT(*) AS hands_played, "
+                "COALESCE(SUM(CASE WHEN attrs->>'outcome' = 'win'  THEN 1 ELSE 0 END), 0) AS wins, "
+                "COALESCE(SUM(CASE WHEN attrs->>'outcome' = 'loss' THEN 1 ELSE 0 END), 0) AS losses, "
+                "COALESCE(SUM(CASE WHEN attrs->>'outcome' = 'draw' THEN 1 ELSE 0 END), 0) AS draws, "
+                "COALESCE(SUM((attrs->>'net')::numeric), 0) AS net "
+                "FROM $casino.__game "
+                "WHERE tablemoniker = :m AND status IN ('settled','closed') "
+                "  AND attrs->>'outcome' IS NOT NULL",
+                m=moniker,
+            )
+        )
+        if not rows or int(rows[0]["hands_played"] or 0) == 0:
+            return {}
+        row = rows[0]
+        return {
+            "hands_played": int(row["hands_played"]),
+            "wins": int(row["wins"]),
+            "losses": int(row["losses"]),
+            "draws": int(row["draws"]),
+            "net": int(row["net"]),
+        }
+    return {}
 
 
 async def get_table(args: Any, moniker: str) -> Optional[dict[str, Any]]:

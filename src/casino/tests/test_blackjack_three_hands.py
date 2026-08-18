@@ -295,6 +295,113 @@ class TestBlackjackThreeHands(unittest.IsolatedAsyncioTestCase):
                 f"expected 3 betlog rows for {table_moniker}, got {bet_row['n']}",
             )
 
+    async def test_create_duplicate_table_returns_table_exists(self) -> None:
+        """When a moniker already has a blackjack table, the second
+        ``create_table`` from the owner must come back as
+        ``type="table_exists"`` with stats (empty before any hands are
+        played), and must NOT advance the player's session.
+
+        This exercises the ``__exists__`` sentinel in
+        ``dal.table.create_table``, the ``exists`` branch in
+        ``services.table.TableService.create_table``, and the
+        owner-or-sysop short-circuit in
+        ``api.handler.TableServiceHandler._handle_create_table``.
+        """
+        self.client = WebSocketTestClient(TEST_URI)
+        await self.client.connect()
+        self.assertTrue(self.client._running, "Failed to connect")
+
+        # Authenticate as jam.
+        await self.client.send({"type": "auth", "moniker": "jam", "password": "test"})
+        auth = await self.client.receive()
+        self.assertEqual(auth["type"], "auth_result")
+        self.assertTrue(auth["success"])
+
+        # Pick a fresh moniker; create succeeds the first time.
+        dup_moniker = f"{TEST_TABLE_PREFIX}dup"
+        await self.client.send(
+            {
+                "type": "create_table",
+                "game_type": "blackjack",
+                "min_bet": 10,
+                "max_bet": 1000,
+                "moniker": dup_moniker,
+            }
+        )
+        first = await self.client.receive()
+        self.assertEqual(
+            first["type"],
+            "table_created",
+            f"first create should succeed, got {first}",
+        )
+        self.assertEqual(first["moniker"], dup_moniker)
+
+        # Drain any side-channel notifications that may have followed
+        # (table_updated, spectator notifications, etc.) so the next
+        # ``receive`` is the duplicate response.
+        await self.client.receive_messages(max_count=20, timeout=1.5)
+
+        # Second create with the same moniker — owner is jam, so the
+        # server should route to the table_exists short-circuit and
+        # return stats (empty here, no hands played).
+        await self.client.send(
+            {
+                "type": "create_table",
+                "game_type": "blackjack",
+                "min_bet": 10,
+                "max_bet": 1000,
+                "moniker": dup_moniker,
+            }
+        )
+        second = await self.client.receive()
+        self.assertEqual(
+            second["type"],
+            "table_exists",
+            f"second create must yield table_exists, got {second}",
+        )
+        self.assertEqual(second["moniker"], dup_moniker)
+        self.assertEqual(second["game_type"], "blackjack")
+        self.assertEqual(second["owner"], "jam")
+        self.assertFalse(
+            second.get("hidden", False),
+            "owner-created test table should be public",
+        )
+        # Stats dict is present; empty {} is acceptable pre-hand state.
+        self.assertIn(
+            "stats",
+            second,
+            "table_exists payload must carry a stats field",
+        )
+        self.assertIsInstance(second["stats"], dict)
+        # The message field must carry the operator-facing note.
+        self.assertIn("message", second)
+        self.assertIn(
+            dup_moniker,
+            second["message"],
+            f"message should reference the duplicate moniker: {second['message']!r}",
+        )
+
+        # And a third create with a *different* game_type against the
+        # same moniker must surface the type_mismatch error, NOT
+        # table_exists — the existing table is blackjack.
+        await self.client.receive_messages(max_count=10, timeout=1.0)
+        await self.client.send(
+            {
+                "type": "create_table",
+                "game_type": "yahtzee",
+                "min_bet": 10,
+                "max_bet": 1000,
+                "moniker": dup_moniker,
+            }
+        )
+        mismatch = await self.client.receive()
+        self.assertEqual(
+            mismatch["type"],
+            "error",
+            f"type-mismatch duplicate must error, got {mismatch}",
+        )
+        self.assertEqual(mismatch["code"], "type_mismatch")
+
 
 if __name__ == "__main__":
     unittest.main()

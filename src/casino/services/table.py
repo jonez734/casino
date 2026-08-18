@@ -3,6 +3,7 @@
 
 from typing import Any, Optional
 
+from casino.config import get_surrender_multiplier
 from casino.dal import table as dal_table
 
 
@@ -25,6 +26,16 @@ class TableService:
 
         Args:
             hidden: If True, table is hidden from list_tables for non-sysop users.
+
+        Returns one of three shapes:
+
+        - ``{"success": True, "table": ..., "message": ...}`` on a fresh
+          create;
+        - ``{"success": False, "exists": True, "table": ..., "message": ...}``
+          when the moniker is already taken (the API handler routes this
+          to a ``table_exists`` payload, owner-or-sysop access required);
+        - ``{"success": False, "message": "Failed to create table"}``
+          on infrastructure errors (owner missing, etc.).
         """
         table = dal_table.create_table(
             self.args, game_type, owner_moniker, min_bet, max_bet, moniker, hidden=hidden
@@ -33,6 +44,14 @@ class TableService:
             return {
                 "success": False,
                 "message": "Failed to create table",
+            }
+        if table.get("__exists__"):
+            existing = {k: v for k, v in table.items() if k != "__exists__"}
+            return {
+                "success": False,
+                "exists": True,
+                "table": existing,
+                "message": f"Table {existing['moniker']} already exists",
             }
         return {
             "success": True,
@@ -43,6 +62,19 @@ class TableService:
     def get_table(self, moniker: str) -> Optional[dict[str, Any]]:
         """Get table by moniker."""
         return dal_table.get_table(self.args, moniker)
+
+    def get_table_stats(self, moniker: str, game_type: str) -> dict[str, Any]:
+        """Per-table aggregate stats, shape depends on ``game_type``.
+
+        Reads ``surrender_multiplier`` from ``bed.json`` via the
+        casino config block so the per-table blackjack ``net`` honors
+        the configured forfeit fraction. Falls back to ``0.5`` when
+        no config is wired (door-mode / standalone tests).
+        """
+        surr_mult = get_surrender_multiplier(self.args)
+        return dal_table.get_table_stats(
+            self.args, moniker, game_type, surrender_multiplier=surr_mult
+        )
 
     def list_tables(
         self,

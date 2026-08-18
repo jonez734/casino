@@ -8,6 +8,7 @@ from typing import Any, Optional
 from bbsengine6 import io
 
 from casino.blackjack import Hand
+from casino.config import get_surrender_multiplier
 from casino.dal import bet as dal_bet
 from casino.dal import game as dal_game
 from casino.dal import player as dal_player
@@ -274,10 +275,23 @@ class GameService:
         if not bet:
             return {"success": False, "message": "No bet found"}
 
-        surrender_amount = bet["amount"] // 2
+        surrender_multiplier = get_surrender_multiplier(self.args)
+        if surrender_multiplier <= 0:
+            return {"success": False, "message": "Surrender not allowed at this table"}
+
+        surrender_amount = int(bet["amount"] * surrender_multiplier)
         dal_bet.settle_bet(self.args, bet["id"], True, surrender_amount)
 
         dal_game.update_hand_attrs(self.args, hand_id, {"status": "surrendered"})
+
+        dal_game.update_game_attrs(
+            self.args, game["id"],
+            {
+                "outcome": "surrender",
+                "bet_amount": int(bet["amount"]),
+                "net": -(int(bet["amount"]) - surrender_amount),
+            },
+        )
 
         return {
             "success": True,
@@ -925,6 +939,16 @@ class GameService:
 
             if net_change != 0:
                 dal_player.increment_stat(self.args, player_moniker, "net", net_change)
+
+            if outcome is not None:
+                dal_game.update_game_attrs(
+                    self.args, game["id"],
+                    {
+                        "outcome": outcome,
+                        "bet_amount": int(bet["amount"]),
+                        "net": int(net_change),
+                    },
+                )
 
             if insurance_amount > 0:
                 if dealer_blackjack:

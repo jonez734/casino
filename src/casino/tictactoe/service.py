@@ -427,6 +427,22 @@ class TictactoeService:
         bettor_mark = lib.X  # Mode 1 bettor is always X (the human).
         payout_amount = lib.bettor_payout(winner, bettor_mark, game.bet_amount)
         new_balance = self._settle_bet(game, payout_amount)
+        if winner is None:
+            outcome = "loss"
+        elif winner == lib.DRAW:
+            outcome = "draw"
+        elif winner == bettor_mark:
+            outcome = "win"
+        else:
+            outcome = "loss"
+        dal_game.update_game_attrs(
+            self.args, game.game_id,
+            {
+                "outcome": outcome,
+                "bet_amount": int(game.bet_amount),
+                "net": int(payout_amount - game.bet_amount),
+            },
+        )
         dal_game.update_game_status(self.args, game.game_id, "closed")
         result = game.result_dict(payout_amount=payout_amount, new_balance=new_balance)
         result["type"] = "tictactoe_result"

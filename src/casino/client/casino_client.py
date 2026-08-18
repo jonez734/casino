@@ -179,6 +179,57 @@ class CasinoClient:
                 "{{var:valuecolor}}use [J]oin with this moniker to sit down"
             )
 
+        elif msg_type == "table_exists":
+            label_for_key = {
+                "blackjack": (
+                    "hands_played", "wins", "losses", "pushes",
+                    "blackjacks", "busts", "surrenders", "net",
+                ),
+                "slots": ("spins", "wins", "losses", "net"),
+                "yahtzee": ("hands_played", "wins", "losses", "net"),
+                "tictactoe": ("hands_played", "wins", "losses", "draws", "net"),
+                "poker": ("hands_played",),
+            }
+            moniker = msg.get("moniker", "")
+            game_type = msg.get("game_type", "")
+            stats = msg.get("stats", {}) or {}
+            util.heading(f"Table already exists: {moniker}")
+            io.echo(
+                f"{{var:labelcolor}}game:        {{var:valuecolor}}{game_type}"
+            )
+            io.echo(
+                f"{{var:labelcolor}}owner:       {{var:valuecolor}}{msg.get('owner','')}"
+            )
+            io.echo(
+                f"{{var:labelcolor}}location:    {{var:valuecolor}}{msg.get('location','')}"
+            )
+            io.echo(
+                "{{var:labelcolor}}visibility:  "
+                + f"{{var:valuecolor}}{'hidden' if msg.get('hidden') else 'public'}"
+            )
+            keys = label_for_key.get(game_type, ("hands_played",))
+            if stats:
+                io.echo(f"{{var:labelcolor}}stats:{{var:valuecolor}}")
+                for key in keys:
+                    if key not in stats:
+                        continue
+                    value = stats[key]
+                    if key == "net":
+                        io.echo(
+                            f"{{var:labelcolor}}  {key:<14}"
+                            f"{{var:valuecolor}}{int(value):+d}"
+                        )
+                    else:
+                        io.echo(
+                            f"{{var:labelcolor}}  {key:<14}"
+                            f"{{var:valuecolor}}{int(value)}"
+                        )
+            else:
+                io.echo("{var:labelcolor}(no hands played yet){var:normalcolor}")
+            io.echo(
+                f"{{var:labelcolor}}note:        {{var:valuecolor}}{msg.get('message','')}"
+            )
+
         elif msg_type == "table_updated":
             moniker = msg.get("moniker", "")
             message = msg.get("message", "")

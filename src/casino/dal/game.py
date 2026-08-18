@@ -90,6 +90,22 @@ def update_game_status(args: Any, game_id: int, status: str) -> None:
             )
 
 
+def update_game_attrs(args: Any, game_id: int, attrs: dict[str, Any]) -> None:
+    """Merge attributes into a game's ``attrs`` JSONB column.
+
+    Uses ``attrs || :attrs`` so existing keys are preserved. Caller
+    is responsible for the key names (``outcome``, ``bet_amount``,
+    ``net``, etc.) and for ensuring the values are JSONB-safe.
+    """
+    with database.connect(args) as conn, database.cursor(conn) as cur:
+        cur.execute(
+            database.query(
+                "UPDATE $casino.__game SET attrs = attrs || :attrs WHERE id = :game_id",
+                attrs=Jsonb(attrs), game_id=game_id,
+            )
+        )
+
+
 def get_game_hands(args: Any, game_id: int) -> list[dict[str, Any]]:
     """Get all hands for a game."""
     with database.connect(args) as conn, database.cursor(conn) as cur:

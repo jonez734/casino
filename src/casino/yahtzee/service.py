@@ -265,6 +265,14 @@ class YahtzeeService:
 
         if game.round_idx >= 13:
             game.is_over = True
+            dal_game.update_game_attrs(
+                self.args, game.game_id,
+                {
+                    "outcome": "win" if net > 0 else "loss",
+                    "bet_amount": int(game.bet_amount),
+                    "net": int(net),
+                },
+            )
             dal_game.update_game_status(self.args, game.game_id, "closed")
             result = game.result_dict()
             self._games.pop(table_moniker, None)

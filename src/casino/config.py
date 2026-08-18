@@ -54,7 +54,7 @@ def _load_from_env(prefix: str) -> dict[str, Any]:
     """Load configuration from environment variables.
 
     Variable format: CASINO_<SECTION>_<KEY>=value or CASINO_KEY=value
-    Example: CASINO_POSTOFFICE_ENABLED=true, CASINO_DEBUG=true
+    Example: CASINO_POSTOFFICE_ENABLED=true
     """
     config: dict[str, Any] = {}
     for key, value in os.environ.items():
@@ -94,3 +94,50 @@ def get_postoffice_config(config: Optional[dict[str, Any]] = None) -> dict[str, 
     if config is None:
         config = load_config()
     return config.get("postoffice", {})
+
+
+def get_casino_config(args: Any) -> dict[str, Any]:
+    """Return the casino config block, sourced from bed.json when wired.
+
+    The bed runtime is expected to attach the merged ``casino`` block
+    from ``bed.json`` to the args namespace under ``_casino_config``
+    during bring-up (see :class:`casino.api.handler.MessageRouter._bootstrap_casino_config`).
+    When that's not wired (door-mode / standalone tests), this falls
+    back to a fresh :func:`load_config` read of an explicit
+    ``casino.json`` path (``args._casino_config_file``) and extracts
+    the ``casino`` section, and finally to empty defaults.
+
+    The returned dict is the casino-level block (typically ``{"blackjack":
+    {...}, "stats": {...}}``); game-level helpers like
+    :func:`get_surrender_multiplier` dig into it.
+    """
+    cfg = getattr(args, "_casino_config", None)
+    if cfg:
+        return cfg
+    config_file = getattr(args, "_casino_config_file", None)
+    if config_file:
+        loaded = load_config(config_file=config_file)
+        casino = loaded.get("casino") if isinstance(loaded, dict) else None
+        if isinstance(casino, dict):
+            return casino
+    return {}
+
+
+def get_surrender_multiplier(args: Any) -> float:
+    """Surrender forfeit fraction from ``bed.json`` casino.blackjack.
+
+    Defaults to ``0.5`` — the universal standard in regulated casinos
+    (Las Vegas Strip, Atlantic City, Macau). The full bet is returned
+    when surrender is unavailable (``surrender_multiplier`` set to
+    ``0`` or ``surrender_allowed`` set to ``False``).
+    """
+    cfg = get_casino_config(args)
+    bj = cfg.get("blackjack", {}) if isinstance(cfg, dict) else {}
+    allowed = bj.get("surrender_allowed", "early")
+    if allowed is False or allowed == "none":
+        return 0.0
+    try:
+        mult = float(bj.get("surrender_multiplier", 0.5))
+    except (TypeError, ValueError):
+        mult = 0.5
+    return mult if 0.0 <= mult <= 1.0 else 0.5

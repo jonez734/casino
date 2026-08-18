@@ -21,6 +21,31 @@ def generate_table_name() -> str:
     return f"{random.choice(COMPASS_POINTS)}{random.choice(PHONETIC_ALPHABET)}"
 
 
+def _row_to_table_dict(row: Any) -> dict[str, Any]:
+    """Map a ``casino.__table`` SELECT row to the canonical table dict.
+
+    Used by ``get_table`` and the duplicate-detection sentinel in
+    ``create_table`` so both return the same shape.
+    """
+    return {
+        "moniker": row["moniker"],
+        "type": row["type"],
+        "minimumbet": row["minimumbet"],
+        "maximumbet": row["maximumbet"],
+        "ownermoniker": row["ownermoniker"],
+        "ownersince": row["ownersince"],
+        "accountid": row["accountid"],
+        "cheat": row["cheat"],
+        "cheatpercent": row["cheatpercent"],
+        "attrs": row["attrs"] or {},
+        "shoe_cards": row["shoe_cards"] or [],
+        "shoe_uses": row["shoe_uses"] or 0,
+        "location": row["location"],
+        "status": row["status"],
+        "hidden": bool(row.get("hidden", False)),
+    }
+
+
 def create_table(
     args: Any,
     game_type: str,
@@ -43,7 +68,11 @@ def create_table(
         hidden: If True, table is hidden from list_tables for non-sysops
 
     Returns:
-        Table dict with moniker, game_type, owner, etc.
+        Table dict with moniker, game_type, owner, etc., or a sentinel
+        dict with ``"__exists__": True`` when the moniker is already
+        taken. The sentinel includes the existing row's full
+        ``_row_to_table_dict`` shape so callers can render stats
+        without a second query.
     """
     if not moniker:
         moniker = f"{game_type}-{owner_moniker.lower()}"
@@ -51,69 +80,68 @@ def create_table(
     table_name = generate_table_name()
 
     with database.connect(args) as conn, database.cursor(conn) as cur:
-            cur.execute(
-                database.query(
-                    "SELECT moniker FROM engine.__member WHERE moniker = :owner_moniker",
-                    owner_moniker=owner_moniker
-                )
+        cur.execute(
+            database.query(
+                "SELECT moniker, type, minimumbet, maximumbet, ownermoniker, "
+                "ownersince, accountid, cheat, cheatpercent, attrs, shoe_cards, "
+                "shoe_uses, location, status, hidden "
+                "FROM $casino.__table WHERE moniker = :m",
+                m=moniker,
             )
-            if cur.fetchone() is None:
-                io.echo(
-                    f"casino.dal.table.create_table.100: Owner {owner_moniker} does not exist! Go away!",
-                    level="error"
-                )
-                return None
+        )
+        existing_row = cur.fetchone()
+        if existing_row is not None:
+            sentinel = _row_to_table_dict(existing_row)
+            sentinel["__exists__"] = True
+            return sentinel
 
+        cur.execute(
+            database.query(
+                "SELECT moniker FROM engine.__member WHERE moniker = :owner_moniker",
+                owner_moniker=owner_moniker
+            )
+        )
+        if cur.fetchone() is None:
+            io.echo(
+                f"casino.dal.table.create_table.100: Owner {owner_moniker} does not exist! Go away!",
+                level="error"
+            )
+            return None
+
+        cur.execute(
+            database.query(
+                "SELECT id FROM bank.__account WHERE moniker = :owner_moniker",
+                owner_moniker=owner_moniker
+            )
+        )
+        account_row = cur.fetchone()
+        if account_row:
+            account_id = account_row["id"]
+        else:
             cur.execute(
                 database.query(
-                    "SELECT id FROM bank.__account WHERE moniker = :owner_moniker",
+                    "INSERT INTO bank.__account (moniker, balance) VALUES (:owner_moniker, 0) RETURNING id",
                     owner_moniker=owner_moniker
                 )
             )
             account_row = cur.fetchone()
-            if account_row:
-                account_id = account_row["id"]
-            else:
-                cur.execute(
-                    database.query(
-                        "INSERT INTO bank.__account (moniker, balance) VALUES (:owner_moniker, 0) RETURNING id",
-                        owner_moniker=owner_moniker
-                    )
-                )
-                account_row = cur.fetchone()
-                account_id = account_row["id"]
+            account_id = account_row["id"]
 
-            cur.execute(
-                database.query(
-                    "INSERT INTO casino.__bank_table (table_moniker, bank_account_id) VALUES (:moniker, :account_id)",
-                    moniker=moniker, account_id=account_id
-                )
+        cur.execute(
+            database.query(
+                "INSERT INTO casino.__bank_table (table_moniker, bank_account_id) VALUES (:moniker, :account_id)",
+                moniker=moniker, account_id=account_id
             )
+        )
 
-            cur.execute(
-                database.query(
-                    "INSERT INTO $casino.__table (moniker, type, minimumbet, maximumbet, ownermoniker, ownersince, accountid, location, status, hidden) VALUES (:moniker, :game_type, :min_bet, :max_bet, :owner_moniker, NOW(), :account_id, :table_name, 'open', :hidden) RETURNING moniker, type, minimumbet, maximumbet, ownermoniker, ownersince, accountid, cheat, cheatpercent, attrs, shoe_cards, shoe_uses, location, status, hidden",
-                    moniker=moniker, game_type=game_type, min_bet=min_bet, max_bet=max_bet, owner_moniker=owner_moniker, account_id=account_id, table_name=table_name, hidden=hidden
-                )
+        cur.execute(
+            database.query(
+                "INSERT INTO $casino.__table (moniker, type, minimumbet, maximumbet, ownermoniker, ownersince, accountid, location, status, hidden) VALUES (:moniker, :game_type, :min_bet, :max_bet, :owner_moniker, NOW(), :account_id, :table_name, 'open', :hidden) RETURNING moniker, type, minimumbet, maximumbet, ownermoniker, ownersince, accountid, cheat, cheatpercent, attrs, shoe_cards, shoe_uses, location, status, hidden",
+                moniker=moniker, game_type=game_type, min_bet=min_bet, max_bet=max_bet, owner_moniker=owner_moniker, account_id=account_id, table_name=table_name, hidden=hidden
             )
-            row = cur.fetchone()
-            return {
-                "moniker": row["moniker"],
-                "type": row["type"],
-                "minimumbet": row["minimumbet"],
-                "maximumbet": row["maximumbet"],
-                "ownermoniker": row["ownermoniker"],
-                "ownersince": row["ownersince"],
-                "accountid": row["accountid"],
-                "cheat": row["cheat"],
-                "cheatpercent": row["cheatpercent"],
-                "attrs": row["attrs"] or {},
-                "shoe_cards": row["shoe_cards"] or [],
-                "shoe_uses": row["shoe_uses"] or 0,
-                "location": row["location"],
-                "status": row["status"],
-                "hidden": row.get("hidden", False),
-            }
+        )
+        row = cur.fetchone()
+        return _row_to_table_dict(row)
 
 
 def get_table(args: Any, moniker: str) -> Optional[dict[str, Any]]:
@@ -347,3 +375,155 @@ def reset_shoe(args: Any, moniker: str) -> bool:
             )
         )
         return cur.rowcount > 0
+
+
+def _stats_from_slot_spins(args: Any, moniker: str) -> dict[str, Any]:
+    """Aggregate stats for a slots table from ``casino.__slot_spin``.
+
+    Returns ``{spins, wins, losses, net}``. ``wins`` counts spins with
+    payout > 0; ``losses`` counts spins with payout == 0; ``net`` is
+    ``sum(payout - bet)`` over the table.
+    """
+    with database.connect(args) as conn, database.cursor(conn) as cur:
+        cur.execute(
+            database.query(
+                "SELECT COUNT(*) AS spins, "
+                "COALESCE(SUM(CASE WHEN payout > 0 THEN 1 ELSE 0 END), 0) AS wins, "
+                "COALESCE(SUM(CASE WHEN payout = 0 THEN 1 ELSE 0 END), 0) AS losses, "
+                "COALESCE(SUM(payout - bet), 0) AS net "
+                "FROM $casino.__slot_spin WHERE table_moniker = :m",
+                m=moniker,
+            )
+        )
+        row = cur.fetchone()
+        if not row or int(row["spins"] or 0) == 0:
+            return {}
+        return {
+            "spins": int(row["spins"]),
+            "wins": int(row["wins"]),
+            "losses": int(row["losses"]),
+            "net": int(row["net"]),
+        }
+
+
+def _stats_from_blackjack_games(
+    args: Any, moniker: str, surrender_multiplier: float
+) -> dict[str, Any]:
+    """Aggregate stats for a blackjack table from ``casino.__game``.
+
+    Counts settled games where ``attrs->>'outcome'`` is set; the
+    settle path writes ``outcome`` (one of ``win``, ``loss``, ``push``,
+    ``blackjack``, ``bust``, ``surrender``) and ``bet_amount`` per
+    settled bet. ``net`` is derived per-row so surrender honors the
+    configured ``surrender_multiplier`` (defaults to 0.5).
+    """
+    with database.connect(args) as conn, database.cursor(conn) as cur:
+        cur.execute(
+            database.query(
+                "SELECT COUNT(*) AS hands_played, "
+                "COALESCE(SUM(CASE WHEN attrs->>'outcome' IN ('win','blackjack') THEN 1 ELSE 0 END), 0) AS wins, "
+                "COALESCE(SUM(CASE WHEN attrs->>'outcome' IN ('loss','bust') THEN 1 ELSE 0 END), 0) AS losses, "
+                "COALESCE(SUM(CASE WHEN attrs->>'outcome' = 'push' THEN 1 ELSE 0 END), 0) AS pushes, "
+                "COALESCE(SUM(CASE WHEN attrs->>'outcome' = 'blackjack' THEN 1 ELSE 0 END), 0) AS blackjacks, "
+                "COALESCE(SUM(CASE WHEN attrs->>'outcome' = 'bust' THEN 1 ELSE 0 END), 0) AS busts, "
+                "COALESCE(SUM(CASE WHEN attrs->>'outcome' = 'surrender' THEN 1 ELSE 0 END), 0) AS surrenders, "
+                "COALESCE(SUM(CASE "
+                "  WHEN attrs->>'outcome' = 'blackjack' THEN (attrs->>'bet_amount')::numeric * 1.5 "
+                "  WHEN attrs->>'outcome' = 'win'       THEN (attrs->>'bet_amount')::numeric "
+                "  WHEN attrs->>'outcome' = 'push'      THEN 0 "
+                "  WHEN attrs->>'outcome' IN ('loss','bust') THEN -(attrs->>'bet_amount')::numeric "
+                "  WHEN attrs->>'outcome' = 'surrender' THEN -(attrs->>'bet_amount')::numeric * :surr_mult "
+                "  ELSE 0 END), 0) AS net "
+                "FROM $casino.__game "
+                "WHERE tablemoniker = :m AND status = 'settled' "
+                "  AND attrs->>'outcome' IS NOT NULL",
+                m=moniker, surr_mult=surrender_multiplier,
+            )
+        )
+        row = cur.fetchone()
+        if not row or int(row["hands_played"] or 0) == 0:
+            return {}
+        return {
+            "hands_played": int(row["hands_played"]),
+            "wins": int(row["wins"]),
+            "losses": int(row["losses"]),
+            "pushes": int(row["pushes"]),
+            "blackjacks": int(row["blackjacks"]),
+            "busts": int(row["busts"]),
+            "surrenders": int(row["surrenders"]),
+            "net": int(row["net"]),
+        }
+
+
+def _stats_from_settled_games(
+    args: Any, moniker: str
+) -> dict[str, Any]:
+    """Aggregate stats for yahtzee / tictactoe from ``casino.__game``.
+
+    Reads ``attrs->>'outcome'`` and ``attrs->>'bet_amount'`` written at
+    settle. ``outcome`` is ``win`` / ``loss`` / ``draw``; ``net`` is
+    stored verbatim from the settle path.
+    """
+    with database.connect(args) as conn, database.cursor(conn) as cur:
+        cur.execute(
+            database.query(
+                "SELECT COUNT(*) AS hands_played, "
+                "COALESCE(SUM(CASE WHEN attrs->>'outcome' = 'win'  THEN 1 ELSE 0 END), 0) AS wins, "
+                "COALESCE(SUM(CASE WHEN attrs->>'outcome' = 'loss' THEN 1 ELSE 0 END), 0) AS losses, "
+                "COALESCE(SUM(CASE WHEN attrs->>'outcome' = 'draw' THEN 1 ELSE 0 END), 0) AS draws, "
+                "COALESCE(SUM((attrs->>'net')::numeric), 0) AS net "
+                "FROM $casino.__game "
+                "WHERE tablemoniker = :m AND status IN ('settled','closed') "
+                "  AND attrs->>'outcome' IS NOT NULL",
+                m=moniker,
+            )
+        )
+        row = cur.fetchone()
+        if not row or int(row["hands_played"] or 0) == 0:
+            return {}
+        return {
+            "hands_played": int(row["hands_played"]),
+            "wins": int(row["wins"]),
+            "losses": int(row["losses"]),
+            "draws": int(row["draws"]),
+            "net": int(row["net"]),
+        }
+
+
+def _stats_from_poker_games(args: Any, moniker: str) -> dict[str, Any]:
+    """Poker stats are not currently persisted to the DB.
+
+    The poker service runs entirely in-memory
+    (``casino.services.poker.PokerService._tables``); hand outcomes
+    are awarded via ``winner.credits += table.pot`` and never written
+    to ``casino.__game`` or ``casino.__betlog``. Returning ``{}``
+    here reflects the actual measurement — there is no data to
+    aggregate — rather than a fabricated ``hands_played: 0``. A real
+    poker settlement path is a separate feature.
+    """
+    return {}
+
+
+def get_table_stats(
+    args: Any,
+    moniker: str,
+    game_type: str,
+    surrender_multiplier: float = 0.5,
+) -> dict[str, Any]:
+    """Per-table aggregate stats, shape depends on ``game_type``.
+
+    ``surrender_multiplier`` is forwarded to the blackjack aggregate
+    only; ignored for other game types. Caller (typically
+    ``services.table.TableService.get_table_stats``) reads it from
+    the casino config block in ``bed.json`` so the per-table net
+    stays consistent with what the settle path actually credited.
+    """
+    if game_type == "slots":
+        return _stats_from_slot_spins(args, moniker)
+    if game_type == "blackjack":
+        return _stats_from_blackjack_games(args, moniker, surrender_multiplier)
+    if game_type in ("yahtzee", "tictactoe"):
+        return _stats_from_settled_games(args, moniker)
+    if game_type == "poker":
+        return _stats_from_poker_games(args, moniker)
+    return {}

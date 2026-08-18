@@ -341,12 +341,13 @@ class TableServiceHandler(BaseService):
         max_bet = message.get("max_bet", 1000)
         table_moniker = message.get("moniker") or None
         hidden = bool(message.get("hidden", False))
+        is_sysop = bool(getattr(state, "is_sysop", False))
 
         result = self.table_service.create_table(
             game_type, state.moniker, min_bet, max_bet, table_moniker, hidden=hidden
         )
 
-        if result["success"]:
+        if result.get("success"):
             return {
                 "type": "table_created",
                 "moniker": result["table"]["moniker"],
@@ -354,8 +355,47 @@ class TableServiceHandler(BaseService):
                 "hidden": result["table"].get("hidden", False),
                 "message": result["message"],
             }
-        else:
-            return {"type": "error", "code": "create_failed", "message": result["message"]}
+
+        if result.get("exists"):
+            existing = result["table"]
+            if existing["type"] != game_type:
+                return {
+                    "type": "error",
+                    "code": "type_mismatch",
+                    "message": (
+                        f"Table {existing['moniker']} is a "
+                        f"{existing['type']} table, not {game_type}"
+                    ),
+                }
+            owner = (existing.get("ownermoniker") or "").strip().lower()
+            caller = (state.moniker or "").strip().lower()
+            is_owner = bool(owner) and owner == caller
+            if not (is_owner or is_sysop):
+                return {
+                    "type": "error",
+                    "code": "create_failed",
+                    "message": f"Table {existing['moniker']} already exists",
+                }
+            stats = self.table_service.get_table_stats(
+                existing["moniker"], existing["type"]
+            )
+            return {
+                "type": "table_exists",
+                "moniker": existing["moniker"],
+                "game_type": existing["type"],
+                "owner": existing["ownermoniker"],
+                "min_bet": int(existing["minimumbet"]),
+                "max_bet": int(existing["maximumbet"]),
+                "location": existing.get("location"),
+                "hidden": bool(existing.get("hidden", False)),
+                "stats": stats,
+                "message": (
+                    f"{game_type} table '{existing['moniker']}' already "
+                    f"exists; showing stats"
+                ),
+            }
+
+        return {"type": "error", "code": "create_failed", "message": result["message"]}
 
     async def _handle_update_table(
         self, websocket: Any, message: dict[str, Any]
@@ -1349,6 +1389,39 @@ class MessageRouter:
     in-memory auth shim (door-mode / legacy tests).
     """
 
+    @staticmethod
+    def _bootstrap_casino_config(args: Any) -> None:
+        """Auto-discover ``args._casino_config`` from ``args.config_file``.
+
+        When the caller (typically :class:`bed.main.BED`) has already
+        wired ``args._casino_config`` we leave it alone — bed is the
+        authoritative source. Otherwise we read the JSON pointed at by
+        ``args.config_file`` (bed's ``bed.json``) and pull the
+        ``casino`` section out so game-level helpers like
+        :func:`casino.config.get_surrender_multiplier` see the
+        configured values.
+
+        Silent on any failure (missing path, malformed JSON, no
+        ``casino`` section): falls back to the built-in defaults
+        defined in :mod:`casino.config`. Tests run without
+        ``config_file`` and rely on the fallback.
+        """
+        if getattr(args, "_casino_config", None):
+            return
+        config_file = getattr(args, "config_file", None)
+        if not config_file:
+            return
+        try:
+            import json as _json
+
+            with open(config_file) as f:
+                cfg = _json.load(f)
+        except (OSError, ValueError):
+            return
+        casino_section = cfg.get("casino") if isinstance(cfg, dict) else None
+        if isinstance(casino_section, dict):
+            args._casino_config = casino_section
+
     def __init__(
         self,
         args: Any,
@@ -1363,6 +1436,7 @@ class MessageRouter:
     ):
         self.args = args
         self.session_registry = session_registry
+        self._bootstrap_casino_config(args)
         self.sessions = session_registry if session_registry is not None else CasinoSessionManager()
 
         # Channel subscription state for pub/sub messaging. Accept a

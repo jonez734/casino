@@ -80,6 +80,7 @@ class TestHiddenTableDAL(unittest.TestCase):
             mock_conn = MagicMock()
             mock_cur = MagicMock()
             mock_cur.fetchone.side_effect = [
+                None,
                 {"moniker": "owner1"},
                 None,
                 {"id": 1},
@@ -130,6 +131,7 @@ class TestHiddenTableDAL(unittest.TestCase):
             mock_conn = MagicMock()
             mock_cur = MagicMock()
             mock_cur.fetchone.side_effect = [
+                None,
                 {"moniker": "owner1"},
                 None,
                 {"id": 1},
