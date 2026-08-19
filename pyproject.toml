@@ -58,7 +58,8 @@ script-files = [
     "bin/blackjack",
     "bin/yahtzee",
     "bin/slots",
-]
+    "bin/casino-ping",
+] 
 package-dir = { "" = "src" }
 
 [tool.setuptools.packages.find]

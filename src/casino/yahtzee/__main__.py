@@ -10,6 +10,7 @@ import sys
 import time
 
 from bbsengine6 import io, module, screen, session
+from bbsengine6.net.ping import PingUnavailable
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -28,6 +29,9 @@ def main(argv: list[str] | None = None) -> int:
         io.echo("{/all}{bold}INTR{/bold}")
     except EOFError:
         io.echo("{/all}{bold}EOF{/bold}")
+    except PingUnavailable as exc:
+        io.echo(str(exc), level="error")
+        return 1
     finally:
         io.echo(
             f"{{decsc}}{{curpos:{io.getterminalheight()},0}}{{el}}{{decrc}}{{reset}}{{/all}}"

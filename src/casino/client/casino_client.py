@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Callable
 
 import websockets
 from bbsengine6 import io, util
+from bbsengine6.net.ping import PingUnavailable, connect as _net_connect
 
 if TYPE_CHECKING:
     from bbsengine6 import WebSocketClientProtocol
@@ -38,18 +39,31 @@ class CasinoClient:
         self._bearer_token: str | None = None
 
     async def connect(self) -> bool:
-        """Connect to the server."""
+        """Connect to the server.
+
+        Routes the WebSocket connect through
+        :func:`bbsengine6.net.ping.connect` so connection-level
+        failures (``ConnectionRefusedError``, ``OSError``,
+        ``asyncio.TimeoutError``, ``WebSocketException``) share
+        the same :class:`bbsengine6.net.ping.PingUnavailable`
+        code path as :func:`bedping`, :func:`bbsengine6-ping`,
+        etc. On failure, the operator sees a one-line friendly
+        message via :func:`bbsengine6.io.echo` with
+        ``level="error"`` instead of a Python traceback.
+        """
         host = getattr(self.args, "bed_host", "localhost")
         port = int(getattr(self.args, "bed_port", 8765))
         path = getattr(self.args, "bed_path", "/")
         uri = f"ws://{host}:{port}{path}"
         try:
-            self.ws = await websockets.connect(uri)
+            self.ws = await _net_connect(
+                host, port, path=path, prog="casino"
+            )
             self.connected = True
             io.echo(f"Connected to {uri}")
             return True
-        except Exception as e:
-            io.echo_traceback(f"Failed to connect: {e}")
+        except PingUnavailable as exc:
+            io.echo(str(exc), level="error")
             return False
 
     async def disconnect(self) -> None:

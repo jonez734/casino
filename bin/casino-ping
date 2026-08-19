@@ -1,0 +1,14 @@
+#!/usr/bin/env python3.12
+# casino/bin/casino-ping
+# Send a ping to the bbsengine6 WebSocket daemon.
+#
+# Thin shim around bbsengine6.net.ping.main. Casino doesn't ship a
+# daemon of its own; it talks to the bed daemon via the same
+# WebSocket protocol. Sharing the helper with bedping and
+# bbsengine6-ping keeps the friendly-error rendering uniform.
+
+from bbsengine6.net.ping import main
+import sys
+
+if __name__ == "__main__":
+    sys.exit(main(prog="casino-ping"))
