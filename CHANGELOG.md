@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### casino: friendly "connection refused" message across `casino`, `blackjack`, `yahtzee`
+
+All bin scripts that talk to the bed WebSocket daemon now render a
+one-line friendly error via `bbsengine6.io.echo(level="error")` and
+exit non-zero without a Python traceback when the daemon is not
+listening. The error pattern is shared with `bedping`,
+`bbsengine6-ping`, and `zoid6-ping` — the rendering lives in
+`bbsengine6.net.ping` so future `websockets`-version fixes land in one
+place.
+
+Changes in `casino`:
+
+* `CasinoClient.connect()` routes the `websockets.connect()` call
+  through `bbsengine6.net.ping.connect(host, port, path=path,
+  prog="casino")` so connection-level failures
+  (`ConnectionRefusedError`, `OSError`, `asyncio.TimeoutError`,
+  `WebSocketException`) raise `bbsengine6.net.ping.PingUnavailable`,
+  which `CasinoClient.connect` catches and renders via
+  `bbsengine6.io.echo(level="error")`. The local `import websockets`
+  is kept (the library is still used elsewhere in the file) but the
+  connect call itself no longer surfaces raw exceptions to the
+  caller.
+* `casino.blackjack.__main__` and `casino.yahtzee.__main__` now wrap
+  the `module.run(...)` dispatch in a `try/except PingUnavailable`
+  and exit non-zero with a friendly one-line message. Both files
+  already caught `KeyboardInterrupt` and `EOFError`; the new branch
+  slots in alongside those.
+* New bin script `bin/casino-ping` is a 6-line shim around
+  `bbsengine6.net.ping.main(prog="casino-ping")` and ships via
+  `[tool.setuptools] script-files` in `casino/pyproject.toml`.
+
+`casino/slots/__main__.py` is intentionally untouched: it does not
+talk to a WebSocket daemon (`_smoke_spin`, `_run_demo`, `_run_door`
+all use `print()` / `input()` locally), so it cannot raise
+`PingUnavailable`.
+
+The shared helper lives in `bbsengine6/py`; see the bbsengine6
+changelog for the helper itself.
+
 ### casino: short-circuit `create_table` on duplicate moniker; surface per-table stats
 
 When a moniker already has a table of the requested `game_type`,
