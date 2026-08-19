@@ -1,6 +1,7 @@
 # casino/api/handler.py
 # WebSocket message handler - routes messages to services using bbsengine6.net service registry
 
+import json
 from datetime import datetime
 from typing import Any, Optional
 
@@ -292,31 +293,27 @@ class TableServiceHandler(BaseService):
     def _legacy_session_id(self, websocket: Any) -> int:
         """Return the int key CasinoSessionManager uses for ``websocket``.
 
-        Standalone / door-mode path keeps ``id(websocket)`` so the
-        existing spectator / table-moniker bookkeeping continues to
-        work. BED-mode (SessionRegistry) ignores this -- it indexes
-        by ``str(websocket.id)``.
+        Prefer the transport-allocated ``_bbsengine6_session_id`` so the
+        key matches what ``_handle_auth.register_session`` and the
+        disconnect-driven ``unregister_session`` use, which keeps
+        session registration, channel subscriptions, spectator
+        bookkeeping, and table-moniker lookups all consistent. Fall
+        back to ``id(websocket)`` for unit tests that pass mock
+        websockets which don't allow attribute assignment.
 
-        Note: ``websocket.id`` on the legacy ``websockets`` library is a
-        ``uuid.UUID`` whose ``int()`` coercion yields a 128-bit value
-        that is unrelated to the Python object id ``AuthService``
-        registered the session under. We deliberately return
-        ``id(websocket)`` first so the standalone path stays
-        self-consistent; the fallback to ``int(websocket.id)`` only
-        fires if the websocket is some odd proxy whose id is already
-        an int (e.g. a test double).
+        BED-mode (SessionRegistry) ignores this -- it indexes by
+        ``str(websocket.id)``.
         """
-        py_id = id(websocket)
-        ws_id = getattr(websocket, "id", None)
-        if isinstance(ws_id, int) and not isinstance(ws_id, bool):
-            return ws_id
         bbs_id = getattr(websocket, "_bbsengine6_session_id", None)
         if bbs_id is not None:
             try:
                 return int(bbs_id)
             except (TypeError, ValueError):
                 pass
-        return py_id
+        ws_id = getattr(websocket, "id", None)
+        if isinstance(ws_id, int) and not isinstance(ws_id, bool):
+            return ws_id
+        return id(websocket)
 
     async def _handle_list_tables(
         self, websocket: Any, message: dict[str, Any]
@@ -985,6 +982,15 @@ class BetServiceHandler(BaseService):
             game_state["type"] = "game_state"
             io.echo(f"_handle_bet: SUCCESS: {moniker} bet {amount} at {table_moniker}", level="info")
 
+            # Send the per-player view to the sender FIRST so its
+            # websocket receive queue orders it before any broadcast
+            # that follows. Returning None here keeps the framework
+            # from re-sending the same payload.
+            try:
+                await websocket.send(json.dumps(game_state))
+            except Exception as e:
+                io.echo(f"_handle_bet: per-player send failed: {e}", level="warning")
+
             # Broadcast game_state to all at the table (including spectators)
             if server and table_moniker:
                 broadcast_state = self.game_service.get_game_state(table_moniker, "")
@@ -999,7 +1005,7 @@ class BetServiceHandler(BaseService):
                 )
                 await server.publish(f"casino:table:{table_moniker}", broadcast_state)
 
-            return game_state
+            return None
         else:
             error_msg = result.get("message", "")
             io.echo(f"_handle_bet: FAILED: {moniker} bet {amount} at {table_moniker}: {error_msg}", level="warning")
@@ -1496,6 +1502,15 @@ class MessageRouter:
         """
         if server.get_service("auth") is None:
             server.register_service(self.auth_service, ["auth", "ping"])
+
+        # Wire the router's channel_state into the server so
+        # server.publish(...) sees the same subscriptions that
+        # casino's join_table / leave_table / watch_table handlers
+        # record. Without this, server.publish consults a default
+        # ChannelState() that has no subscribers and channel_publish
+        # silently drops the broadcast.
+        server._channel_state = self.channel_state
+
         server.register_service(
             self.table_service,
             [

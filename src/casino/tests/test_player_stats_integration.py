@@ -11,6 +11,7 @@ from bbsengine6 import database
 
 from casino import lib
 from casino.dal import player as dal_player
+from casino.tests import _dbname
 
 
 def stats_column_exists(args):
@@ -31,7 +32,7 @@ class TestPlayerStatsDALIntegration(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         """Set up test database and player."""
         parser = lib.buildargs()
-        self.args = parser.parse_args(["--databasename", "zoid6test"])
+        self.args = parser.parse_args(_dbname.dbname_args())
         self.pool = database.getpool(self.args)
         self.test_moniker = "stats_test_player"
 

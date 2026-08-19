@@ -12,6 +12,7 @@ sys.path.insert(0, "/home/opencode/data/work/casino/src")
 
 
 from casino import lib
+from casino.tests import _dbname
 from casino.tests.test_blackjack_flow import WebSocketTestClient
 
 DEFAULT_TIMEOUT = 10.0
@@ -29,7 +30,7 @@ class BaseIntegrationTest(unittest.IsolatedAsyncioTestCase):
         from casino.api.handler import MessageRouter
 
         parser = lib.buildargs()
-        self.args = parser.parse_args(["--databasename", "zoid6test"])
+        self.args = parser.parse_args(_dbname.dbname_args())
 
         self.pool = database.getpool(self.args)
 

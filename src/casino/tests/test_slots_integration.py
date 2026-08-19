@@ -659,10 +659,11 @@ class TestSlotBedIntegration(unittest.IsolatedAsyncioTestCase):
 
         from casino import lib
         from casino.api.handler import MessageRouter
+        from casino.tests import _dbname
 
         # Build args with the test database
         parser = lib.buildargs()
-        self.args = parser.parse_args(["--databasename", "zoid6test"])
+        self.args = parser.parse_args(_dbname.dbname_args())
         self.pool = database.getpool(self.args)
 
         # Create both test users with the standard test password + balance

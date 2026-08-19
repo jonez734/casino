@@ -17,6 +17,7 @@ from websockets.exceptions import ConnectionClosed
 
 from casino import lib
 from casino.api.handler import MessageRouter
+from casino.tests import _dbname
 
 DEFAULT_TIMEOUT = 10.0
 PING_INTERVAL = 30.0
@@ -196,7 +197,7 @@ class TestPlayerAndObserver(unittest.IsolatedAsyncioTestCase):
             await database.reset_async_pool_cache()
 
         parser = lib.buildargs()
-        self.args = parser.parse_args(["--databasename", "zoid6test"])
+        self.args = parser.parse_args(_dbname.dbname_args())
 
         self.pool = database.getpool(self.args)
 

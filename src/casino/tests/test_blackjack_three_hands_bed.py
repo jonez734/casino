@@ -44,8 +44,10 @@ sys.path.insert(0, "/home/opencode/data/work/casino/src")
 sys.path.insert(0, "/home/opencode/data/work/bbsengine6/py/src")
 sys.path.insert(0, "/home/opencode/data/work/bed/src")
 
+from casino.tests import _dbname
+
 BED_URI = os.environ.get("CASINO_TEST_BED_URI", "ws://127.0.0.1:8765/")
-BED_DATABASE = os.environ.get("CASINO_TEST_BED_DATABASE", "zoid6")
+BED_DATABASE = _dbname.current_dbname()
 TEST_TABLE_PREFIX = "blackjack-bed-"
 PROBE_TIMEOUT_S = 2.0
 DEFAULT_TIMEOUT_S = 10.0
