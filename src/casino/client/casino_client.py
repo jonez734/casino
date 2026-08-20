@@ -254,6 +254,7 @@ class CasinoClient:
                 io.echo(f"{{var:labelcolor}}status:  {{var:valuecolor}}{message}")
             if self.current_table_moniker == moniker:
                 self.current_table_moniker = None
+                self.current_table_game_type = None
 
         elif msg_type == "game_state":
             await self.display_game_state(msg)
@@ -576,6 +577,7 @@ class CasinoClient:
             )
         )
         self.current_table_moniker = None
+        self.current_table_game_type = None
 
     def cmd_bet(self) -> None:
         """Handle bet command."""
