@@ -151,7 +151,10 @@ casino/
 │   ├── config.py                 Env-var config loader
 │   ├── _routing.py               bed / direct backend selector
 │   ├── client_cli.py             legacy `python -m casino.client_cli` entry
-│   ├── startup.py                Schema import
+│   ├── startup/                  Casino-specific bootstrap subpackage
+│   │   ├── __init__.py           Re-exports `init`/`access`/`buildargs`/`main` + checkcasino
+│   │   ├── main.py               citext install → checkcasino → schema.sql → manage_schema_priv grants → class imports
+│   │   └── checkcasino.py        Ensures `casino` schema is owned by `zoid6`; verifies the 5 SECURITY DEFINER helper owners
 │   ├── api/
 │   │   ├── handler.py            MessageRouter + CasinoSessionManager + all services
 │   │   └── messages.py           WebSocket MessageType enum + dataclasses
