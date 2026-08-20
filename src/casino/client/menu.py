@@ -69,7 +69,11 @@ def _render_help(client: "CasinoClient | None" = None, **kwargs) -> None:
     client = client or get_client()
     util.heading("casino_client")
     for letter, _short, long_ in _visible_options(client):
-        io.echo("{var:optioncolor}[{}]{var:labelcolor}{}".format(letter.upper(), long_))
+        # f-string ``{{`` collapses to literal ``{`` so ``io.echo``
+        # sees ``{var:optioncolor}`` / ``{var:labelcolor}`` markup.
+        io.echo(
+            f"{{var:optioncolor}}[{letter.upper()}]{{var:labelcolor}}{long_}"
+        )
 
 
 def menu(client: "CasinoClient | None" = None, **kwargs) -> str | None:
@@ -106,7 +110,9 @@ def menu(client: "CasinoClient | None" = None, **kwargs) -> str | None:
         )
     )
     inline = "".join(
-        "{var:optioncolor}[{}]{var:labelcolor}{}".format(letter.upper(), short)
+        # f-string ``{{`` collapses to literal ``{`` so ``io.echo``
+        # sees ``{var:optioncolor}`` / ``{var:labelcolor}`` markup.
+        f"{{var:optioncolor}}[{letter.upper()}]{{var:labelcolor}}{short}"
         for letter, short, _long in visible
     )
     prompt = status + inline + "{var:promptcolor}casino_client: {var:inputcolor}"

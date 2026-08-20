@@ -264,7 +264,11 @@ def _render_help(client=None, **kwargs) -> None:
     """
     util.heading("Slots")
     for letter, _short, long_ in _visible_slots_options(client):
-        io.echo("{var:optioncolor}[{}]{var:labelcolor}{}".format(letter.upper(), long_))
+        # f-string ``{{`` collapses to literal ``{`` so ``io.echo``
+        # sees ``{var:optioncolor}`` / ``{var:labelcolor}`` markup.
+        io.echo(
+            f"{{var:optioncolor}}[{letter.upper()}]{{var:labelcolor}}{long_}"
+        )
 
 
 def menu(args: argparse.Namespace, client=None, **kwargs):
@@ -297,7 +301,9 @@ def menu(args: argparse.Namespace, client=None, **kwargs):
     visible = list(_visible_slots_options(client))
     option_str = ",".join(letter for letter, _short, _long in visible)
     inline = "".join(
-        "{var:optioncolor}[{}]{var:labelcolor}{}".format(letter.upper(), short)
+        # f-string ``{{`` collapses to literal ``{`` so ``io.echo``
+        # sees ``{var:optioncolor}`` / ``{var:labelcolor}`` markup.
+        f"{{var:optioncolor}}[{letter.upper()}]{{var:labelcolor}}{short}"
         for letter, short, _long in visible
     )
     _render_help(client=client)
