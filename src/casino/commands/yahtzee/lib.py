@@ -34,6 +34,13 @@ def _render_help(**kwargs) -> None:
 
     Per the spec: util.heading() is called exactly once per display of
     help, then the option list is echoed.
+
+    Note: the yahtzee submenu has no seat-gated options — ``[P]lay``
+    routes to ``yahtzee_quick_play`` which lazy-creates the player's
+    hidden yahtzee table and auto-seats them
+    (``yahtzee/api_handler.py:_handle_message``); ``[Q]uit`` is
+    unconditional. So unlike the slots submenu and the main
+    ``casino_client`` menu, no visibility filter is needed here.
     """
     util.heading("Yahtzee")
     io.echo("{var:optioncolor}[P]{var:labelcolor}lay a yahtzee session")
