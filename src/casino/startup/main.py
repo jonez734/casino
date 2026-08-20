@@ -1,5 +1,7 @@
 from bbsengine6 import database, io
 
+from . import checkcasino
+
 
 def init(args, **kwargs):
     io.register_emojis(
@@ -44,6 +46,15 @@ def main(args, **kwargs):
         io.echo(" ok ", level="ok")
 
         # 2. Schema — created via schema.sql (which also issues inline GRANTs).
+        #    Before importing schema.sql, ensure the ``casino`` schema is
+        #    owned by the dedicated ``zoid6`` role so that
+        #    ``manage_schema_priv`` (used in step 3 below, also owned by
+        #    ``zoid6``) can GRANT on it. See ``checkcasino.py`` for the
+        #    rationale and the allow-list gate.
+        if checkcasino.main(args, conn=conn) is False:
+            io.echo("fail", level="error")
+            return False
+
         io.echo("schema {var:valuecolor}casino{var:labelcolor}: ", end="")
         if database.schemaexists(args, "casino", conn=conn) is False:
             io.echo("import ", end="")

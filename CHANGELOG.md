@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### casino: wire `checkcasino` into `casino.startup.main`
+
+Regression fix for the `permission denied for schema casino`
+error surfaced on a freshly bootstrapped database after the
+bbsengine6 `zoid6` ownership model landed (see
+`bbsengine6/CHANGELOG.md` `[Unreleased] / backend: dedicated
+zoid6 role owns the SECURITY DEFINER helpers` and
+`bbsengine6/TODO_zoid6_role.md`).
+
+`casino.startup.main` now calls `checkcasino.main(args,
+conn=conn)` between the citext install (step 1) and the
+`importsql("schema.sql")` (step 2). After `checkcasino` runs,
+the `casino` schema exists and is owned by `zoid6`, so the
+schema-priv re-assertion in step 3 (the
+`database.manage_schema_priv("grant", "usage", "casino", role)`
+loop) succeeds because `zoid6` can now `GRANT` on its own
+schema.
+
+The wiring is a single `checkcasino.main(args, conn=conn)`
+call at the top of `main.py` plus the `from . import checkcasino`
+import. No changes to the schema-priv re-assertion logic, no
+changes to `casino/sql/schema.sql`, no changes to
+`bootstrap_opencode.sql` — see `TODO.md` "`bootstrap_opencode.sql`
+resets `casino` schema ownership back to `opencode`" for the
+follow-up that pins the ownership model across the
+out-of-band opencode bootstrap path.
+
 ### casino: introduce `checkcasino` module in `casino.startup`
 
 - New module `casino.startup.checkcasino` mirrors the

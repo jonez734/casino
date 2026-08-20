@@ -67,6 +67,27 @@
 - [ ] Cross-reference: `bed/TODO.md` should link here once
       `bed` adopts the same bring-up ordering.
 
+## `bootstrap_opencode.sql` resets `casino` schema ownership back to `opencode`
+
+- [ ] Remove `casino` from the schema-owner loop in
+      `casino/src/casino/sql/bootstrap_opencode.sql:60-62` so that
+      running the out-of-band opencode bootstrap script does
+      not undo `casino.startup.checkcasino`'s reassignment to
+      `zoid6`. The loop currently iterates over
+      `['bank', 'engine', 'casino']` and unconditionally issues
+      `ALTER SCHEMA %I OWNER TO opencode`. The bank/engine
+      schemas need to be opencode-owned for the dev-user script
+      to work; the casino schema should stay `zoid6`-owned so
+      the SECURITY DEFINER helper `manage_schema_priv` can
+      GRANT on it.
+- [ ] Update the docstring at
+      `casino/src/casino/sql/bootstrap_opencode.sql:1-16` so the
+      "Schema owners, table owners, GRANTs" section reflects the
+      change. The follow-up is idempotent on re-run (running
+      `casino.startup.main` again would re-fix the ownership),
+      but pinning it once at the source avoids the silent
+      dependency on re-running casino startup.
+
 ## `casino.lib.runmodule` kwarg: rename `prefix=` to `package=`
 
 `casino/src/casino/lib.py:559` `runmodule()` currently reads
