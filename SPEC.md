@@ -247,7 +247,7 @@ Flush, Straight, Three of a Kind, Two Pair, Pair, High Card.
 Two schema locations exist:
 
 - `src/casino/sql/` (~30 files) — current canonical schema, loaded
-  by `startup.py` at bring-up. Includes `schema.sql`, `account`,
+  by `startup/main.py` at bring-up. Includes `schema.sql`, `account`,
   `account_view`, `bank_migration`, `bank_player`, `bank_table`,
   `betlog`, `betlog_view`, `casino.sql` (legacy), `game`,
   `game_view`, `hand`, `hand_view`, `hidden_table_migration`,
@@ -263,6 +263,57 @@ Two schema locations exist:
   reference.
 - `zoidweb2-casino.sql` — orphaned Dec-2025 snapshot. **Do not
   use.**
+
+### 8.1 Startup module
+
+Casino ships a dedicated startup subpackage at `src/casino/startup/`
+that runs after `bbsengine6.startup` completes. The subpackage
+performs the casino-specific bootstrap work that depends on the
+`bbsengine6` trust model landing in `stage_one`:
+
+1. **Extension install** — `citext` is required by
+   `casino.__player.membermoniker` and `casino.__bank_player`.
+   Fresh-DB bootstrap crashes on the first table creation
+   without it.
+2. **Schema ownership** (`startup/checkcasino.py`) — ensures
+   the `casino` schema is owned by the dedicated `zoid6`
+   PostgreSQL role (`NOSUPERUSER NOCREATEDB NOCREATEROLE
+   NOLOGIN INHERIT`). Mirrors the engine schema block in
+   `bbsengine6.backend.checkengine` and the bank schema block
+   in `bbsengine6.backend.checkbank`. Required because the
+   SECURITY DEFINER helper `public.manage_schema_priv` (also
+   owned by `zoid6`) issues the per-role `GRANT USAGE ON
+   SCHEMA casino TO ...` statements in step 4 below; under
+   NOSUPERUSER, the helper can only `GRANT` on objects it owns,
+   so the schema must be `zoid6`-owned or every grant in the
+   loop fails with `permission denied for schema casino`.
+   The module also verifies the owner of each of the 5
+   `public.*` SECURITY DEFINER helpers against the canonical
+   allow-list `("zoid6", "postgres")` before calling any of
+   them (mirrors `bbsengine6.backend.checkengine`'s owner
+   gate). Idempotent: re-run on an already-`zoid6`-owned
+   schema is a no-op.
+3. **Schema import** — `casino.sql.schema.sql` runs, creating
+   the `casino` schema and issuing inline `GRANT USAGE` to
+   `sysop`, `web`, `term`, `opencode`.
+4. **Schema privs** — re-asserts `manage_schema_priv("grant",
+   "usage", "casino", <role>)` for `web`, `term`, `sysop`,
+   `opencode` and `manage_schema_priv("grant", "create",
+   "casino", "sysop")`. Re-issuing here means privs survive
+   any path that may have skipped `schema.sql`'s inline
+   grants (manual psql, `bootstrap_opencode.sql`, etc.).
+5. **Class import** — 26 entries in FK resolution order.
+   Migration files (`hidden_table_migration.sql`,
+   `table_shoe_migration.sql`) are deliberately omitted; their
+   columns are already in `table.sql`.
+
+The startup subpackage follows the bbsengine6 BBS-module
+convention (`init`, `access`, `buildargs`, `main`) so it can be
+invoked via `module.run` from the unified router. See
+`bbsengine6/SPEC.md` §5 ("Cross-module schema ownership") for
+the broader pattern and `bbsengine6/TODO_zoid6_role.md` §4
+("Cross-module schema ownership pattern") for the canonical
+reference and open follow-ups.
 
 ## 9. Per-table stats & duplicate-table short-circuit
 
@@ -432,7 +483,9 @@ a bed wiring change. When bed later wires the section explicitly
 | `src/casino/config.py`                            | Env-var config loader + bed.json `casino` block helpers (`get_casino_config`, `get_surrender_multiplier`) |
 | `src/casino/client_cli.py`                        | legacy `python -m casino.client_cli` entry |
 | `src/casino/_routing.py`                          | bed / direct backend selector         |
-| `src/casino/startup.py`                           | Schema import                         |
+| `src/casino/startup/`                             | Casino-specific bootstrap subpackage (extension install + schema ownership + schema.sql import + class import) |
+| `src/casino/startup/main.py`                      | Orchestrates citext install, `checkcasino`, schema.sql, `manage_schema_priv` grants, and class imports |
+| `src/casino/startup/checkcasino.py`               | Mirrors `bbsengine6.backend.checkengine`/`checkbank`'s schema-ownership block for the `casino` schema; verifies the 5 SECURITY DEFINER helper owners against the `("zoid6", "postgres")` allow-list |
 | `src/casino/api/handler.py`                       | MessageRouter + CasinoSessionManager + services |
 | `src/casino/api/messages.py`                      | MessageType enum + dataclasses        |
 | `src/casino/services/{bank,game,player,poker,slots,table}.py` | Business logic              |
