@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### deploy-tui: install from `/srv/repo/casino/` wheel by default; `DEPLOY_EDITABLE=1` for editable
+
+Part of the cross-monorepo Phase 1 work in `deploytool`'s
+`--editable` flag (see `deploytool/CHANGELOG.md` `[Unreleased]`).
+casino's `deploy-tui` target now matches the pattern shared by
+`bbsengine6`, `bed`, `zoid6`, and `deploytool`.
+
+Before: `casino/Makefile deploy-tui: install` called
+top-level `install`, which was `$(PYTHON) -m pip install .` —
+fresh build-and-install from the source tree on every
+invocation. Not actually editable (changes don't show up
+without re-running `pip install`), and also not going through
+`/srv/repo/casino/`.
+
+After:
+
+- Default: `deploy-tui: build` then `pip install $WHEEL`,
+  where `$WHEEL` is the most-recently-built wheel under
+  `/srv/repo/casino/casino-*.whl` picked via `ls -t | head -1`.
+- `DEPLOY_EDITABLE=1` (set by `deploytool --editable`):
+  `$(MAKE) version` then `pip install --no-cache-dir -e .`
+  from the project root, with `rm -rf src/casino.egg-info` to
+  wipe stale absolute paths in `SOURCES.txt`.
+
+Verified: `make -n -C casino deploy-tui` shows
+`pip install /srv/repo/casino/casino-*.whl`; the same with
+`DEPLOY_EDITABLE=1` shows `pip install -e .`.
+
 ### docs(casino): SPEC + README reflect startup subpackage structure
 
 `casino/SPEC.md` gains a §8.1 "Startup module" subsection
