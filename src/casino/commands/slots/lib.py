@@ -231,17 +231,40 @@ def slot_history(args: argparse.Namespace, client=None, **kwargs) -> bool:
     return True
 
 
-def _render_help(**kwargs) -> None:
+# Each entry: (letter, inline_short, long_label, requires_seated, allowed_game_types).
+# Slots submenu exposes [S]pin / [P]aytable (both seat-gated to a slots table)
+# and [H]istory / [Q]uit (always available — slot_history is a player-scope
+# query on the server, see api/handler.py:_handle_history_msg).
+_SLOTS_OPTIONS_SPEC = (
+    ("s", "pin",     "pin (place a bet and pull the lever)", True,  frozenset({"slots"})),
+    ("p", "aytable", "aytable (show the table's paytable)",  True,  frozenset({"slots"})),
+    ("h", "istory",  "istory (list your recent spins)",      False, None),
+    ("q", "uit",     "uit to main menu",                     False, None),
+)
+
+
+def _visible_slots_options(client):
+    """Yield ``(letter, short, long_)`` tuples the player may pick."""
+    seated = bool(client and client.current_table_moniker)
+    gt = (getattr(client, "current_table_game_type", None) or "").strip() or None
+    for letter, short, long_, needs_seat, types in _SLOTS_OPTIONS_SPEC:
+        if needs_seat and not seated:
+            continue
+        if needs_seat and types and gt not in types:
+            continue
+        yield (letter, short, long_)
+
+
+def _render_help(client=None, **kwargs) -> None:
     """F1/HELP callback for the slots submenu.
 
     Per the spec: util.heading() is called exactly once per display of
-    help, then the option list is echoed.
+    help, then the option list is echoed. The visible option set is
+    filtered against the player's seat so it matches the prompt.
     """
     util.heading("Slots")
-    io.echo("{var:optioncolor}[S]{var:labelcolor}pin (place a bet and pull the lever)")
-    io.echo("{var:optioncolor}[P]{var:labelcolor}aytable (show the table's paytable)")
-    io.echo("{var:optioncolor}[H]{var:labelcolor}istory (list your recent spins)")
-    io.echo("{var:optioncolor}[Q]{var:labelcolor}uit to main menu")
+    for letter, _short, long_ in _visible_slots_options(client):
+        io.echo("{var:optioncolor}[{}]{var:labelcolor}{}".format(letter.upper(), long_))
 
 
 def menu(args: argparse.Namespace, client=None, **kwargs):
@@ -249,11 +272,20 @@ def menu(args: argparse.Namespace, client=None, **kwargs):
 
     Refuses to open if no authenticated client is registered. The
     gate fires before the heading / help / prompt so a user who
-    hasn't connected cannot even see the [S]pin option. Every
+    hasn't connected cannot even see the seat-gated options. Every
     option that does run goes through the WS client, so the bearer
     token is auto-injected on every wire call (see
     ``CasinoClient.send``) and the server-side
     ``bbsengine6.casino.access`` re-verifies it.
+
+    The visible option set is filtered against
+    ``client.current_table_moniker`` and
+    ``client.current_table_game_type``: ``[S]pin`` and ``[P]aytable``
+    are hidden unless the player is seated at a slots table, since
+    the server rejects them with ``not_at_table`` otherwise
+    (api/handler.py:_handle_spin_msg / _handle_paytable_msg).
+    ``[H]istory`` and ``[Q]uit`` are always available; ``slot_history``
+    is a player-scope query.
     """
     client = _require_authenticated_client(
         client or get_client(), "slots menu"
@@ -262,10 +294,16 @@ def menu(args: argparse.Namespace, client=None, **kwargs):
         return True
 
     util.heading("Slots")
-    _render_help()
+    visible = list(_visible_slots_options(client))
+    option_str = ",".join(letter for letter, _short, _long in visible)
+    inline = "".join(
+        "{var:optioncolor}[{}]{var:labelcolor}{}".format(letter.upper(), short)
+        for letter, short, _long in visible
+    )
+    _render_help(client=client)
     cmd = io.inputchoice(
-        "{var:promptcolor}[S]pin  [P]aytable  [H]istory  [Q]uit: {var:inputcolor}",
-        "s,p,h,q",
+        "{var:promptcolor}" + inline + ": {var:inputcolor}",
+        option_str,
         default="q",
         help=_render_help,
     )
