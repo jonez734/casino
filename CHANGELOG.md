@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### docs(casino): SPEC + README reflect startup subpackage structure
+
+`casino/SPEC.md` gains a §8.1 "Startup module" subsection
+documenting the bootstrap subpackage's 5-step flow (citext
+install, schema ownership, schema import, schema privs,
+class import) and the §12 file index replaces the single
+`startup.py` row with three rows for the subpackage
+(`startup/`, `startup/main.py`, `startup/checkcasino.py`).
+`casino/README.md` "What's in this repo" tree replaces the
+`startup.py` line with a `startup/` subpackage showing
+`__init__.py`, `main.py`, `checkcasino.py`.
+
+These changes reflect the bootstrap subpackage introduced by
+the prior `feat(casino): introduce checkcasino module in
+casino.startup` (`6b982a2`) and `feat(casino): wire
+checkcasino into casino.startup.main` (`dd962e0`) commits.
+No code changes.
+
 ### casino: wire `checkcasino` into `casino.startup.main`
 
 Regression fix for the `permission denied for schema casino`
