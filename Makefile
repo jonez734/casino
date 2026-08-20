@@ -132,7 +132,27 @@ deploy-www:
 	$(MAKE) -C www prod
 	$(RSYNC) $(STAGE) $(HOST):$(STAGE)
 
-deploy-tui: install
+# Build a fresh wheel then install it into the active venv. Mirrors
+# bbsengine6's deploy-tui so the install artifact path is uniform
+# across projects (always via /srv/repo/<project>/ wheels).
+# DEPLOY_EDITABLE=1: install editable from the source tree instead
+# (set by `deploytool --editable`). Live edits to src/ are visible
+# to the active venv without a rebuild.
+DEPLOY_EDITABLE ?=
+deploy-tui: build
+ifeq ($(DEPLOY_EDITABLE),1)
+	$(MAKE) version
+	$(PYTHON) -m pip install --no-cache-dir -e .
+	-rm -rf src/casino.egg-info
+else
+	@WHEEL=$$(ls -t $(OUTDIR)/$(PROJECT)-*.whl 2>/dev/null | head -1); \
+	if [ -z "$$WHEEL" ]; then \
+		echo "no wheel found in $(OUTDIR); run \`make build\` first" >&2; \
+		exit 1; \
+	fi; \
+	echo "installing $$WHEEL"; \
+	$(PYTHON) -m pip install --no-cache-dir "$$WHEEL"
+endif
 
 help:
 	@echo "Available build targets:"
@@ -140,7 +160,8 @@ help:
 	@echo "  make version      - Rewrite src/casino/_version.py from git + date"
 	@echo "  make sdist        - Build sdist only into $(OUTDIR)"
 	@echo "  make install      - pip install . in current env"
-	@echo "  make deploy-tui   - install casino into the active venv (shared zoid6 venv)"
+	@echo "  make deploy-tui                       - install casino into the active venv (shared zoid6 venv)"
+	@echo "  make deploy-tui DEPLOY_EDITABLE=1     - install editable from src/ (live edits; set by deploytool --editable)"
 	@echo "  make deploy-www   - build www and rsync to $(HOST)"
 	@echo "  make clean        - Remove ~ backups and recurse into src/"
 	@echo "  make push         - git push"
