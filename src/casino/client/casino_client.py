@@ -835,7 +835,7 @@ class CasinoClient:
             cmd = io.inputchoice(
                 f"{{var:promptcolor}}[{self.moniker}] Balance: {self.balance}"
                 + (f" Table: {self.current_table_moniker}" if self.current_table_moniker else "")
-                + f"{{var:optioncolor}}[T]ables  [C]reate  [U]pdate  [J]oin  [L]eave  [B]et  [H]it  [S]tand  [M]sg  [K]  [X]TicTac  [V]Move  [N]JoinT  [G]Resign  [Q]uit{{var:promptcolor}}: {{var:inputcolor}}",
+                + f"{{var:optioncolor}}[T]{{var:labelcolor}}ables{{f6}}{{var:optioncolor}}[C]{{var:labelcolor}}reate{{f6}}{{var:optioncolor}}[U]{{var:labelcolor}}pdate{{f6}}{{var:optioncolor}}[J]{{var:labelcolor}}oin{{f6}}{{var:optioncolor}}[L]{{var:labelcolor}}eave{{f6}}{{var:optioncolor}}[B]{{var:labelcolor}}et{{f6}}{{var:optioncolor}}[H]{{var:labelcolor}}it{{f6}}{{var:optioncolor}}[S]{{var:labelcolor}}tand{{f6}}{{var:optioncolor}}[M]{{var:labelcolor}}sg{{f6}}{{var:optioncolor}}[K]{{var:labelcolor}}Bank{{f6}}{{var:optioncolor}}[X]{{var:labelcolor}}TicTac{{f6}}{{var:optioncolor}}[V]{{var:labelcolor}}Move{{f6}}{{var:optioncolor}}[N]{{var:labelcolor}}JoinT{{f6}}{{var:optioncolor}}[G]{{var:labelcolor}}Resign{{f6}}{{var:optioncolor}}[Q]{{var:labelcolor}}uit{{f6}}{{var:promptcolor}}casino_client: {{var:inputcolor}}",
                 "t,c,u,j,l,b,h,s,m,k,x,v,n,g,q",
                 default="q",
             )
