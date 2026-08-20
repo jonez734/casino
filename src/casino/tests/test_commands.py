@@ -4,6 +4,7 @@
 
 import sys
 import unittest
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, "/home/opencode/data/work/casino/src")
@@ -368,6 +369,50 @@ class TestCasinoClientExtensions(unittest.TestCase):
         self.assertEqual(client.last_available_actions, [])
 
 
+class TestSlotsMenuVisibility(unittest.TestCase):
+    """Slots submenu must hide [S]pin / [P]aytable unless the player
+    is seated at a slots table. [H]istory is player-scope so it stays
+    visible from any state; [Q]uit is unconditional.
+    """
+
+    def test_no_table_shows_only_history_and_quit(self):
+        from casino.commands.slots.lib import _visible_slots_options
+
+        visible = "".join(t[0].upper() for t in _visible_slots_options(None))
+        self.assertIn("H", visible)
+        self.assertIn("Q", visible)
+        self.assertNotIn("S", visible)
+        self.assertNotIn("P", visible)
+
+    def test_non_slots_table_still_hides_spin_and_paytable(self):
+        from casino.commands.slots.lib import _visible_slots_options
+
+        for gt in ("blackjack", "poker", "tictactoe", "yahtzee"):
+            client = SimpleNamespace(current_table_moniker="tbl", current_table_game_type=gt)
+            visible = "".join(t[0].upper() for t in _visible_slots_options(client))
+            self.assertIn("H", visible)
+            self.assertIn("Q", visible)
+            self.assertNotIn("S", visible, f"S should be hidden at {gt} table")
+            self.assertNotIn("P", visible, f"P should be hidden at {gt} table")
+
+    def test_slots_table_shows_full_submenu(self):
+        from casino.commands.slots.lib import _visible_slots_options
+
+        client = SimpleNamespace(current_table_moniker="tbl", current_table_game_type="slots")
+        visible = "".join(t[0].upper() for t in _visible_slots_options(client))
+        self.assertEqual(visible, "SPHQ")
+
+    def test_post_join_window_keeps_spin_paytable_hidden(self):
+        from casino.commands.slots.lib import _visible_slots_options
+
+        client = SimpleNamespace(current_table_moniker="tbl", current_table_game_type=None)
+        visible = "".join(t[0].upper() for t in _visible_slots_options(client))
+        self.assertIn("H", visible)
+        self.assertIn("Q", visible)
+        self.assertNotIn("S", visible)
+        self.assertNotIn("P", visible)
+
+
 def run_tests():
     """Run all tests."""
     loader = unittest.TestLoader()
@@ -378,6 +423,7 @@ def run_tests():
     suite.addTests(loader.loadTestsFromTestCase(TestCommandFunctions))
     suite.addTests(loader.loadTestsFromTestCase(TestMainDispatch))
     suite.addTests(loader.loadTestsFromTestCase(TestCasinoClientExtensions))
+    suite.addTests(loader.loadTestsFromTestCase(TestSlotsMenuVisibility))
 
     runner = unittest.TextTestRunner(verbosity=2)
     result = runner.run(suite)
