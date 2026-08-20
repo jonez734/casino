@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### casino: introduce `checkcasino` module in `casino.startup`
+
+- New module `casino.startup.checkcasino` mirrors the
+  `engine`-schema block in `bbsengine6.backend.checkengine`
+  (`checkengine.py:77-133`), but scoped to the casino project's
+  own schema. It exists because the SECURITY DEFINER helper
+  `public.manage_schema_priv` — which `casino.startup.main` calls
+  to grant schema usage on the `casino` schema to `web`, `term`,
+  `sysop`, `opencode` — is owned by `zoid6` (a `NOSUPERUSER`
+  dedicated owner role created by
+  `bbsengine6.backend.checkzoid6role`). A NOSUPERUSER role can only
+  `GRANT` on objects it owns, so the `casino` schema must also be
+  owned by `zoid6` for those grants to succeed.
+- The module also runs the owner-gate from `checkengine.py:45-75`
+  against the five SECURITY DEFINER helpers, so it refuses to
+  continue if any of them is owned by a role outside the
+  hard-coded allow-list `("zoid6", "postgres")`.
+- Idempotent: creates the `casino` schema with
+  `AUTHORIZATION zoid6` on fresh installs, or issues
+  `ALTER SCHEMA casino OWNER TO zoid6` on BC upgrades where the
+  schema is owned by another role. On a database where the schema
+  is already owned by `zoid6`, `checkcasino.main(args, conn=conn)`
+  is a no-op.
+- 17 new tests in
+  `src/casino/tests/test_startup_checkcasino.py` cover the
+  contract (`init` / `buildargs` / `access`), the owner gate
+  (mismatch → abort, not-installed → skip, pass → continue), the
+  schema-create branch, the schema-reassign branch (opencode,
+  postgres), the no-op branch (zoid6, dict and tuple row shapes),
+  and a regression guard pinning the `HELPERS` allow-list in
+  lock-step with `bbsengine6.backend.checkengine`.
+
+The module exists but is **not yet wired** into
+`casino.startup.main`; the wiring lands in a follow-up commit
+(see next entry).
+
 ### casino: friendly "connection refused" message across `casino`, `blackjack`, `yahtzee`
 
 All bin scripts that talk to the bed WebSocket daemon now render a
