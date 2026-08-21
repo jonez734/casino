@@ -1,0 +1,613 @@
+#!/usr/bin/env python3
+"""End-to-end create-member + casino-auth integration tests.
+
+Pins the round-trip the casino BBS stack relies on:
+
+(a) Create a new member and set a simple plaintext password.
+    Two paths are covered:
+      1. ``bbsengine6.member.setpassword`` -- the public API the
+         console uses (``test_console_member_add_edit.py`` already
+         exercises it). ``setpassword`` issues
+         ``UPDATE engine.__member SET password = crypt($1, gen_salt('bf'))``.
+      2. Raw ``INSERT ... crypt('pw', gen_salt('bf'))`` -- the path
+         ``test_blackjack_flow.py`` and friends use directly.
+    Each path then round-trips the plaintext through
+    ``bbsengine6.member.checkpassword`` to prove the crypt(plain, salt)
+    match works.
+
+(b) Drive the casino moniker + password prompt
+    (``casino.auth.auth_prompt``) end-to-end against an in-process bed
+    server whose ``PasswordCredentialProvider`` calls
+    ``bbsengine6.member.checkpassword`` for real. The same
+    (moniker, password) created in (a) succeeds: server replies with
+    ``auth_result.success=True`` and a freshly-minted bearer token.
+
+The two halves share an args namespace / connection pool and a unique
+test moniker so reruns against a dirty DB self-heal (every INSERT uses
+``ON CONFLICT (moniker) DO UPDATE``).
+
+These tests require:
+  - a reachable PostgreSQL DB named ``zoid6`` (or whatever
+    ``BBSENGINE6_DBNAME`` / ``--databasename`` says) with the
+    ``engine`` schema initialised;
+  - the ``websockets`` package (already a casino dependency).
+
+When the DB is unreachable the (a) and (b.2) tests skip with a
+``skipTest``; (b.1) runs regardless because it mocks the I/O.
+"""
+
+from __future__ import annotations
+
+import argparse
+import asyncio
+import contextlib
+import json
+import secrets
+import sys
+import unittest
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+import websockets
+
+sys.path.insert(0, "/home/opencode/data/work/casino/src")
+sys.path.insert(0, "/home/opencode/data/work/bbsengine6/py/src")
+sys.path.insert(0, "/home/opencode/data/work/bed/src")
+
+
+pytestmark = pytest.mark.integration
+
+
+# ---------------------------------------------------------------------
+# Helpers shared across all three test classes.
+
+
+def _build_args() -> argparse.Namespace:
+    """Build a fully-populated args namespace.
+
+    ``casino.lib.buildargs`` calls ``bbsengine6.database.buildargs``
+    which sets ``databaseschema="engine"`` by default -- the bbsengine6
+    ``_qualified`` helper reads this to expand ``$engine.member``.
+    """
+    from casino import lib as casino_lib
+    from casino.tests import _dbname
+
+    parser = casino_lib.buildargs()
+    return parser.parse_args(_dbname.dbname_args())
+
+
+def _member_table_reachable(args) -> bool:
+    """True iff ``engine.__member`` (or the schema-named equivalent) is queryable."""
+    try:
+        from bbsengine6 import database
+
+        schema = getattr(args, "databaseschema", "engine") or "engine"
+        pool = database.getpool(args)
+        try:
+            with database.connect(args, pool=pool) as conn, database.cursor(conn) as cur:
+                cur.execute(
+                    "SELECT 1 FROM information_schema.tables "
+                    "WHERE table_schema = %s AND table_name = '__member' LIMIT 1",
+                    (schema,),
+                )
+                return cur.fetchone() is not None
+        finally:
+            pool.close()
+    except Exception:
+        return False
+
+
+def _make_unique_moniker(label: str) -> str:
+    """Short unique test moniker so reruns against a dirty DB don't collide."""
+    return f"{label}_{secrets.token_hex(3)}"
+
+
+# ---------------------------------------------------------------------
+# (a) Create a new member and set a simple password.
+#
+# Both paths land in the same table; the difference is whether we go
+# through the bbsengine6 public API or hand-roll the crypt() call.
+
+
+class TestCreateMemberAndSetPassword(unittest.IsolatedAsyncioTestCase):
+    """Step (a): create a new member, set a password, round-trip through checkpassword."""
+
+    async def asyncSetUp(self):
+        from bbsengine6 import database
+        from bbsengine6 import member as libmember
+
+        self.args = _build_args()
+        self.libmember = libmember
+
+        if not _member_table_reachable(self.args):
+            self.skipTest("engine.__member not reachable on this DB")
+
+        self.pool = database.getpool(self.args)
+        self.moniker = _make_unique_moniker("alice_test")
+        self.password = "pw"
+
+    async def asyncTearDown(self):
+        from bbsengine6 import database
+
+        if not hasattr(self, "moniker"):
+            return
+        try:
+            with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
+                cur.execute(
+                    "DELETE FROM engine.map_member_flag WHERE moniker = %s",
+                    (self.moniker,),
+                )
+                cur.execute(
+                    "DELETE FROM engine.__member WHERE moniker = %s",
+                    (self.moniker,),
+                )
+        except Exception:
+            pass
+        with contextlib.suppress(Exception):
+            self.pool.close()
+
+    async def test_a1_create_via_member_setpassword(self):
+        """Path A: insert member with NULL password, then call
+        ``bbsengine6.member.setpassword``. ``checkpassword`` round-trips True.
+        """
+        from bbsengine6 import database
+
+        with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
+            cur.execute(
+                "INSERT INTO engine.__member "
+                "(moniker, loginid, email, credits, attrs) "
+                "VALUES (%s, %s, %s, %s, %s::jsonb) "
+                "ON CONFLICT (moniker) DO UPDATE SET "
+                "loginid = EXCLUDED.loginid, "
+                "email = EXCLUDED.email, "
+                "credits = EXCLUDED.credits, "
+                "attrs = EXCLUDED.attrs",
+                (
+                    self.moniker,
+                    self.moniker,
+                    f"{self.moniker}@test.local",
+                    1000,
+                    "{}",
+                ),
+            )
+
+        result = self.libmember.setpassword(
+            self.args, self.password, self.moniker, pool=self.pool
+        )
+        self.assertIs(
+            result,
+            True,
+            f"setpassword returned {result!r}; expected True",
+        )
+
+        self.assertIs(
+            self.libmember.has_password(
+                self.args, self.moniker, pool=self.pool
+            ),
+            True,
+            "has_password should report True after setpassword",
+        )
+        self.assertIs(
+            self.libmember.checkpassword(
+                self.args, self.password, membermoniker=self.moniker,
+                pool=self.pool,
+            ),
+            True,
+            "checkpassword should round-trip the plaintext we just set",
+        )
+
+    async def test_a2_create_via_raw_crypt_sql(self):
+        """Path B: insert with ``password = crypt('pw', gen_salt('bf'))``
+        inline. Same two assertions as A: checkpassword / has_password True.
+        """
+        from bbsengine6 import database
+
+        with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
+            cur.execute(
+                "INSERT INTO engine.__member "
+                "(moniker, loginid, password, email, credits, attrs) "
+                "VALUES (%s, %s, crypt(%s, gen_salt('bf')), %s, %s, %s::jsonb) "
+                "ON CONFLICT (moniker) DO UPDATE SET "
+                "password = crypt(%s, gen_salt('bf'))",
+                (
+                    self.moniker,
+                    self.moniker,
+                    self.password,
+                    f"{self.moniker}@test.local",
+                    1000,
+                    "{}",
+                    self.password,
+                ),
+            )
+
+        self.assertIs(
+            self.libmember.has_password(
+                self.args, self.moniker, pool=self.pool
+            ),
+            True,
+            "has_password should report True after raw crypt insert",
+        )
+        self.assertIs(
+            self.libmember.checkpassword(
+                self.args, self.password, membermoniker=self.moniker,
+                pool=self.pool,
+            ),
+            True,
+            "checkpassword should round-trip the plaintext inserted via raw SQL",
+        )
+
+
+# ---------------------------------------------------------------------
+# (b.1) casino.auth.auth_prompt sends the right wire message.
+#
+# Mocked. Pins the wire shape ``casino.auth.auth_prompt`` emits
+# independent of the server: if a regression drops the ``type`` key
+# or swallows the password field, this catches it without spinning up
+# the server.
+
+
+class TestCasinoAuthPromptSendsCredentials(unittest.IsolatedAsyncioTestCase):
+    """Step (b.1): the prompt sends ``{"type": "auth", ...}`` over the wire."""
+
+    async def asyncSetUp(self):
+        self.moniker = _make_unique_moniker("alice_prompt")
+        self.password = "pw"
+
+    async def test_prompt_sends_moniker_and_password(self):
+        from casino import auth
+
+        fake_client = MagicMock()
+        fake_client.send = AsyncMock()
+
+        args = argparse.Namespace()
+
+        with patch(
+            "casino.auth.io.inputstring", return_value=self.moniker
+        ), patch(
+            "casino.auth.util.inputpassword", return_value=self.password
+        ):
+            result = await auth.auth_prompt(args, fake_client)
+
+        self.assertIs(result, True, "auth_prompt should return True")
+        fake_client.send.assert_awaited_once_with(
+            {"type": "auth", "moniker": self.moniker, "password": self.password}
+        )
+
+
+# ---------------------------------------------------------------------
+# (b.2) End-to-end through the prompt against an in-process bed server.
+#
+# Real WebSocket + real ``PasswordCredentialProvider`` (which calls
+# ``bbsengine6.member.checkpassword`` for real). Two variants: one
+# using the (a.1) ``member.setpassword`` creation path, one using the
+# (a.2) raw ``crypt()`` SQL path.
+
+
+class TestCasinoAuthEndToEnd(unittest.IsolatedAsyncioTestCase):
+    """Step (b.2): casino prompt + in-process bed + real password provider."""
+
+    SERVER_START_TIMEOUT = 2.0
+    WS_RECV_TIMEOUT = 1.0
+
+    async def _create_member_setpassword_path(self, moniker: str, password: str) -> None:
+        """Create member using the (a.1) public API path."""
+        from bbsengine6 import database
+        from bbsengine6 import member as libmember
+
+        with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
+            cur.execute(
+                "INSERT INTO engine.__member "
+                "(moniker, loginid, email, credits, attrs) "
+                "VALUES (%s, %s, %s, %s, %s::jsonb) "
+                "ON CONFLICT (moniker) DO UPDATE SET "
+                "loginid = EXCLUDED.loginid, "
+                "email = EXCLUDED.email, "
+                "credits = EXCLUDED.credits, "
+                "attrs = EXCLUDED.attrs",
+                (
+                    moniker,
+                    moniker,
+                    f"{moniker}@test.local",
+                    1000,
+                    "{}",
+                ),
+            )
+
+        self.assertIs(
+            libmember.setpassword(self.args, password, moniker, pool=self.pool),
+            True,
+        )
+
+    async def _create_member_raw_crypt_path(self, moniker: str, password: str) -> None:
+        """Create member using the (a.2) raw crypt() SQL path."""
+        from bbsengine6 import database
+
+        with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
+            cur.execute(
+                "INSERT INTO engine.__member "
+                "(moniker, loginid, password, email, credits, attrs) "
+                "VALUES (%s, %s, crypt(%s, gen_salt('bf')), %s, %s, %s::jsonb) "
+                "ON CONFLICT (moniker) DO UPDATE SET "
+                "password = crypt(%s, gen_salt('bf'))",
+                (
+                    moniker,
+                    moniker,
+                    password,
+                    f"{moniker}@test.local",
+                    1000,
+                    "{}",
+                    password,
+                ),
+            )
+
+    async def _drop_member(self, moniker: str) -> None:
+        from bbsengine6 import database
+
+        try:
+            with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
+                cur.execute(
+                    "DELETE FROM engine.map_member_flag WHERE moniker = %s",
+                    (moniker,),
+                )
+                cur.execute(
+                    "DELETE FROM engine.__member WHERE moniker = %s",
+                    (moniker,),
+                )
+        except Exception:
+            pass
+
+    async def asyncSetUp(self):
+        from bbsengine6 import database
+
+        self.args = _build_args()
+        if not _member_table_reachable(self.args):
+            self.skipTest("engine.__member not reachable on this DB")
+
+        self.pool = database.getpool(self.args)
+        self.moniker = _make_unique_moniker("alice_e2e")
+        self.password = "pw"
+
+        # Default member created via path (a.1) so b2 tests that omit
+        # the per-test recreation don't accidentally see a leftover
+        # row from a previous run.
+        await self._create_member_setpassword_path(self.moniker, self.password)
+
+        # Spin up an in-process bed server with the REAL
+        # ``PasswordCredentialProvider``. The provider calls
+        # ``bbsengine6.member.checkpassword`` against this DB so the
+        # round-trip we just set up is exactly what the server will
+        # verify.
+        self._bed_ctx = _BedServerHarness().__enter__()
+
+    async def asyncTearDown(self):
+        # Stop server first so the close handshake isn't blocked by
+        # a still-open client socket (see bed/tests/_auth_helpers
+        # docstring on wait_closed hangs).
+        with contextlib.suppress(Exception):
+            self._bed_ctx.__exit__(None, None, None)
+
+        if getattr(self, "client_ws", None) is not None:
+            with contextlib.suppress(Exception):
+                await self.client_ws.close()
+
+        if getattr(self, "moniker", None) is not None:
+            await self._drop_member(self.moniker)
+
+        with contextlib.suppress(Exception):
+            self.pool.close()
+
+    async def _drive_prompt_and_assert_success(self, moniker: str, password: str):
+        """Open a raw WS to the in-process bed, drive ``casino.auth.auth_prompt``
+        with patched io.inputstring / util.inputpassword, read the reply off the
+        WS, and assert the ``auth_result`` envelope reports success.
+        """
+        from casino import auth
+        from casino.client import CasinoClient
+
+        port = self._bed_ctx.port
+        self.client_ws = await websockets.connect(f"ws://127.0.0.1:{port}/")
+
+        client = CasinoClient(self.args)
+        # Bypass CasinoClient.connect(): hand it the already-open WS so
+        # auth_prompt -> client.send -> self.ws.send reaches the server.
+        client.ws = self.client_ws
+        client.connected = True
+
+        with patch("casino.auth.io.inputstring", return_value=moniker), patch(
+            "casino.auth.util.inputpassword", return_value=password
+        ):
+            ok = await auth.auth_prompt(self.args, client)
+
+        self.assertIs(ok, True, "auth_prompt should return True")
+
+        reply_raw = await asyncio.wait_for(
+            self.client_ws.recv(), timeout=self.WS_RECV_TIMEOUT
+        )
+        reply = json.loads(reply_raw)
+        self.assertEqual(reply.get("type"), "auth_result")
+        self.assertTrue(
+            reply.get("success"),
+            f"server replied success=False: {reply!r}",
+        )
+        self.assertEqual(reply.get("moniker"), moniker)
+        self.assertIn("token", reply, f"auth_result missing token: {reply!r}")
+        # Default-created test member is never a sysop.
+        self.assertFalse(reply.get("is_sysop", False))
+
+    async def test_b1_login_through_casino_prompt_setpassword_path(self):
+        """End-to-end auth using the member created via bbsengine6.member.setpassword."""
+        await self._drive_prompt_and_assert_success(self.moniker, self.password)
+
+    async def test_b2_login_through_casino_prompt_raw_crypt_sql_path(self):
+        """End-to-end auth using the member created via raw ``crypt()`` SQL.
+
+        Recreates the member via the (a.2) path so the e2e flow
+        exercises every byte the path B path sets, not just the row
+        from ``asyncSetUp``.
+        """
+        await self._drop_member(self.moniker)
+        new_moniker = _make_unique_moniker("alice_e2e_b2")
+        await self._create_member_raw_crypt_path(new_moniker, self.password)
+        # Track the new moniker so tearDown cleans it up.
+        self.moniker = new_moniker
+        await self._drive_prompt_and_assert_success(self.moniker, self.password)
+
+
+# ---------------------------------------------------------------------
+# Local BedServerContext -- a slim copy of
+# bed/src/bed/tests/_auth_helpers.py:BedServerContext scoped to what
+# these tests need. Importing the upstream helper would pull in the
+# entire bed tests conftest path; keeping a local copy means the file
+# is self-contained and works whether or not the upstream helper's
+# shim-requirements (sys.path order, package mode) match.
+
+
+class _BedServerHarness:
+    """Sync context manager that runs an in-process bed server in a
+    daemon thread with its own asyncio event loop.
+
+    Pattern is identical to
+    :class:`bed.tests._auth_helpers.BedServerContext`: the thread keeps
+    the loop running so the server can service WebSocket handshakes
+    while the test thread's ``asyncio.run`` opens a fresh loop to drive
+    the client. On exit every task on the server loop is cancelled
+    (``return_exceptions=True``) instead of awaiting
+    ``WebSocketServer.stop()`` -- ``stop()`` blocks on
+    ``self._server.wait_closed()`` waiting for a client close frame
+    that never arrives because the client side already tore down its
+    loop. Cancelling tasks is the supported way to abort an asyncio
+    server.
+    """
+
+    def __init__(self):
+        self._loop = None
+        self._thread = None
+        self.server = None
+        self.port = None
+        self.auth_service = None
+        self.session_registry = None
+        self.token_store = None
+
+    def __enter__(self):
+        import asyncio
+        import socket as _socket
+        import threading
+
+        from bbsengine6.net import WebSocketServer
+        from bed.api import AuthService, InMemoryTokenStore
+        from bed.api.credential_provider import PasswordCredentialProvider
+        from bed.api.session import SessionRegistry
+
+        self._loop = asyncio.new_event_loop()
+        self._thread = threading.Thread(
+            target=self._loop.run_forever,
+            daemon=True,
+            name="casino-test-bed",
+        )
+        self._thread.start()
+
+        secret = secrets.token_bytes(32)
+
+        with _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM) as s:
+            s.bind(("127.0.0.1", 0))
+            self.port = s.getsockname()[1]
+
+        registry = SessionRegistry()
+        token_store = InMemoryTokenStore()
+        # Use the casino args namespace so AuthService's
+        # PasswordCredentialProvider -> bbsengine6.member.checkpassword
+        # -> _qualified("member", args) sees ``args.databaseschema``
+        # (a bare Namespace would trip the UnboundLocalError on the
+        # "no databaseschema attr" branch).
+        auth_service_args = _build_args()
+        auth_service = AuthService(
+            args=auth_service_args,
+            session_registry=registry,
+            token_store=token_store,
+            credential_provider=PasswordCredentialProvider(),
+            secret=secret,
+            instance_id="casino-auth-test",
+            ttl_seconds=900,
+        )
+
+        server = WebSocketServer(host="127.0.0.1", port=self.port)
+        auth_service.register_all(server)
+
+        try:
+            future = asyncio.run_coroutine_threadsafe(
+                server.start(), self._loop
+            )
+            future.result(timeout=2.0)
+        except BaseException:
+            self._safe_shutdown()
+            raise
+
+        self.server = server
+        self.auth_service = auth_service
+        self.session_registry = registry
+        self.token_store = token_store
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self._safe_shutdown()
+
+    def _safe_shutdown(self):
+        if self._loop is None:
+            return
+        try:
+            import asyncio
+
+            future = asyncio.run_coroutine_threadsafe(
+                self._shutdown_server(), self._loop
+            )
+            future.result(timeout=2.0)
+        except BaseException:
+            pass
+        with contextlib.suppress(RuntimeError):
+            self._loop.call_soon_threadsafe(self._loop.stop)
+        if self._thread is not None:
+            self._thread.join(timeout=2.0)
+        try:
+            self._loop.close()
+        finally:
+            self._loop = None
+            self._thread = None
+
+    async def _shutdown_server(self):
+        import asyncio
+
+        if self.server is None:
+            return
+        server = self.server
+        self.server = None
+        ws_server = getattr(server, "_server", None)
+        if ws_server is not None:
+            try:
+                asyncio_server = getattr(ws_server, "server", None)
+                if asyncio_server is not None:
+                    asyncio_server.close()
+            except Exception:
+                pass
+            try:
+                connections = list(ws_server.connections)
+            except Exception:
+                connections = []
+            for conn in connections:
+                try:
+                    transport = getattr(conn, "transport", None)
+                    if transport is not None:
+                        transport.close()
+                except Exception:
+                    pass
+        await asyncio.sleep(0)
+        current = asyncio.current_task()
+        pending = [t for t in asyncio.all_tasks() if t is not current]
+        for t in pending:
+            t.cancel()
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
+        del server
+
+
+if __name__ == "__main__":
+    unittest.main()
