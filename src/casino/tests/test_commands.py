@@ -384,6 +384,117 @@ class TestMainmenuHelpWiring(unittest.TestCase):
         ns["util"].heading.assert_called_once_with("main menu")
 
 
+class TestMainmenuDuplicateP(unittest.TestCase):
+    """Pin the contract that the two ``P`` entries in ``casino.main``'s
+    ``options`` -- ``Play`` (``requires_seated=True``) and the Poker
+    launcher (``hide_if_seated_type={\"poker\"}``) -- never both surface
+    when the visibility filter can disambiguate. Historically both
+    letters appeared in every menu draw, so this pins the fix.
+
+    Contract:
+      * Not seated at any table: only the Poker launcher is visible.
+      * Seated at a poker table: only the Play action is visible.
+
+    Seating at blackjack or yahtzee intentionally still shows both
+    ``P`` entries because the player may want to start a poker hand
+    without leaving their seat; that is the existing spec and is not
+    part of this contract.
+    """
+
+    @staticmethod
+    def _kwarg_value(node):
+        """Convert a kwarg AST node to a Python value. Handles
+        literal constants and ``frozenset({...})`` calls; anything
+        else raises so a future spec change is caught loudly.
+        """
+        import ast
+
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "frozenset"
+            and len(node.args) == 1
+        ):
+            return frozenset(ast.literal_eval(node.args[0]))
+        return ast.literal_eval(node)
+
+    def _options(self):
+        """Walk ``casino.main`` source and return the ``options``
+        tuple as a list of ``MenuOption`` instances with kwargs.
+        """
+        import ast
+        import importlib
+        import inspect
+
+        # Import the submodule explicitly: ``from casino import main``
+        # returns the ``main`` function re-exported from
+        # ``casino/__init__.py`` unless ``casino.main`` is already
+        # cached in ``sys.modules``. Importing the submodule first
+        # keeps this test order-independent.
+        main_module = importlib.import_module("casino.main")
+        from casino.menu_lib import MenuOption
+
+        src = inspect.getsource(main_module)
+        tree = ast.parse(src)
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Assign)
+                and len(node.targets) == 1
+                and isinstance(node.targets[0], ast.Name)
+                and node.targets[0].id == "options"
+            ):
+                out = []
+                for elt in node.value.elts:
+                    if not (
+                        isinstance(elt, ast.Call)
+                        and isinstance(elt.func, ast.Name)
+                        and elt.func.id == "MenuOption"
+                    ):
+                        continue
+                    args = [ast.literal_eval(a) for a in elt.args]
+                    kwargs = {
+                        kw.arg: self._kwarg_value(kw.value) for kw in elt.keywords
+                    }
+                    out.append(MenuOption(*args, **kwargs))
+                return out
+        return None
+
+    def _p_labels(self, options, state):
+        from casino.menu_lib import visible_options
+
+        return [o.label for o in visible_options(options, state) if o.letter == "p"]
+
+    def test_unseated_shows_only_poker_launcher(self):
+        options = self._options()
+        self.assertIsNotNone(options, "options tuple not found in main.py")
+        state = SimpleNamespace(
+            current_table_moniker=None,
+            current_table_game_type=None,
+            connected=False,
+        )
+        labels = self._p_labels(options, state)
+        self.assertEqual(
+            labels,
+            ["Poker"],
+            f"expected only Poker launcher visible when unseated, got {labels}",
+        )
+
+    def test_seated_at_poker_hides_poker_launcher(self):
+        options = self._options()
+        self.assertIsNotNone(options)
+        state = SimpleNamespace(
+            current_table_moniker="poker-1",
+            current_table_game_type="poker",
+            connected=True,
+        )
+        labels = self._p_labels(options, state)
+        self.assertEqual(
+            labels,
+            ["Play"],
+            f"expected only Play visible when seated at poker, got {labels}",
+        )
+
+
 class TestCasinoClientExtensions(unittest.TestCase):
     """Test CasinoClient has required attributes."""
 
