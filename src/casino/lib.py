@@ -51,7 +51,7 @@ class Card:
 
         suit_char = suits.get(self.suit, "") if self.suit else ""
         io.echo(
-            f"Card.value.120: card={{self.pips}}{{suit_char}} {v=}", level="debug"
+            f"Card.value.120: card={self.shorthand} {v=}", level="debug"
         )
         return v
 
