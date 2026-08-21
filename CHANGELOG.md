@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### build: add `PREPARE_BUILD` macro to root Makefile
+
+`casino/Makefile` lacked the `PREPARE_BUILD` helper that
+`bed/Makefile:189-194` and `getdate_next/Makefile:32-36` already
+have. Without it, the freshly-created `build/` inherits the
+parent directory's setgid bit (mode `2775`), and setuptools'
+`shutil.copystat` mirrors that mode onto the new dist-info
+directory during `bdist_wheel` — which then EPERMs the
+subsequent chmod in SELinux-enforcing + NoNewPrivs containers
+(we lack `CAP_FSETID`).
+
+The macro is identical to `bed/Makefile:189-194`, parameterized
+over `$(1)` so the same definition can be reused if
+`casino/src/casino/Makefile` ever needs the same treatment. The
+comment block above it explains the full cause chain
+(`copystat` → `setgid` → `EPERM` → "wheel build aborts") so
+future readers don't have to re-derive it.
+
+Called from both the `build` and `sdist` targets with
+`$(CURDIR)` — same argument shape as `bed`'s `build` target.
+
+Tracked in `zoid6/TODO.md` "PREPARE_BUILD standardization
+(cross-project)" — that checkbox is now ticked.
+
 ### test(casino): create-member + casino-auth prompt integration tests
 
 New file `casino/src/casino/tests/test_member_create_and_casino_auth.py`

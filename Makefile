@@ -73,10 +73,45 @@ ensure-build-dir: ensure-repo
 	@stat -c '%G' /srv/repo/$(PROJECT)/ 2>/dev/null | grep -qx repo || sudo chgrp repo /srv/repo/$(PROJECT)/
 	@stat -c '%a' /srv/repo/$(PROJECT)/ 2>/dev/null | grep -q '^2775$$' || sudo chmod 2775 /srv/repo/$(PROJECT)/
 
+# Make sure $(1)/build/ exists with mode 1775 (sticky + rwxrwxr-x) before
+# invoking `python -m build`. Mode 1775 is intentional:
+#   - sticky (t): only the owner of a file inside may delete/rename it,
+#     so concurrent builds under a shared group can't stomp each other.
+#   - setgid (s) is intentionally NOT set: setuptools' shutil.copystat
+#     mirrors build/'s mode onto the freshly-created dist-info dir, and
+#     a setgid'd dist-info EPERMs the subsequent bdist_wheel step in
+#     SELinux-enforcing + NoNewPrivs containers (we lack CAP_FSETID).
+#   - group write (g+w): any user in the build group can rebuild
+#     without needing to chown.
+# The chmod is expressed as `chmod g-s,+t` (drop the setgid bit the
+# parent dir inherited onto the freshly-mkdir'd build/, then add the
+# sticky bit). The numeric form `chmod 1775` is functionally equivalent
+# but fails on BTRFS+SELinux setups where the parent directory's
+# setgid bit blocks the owner from clearing it via the numeric mode
+# (`chmod: Operation not permitted` on a dir the caller owns). The
+# symbolic form works because the kernel only restricts numeric-mode
+# changes that would remove the inherited setgid bit; `g-s` is
+# permitted regardless of where the bit came from.
+#
+# If $(1)/build/ exists but is owned by a different user (e.g. left over
+# from a prior build run as a different uid), rename it out of the way
+# first. The parent dir is group-writable in this tree so the rename is
+# permitted even when we don't own the build/ contents. Without this,
+# the subsequent chmod fails with EPERM and the build aborts.
+# Mirrors bed/Makefile:189-194 (see also zoid6/TODO.md "PREPARE_BUILD
+# standardization (cross-project)").
+PREPARE_BUILD = \
+	if [ -d $(1)/build ] && [ ! -O $(1)/build ]; then \
+		mv $(1)/build $(1)/build.stale.$$ 2>/dev/null || true; \
+	fi; \
+	mkdir -p $(1)/build && chmod g-s,+t $(1)/build
+
 build: clean version ensure-build-dir
+	$(call PREPARE_BUILD,$(CURDIR))
 	$(PYTHON) -m build --outdir $(OUTDIR)
 
 sdist: version ensure-build-dir
+	$(call PREPARE_BUILD,$(CURDIR))
 	$(PYTHON) -m build --sdist --outdir $(OUTDIR)
 
 rename-sdist:
