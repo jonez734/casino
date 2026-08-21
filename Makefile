@@ -31,10 +31,23 @@ OUTDIR = /srv/repo/$(PROJECT)/
 
 all:
 
-# Per-subpackage backup-file cleanup. Recurses into src/, which in turn
-# recurses into src/casino/ and each game subdir (poker, blackjack,
-# yahtzee, tictactoe).
+# Per-subpackage backup-file cleanup plus wheel-artifact cleanup.
+# Recurses into src/, which in turn recurses into src/casino/ and
+# each game subdir (poker, blackjack, yahtzee, tictactoe).
+# Wipes build/, dist/, *.egg-info/, and the standard cache dirs
+# before each `python -m build` invocation (the root `build`
+# target declares `clean` as a prerequisite). This sidesteps the
+# setuptools SOURCES.txt absolute-path failure mode when a stale
+# `src/casino.egg-info/SOURCES.txt` from a prior run carries
+# forward absolute paths into a fresh build. Matches the pattern
+# shipped in `zoid6/src/Makefile:118-124`.
 clean:
+	-rm -rf build dist
+	-rm -rf *.egg-info src/*.egg-info src/casino/*.egg-info
+	-find . -type d -name __pycache__ -exec rm -rf {} +
+	-find . -type d -name .pytest_cache -exec rm -rf {} +
+	-find . -type d -name .ruff_cache -exec rm -rf {} +
+	-find . -type d -name .mypy_cache -exec rm -rf {} +
 	-rm *~
 	$(MAKE) -C src clean
 
@@ -60,7 +73,7 @@ ensure-build-dir: ensure-repo
 	@stat -c '%G' /srv/repo/$(PROJECT)/ 2>/dev/null | grep -qx repo || sudo chgrp repo /srv/repo/$(PROJECT)/
 	@stat -c '%a' /srv/repo/$(PROJECT)/ 2>/dev/null | grep -q '^2775$$' || sudo chmod 2775 /srv/repo/$(PROJECT)/
 
-build: version ensure-build-dir
+build: clean version ensure-build-dir
 	$(PYTHON) -m build --outdir $(OUTDIR)
 
 sdist: version ensure-build-dir
