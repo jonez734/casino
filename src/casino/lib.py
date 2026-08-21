@@ -591,10 +591,63 @@ class CasinoPlayer:
         self.moniker = membermoniker
         self.credits = 1000
         self.stats = {}
+        # Visibility state, populated lazily by ``_refresh_seat`` so
+        # the door-mode menu in ``casino.main`` can mirror the WS-client
+        # menu in ``casino.client.menu`` (which reads the same attrs on
+        # ``CasinoClient``).
+        self.current_table_moniker: str | None = None
+        self.current_table_game_type: str | None = None
+        # WS-connection state for the door-mode ``casino.main`` loop:
+        # ``None`` before ``auth.connect`` succeeds, ``True`` after. The
+        # ``requires_connected`` gate in ``casino.menu_lib`` uses this
+        # to hide the ``[X] Disconnect`` option until a connection is
+        # open.
+        self.connected: bool = False
         self._load()
 
     def _load(self):
-        pass
+        self._refresh_seat()
+
+    def _refresh_seat(self):
+        """Re-query the DB for the player's current table.
+
+        Joins ``casino.__map_cardtable_player`` (player → table) with
+        ``casino.__table`` (table → type) to recover both the table
+        moniker and its ``game_type``. Sets
+        ``current_table_moniker`` and ``current_table_game_type`` on
+        the player so the menu visibility filter in
+        ``casino.main`` can hide seat-gated options when the player
+        isn't at a table.
+
+        Best-effort: any DB error is swallowed and the attrs stay
+        ``None`` so the menu can still render. Commands that need
+        an actual seat (e.g. ``game.bet``) will error at their own
+        access gate if misused.
+        """
+        if not (self.pool and self.moniker):
+            return
+        try:
+            from bbsengine6 import database
+            with database.connect(self.args) as conn, database.cursor(conn) as cur:
+                cur.execute(
+                    database.query(
+                        "SELECT m.tablemoniker, t.type AS game_type "
+                        "FROM $casino.__map_cardtable_player m "
+                        "JOIN $casino.__table t ON t.moniker = m.tablemoniker "
+                        "WHERE m.playermoniker = :moniker LIMIT 1",
+                        moniker=self.moniker,
+                    )
+                )
+                row = cur.fetchone()
+                if row:
+                    self.current_table_moniker = row["tablemoniker"]
+                    self.current_table_game_type = row["game_type"]
+                else:
+                    self.current_table_moniker = None
+                    self.current_table_game_type = None
+        except Exception:
+            self.current_table_moniker = None
+            self.current_table_game_type = None
 
     def save(self):
         pass

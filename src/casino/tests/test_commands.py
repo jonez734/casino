@@ -232,8 +232,14 @@ class TestMainDispatch(unittest.TestCase):
 class TestMainmenuOptions(unittest.TestCase):
     """Test the (key, title, module.subcommand) tuples in casino.main."""
 
-    def test_yahtzee_option_present(self):
-        """The Y option must route to yahtzee.play."""
+    def _extract_options(self):
+        """Walk ``casino.main`` source and extract ``MenuOption`` calls
+        from the ``options = (...)`` assignment.
+
+        Returns a list of ``(letter, label, module_path)`` tuples in
+        declaration order. Mirrors the public surface that the old
+        tuple-of-tuples spec exposed to tests.
+        """
         import ast
         import inspect
 
@@ -241,7 +247,6 @@ class TestMainmenuOptions(unittest.TestCase):
 
         src = inspect.getsource(main_module)
         tree = ast.parse(src)
-        options_tuple = None
         for node in ast.walk(tree):
             if (
                 isinstance(node, ast.Assign)
@@ -249,11 +254,30 @@ class TestMainmenuOptions(unittest.TestCase):
                 and isinstance(node.targets[0], ast.Name)
                 and node.targets[0].id == "options"
             ):
-                options_tuple = ast.literal_eval(node.value)
-                break
+                # ``node.value`` is a Tuple whose elements are
+                # ``MenuOption(...)`` ``Call`` nodes (positional
+                # args: letter, label, module_path).
+                out = []
+                for elt in node.value.elts:
+                    if not isinstance(elt, ast.Call):
+                        continue
+                    if not (
+                        isinstance(elt.func, ast.Name)
+                        and elt.func.id == "MenuOption"
+                    ):
+                        continue
+                    letter = elt.args[0].value
+                    label = elt.args[1].value
+                    module_path = elt.args[2].value
+                    out.append((letter, label, module_path))
+                return out
+        return None
 
-        self.assertIsNotNone(options_tuple, "options tuple not found in main.py")
-        yahtzee = [o for o in options_tuple if o[0] == "Y"]
+    def test_yahtzee_option_present(self):
+        """The Y option must route to yahtzee.play."""
+        options = self._extract_options()
+        self.assertIsNotNone(options, "options tuple not found in main.py")
+        yahtzee = [o for o in options if o[0] == "y"]
         self.assertEqual(len(yahtzee), 1)
         self.assertEqual(yahtzee[0][1], "Yahtzee")
         self.assertEqual(yahtzee[0][2], "yahtzee.play")
@@ -265,21 +289,34 @@ class TestMainmenuHelpWiring(unittest.TestCase):
     invocation of mainmenuhelp must call util.heading exactly once.
     """
 
-    def test_mainmenuhelp_calls_heading_exactly_once(self):
-        """Each call to mainmenuhelp must invoke util.heading once."""
-        # mainmenuhelp is defined inside main(); we read its source
-        # out of main.py and exec it in a controlled namespace.
+    def _exec_mainmenuhelp_in_namespace(self):
+        """Extract ``mainmenuhelp`` from ``casino.main`` and exec it
+        in a controlled namespace with the closures it references
+        (``_menu_state``, ``currentplayer``, ``remote_client``,
+        ``visible_options``, ``options``) stubbed out.
+        """
         import ast
         import inspect
-        import textwrap
         from unittest.mock import MagicMock
 
-        from casino import main as main_module
+        # Import the *module* (not the ``main`` function from
+        # ``casino/__init__.py``) so we can read the source of the
+        # door-mode ``mainmenuhelp`` nested inside ``casino.main:main``.
+        import casino.main as main_module
 
-        src = inspect.getsource(main_module.main)
-        tree = ast.parse(textwrap.dedent(src))
+        src = inspect.getsource(main_module)
+        tree = ast.parse(src)
+        # Find ``def main(...)`` at module level, then walk into its
+        # body for the nested ``def mainmenuhelp(...)``.
+        main_node = None
+        for node in tree.body:
+            if isinstance(node, ast.FunctionDef) and node.name == "main":
+                main_node = node
+                break
+        self.assertIsNotNone(main_node, "def main() not found in casino.main")
+
         mainmenuhelp_node = None
-        for node in ast.walk(tree):
+        for node in ast.walk(main_node):
             if (
                 isinstance(node, ast.FunctionDef)
                 and node.name == "mainmenuhelp"
@@ -291,65 +328,58 @@ class TestMainmenuHelpWiring(unittest.TestCase):
             mainmenuhelp_node, "mainmenuhelp() not found inside main()"
         )
 
-        # Rebuild a tiny module that defines `options` and the
-        # `mainmenuhelp` function, with `util.heading` and `io.echo`
-        # mocked. We capture the rebuilt function in a callable.
-        ns: dict = {
-            "options": (
-                ("B", "Blackjack", "blackjack.play"),
-                ("S", "Slots", "slots.play"),
-                ("Y", "Yahtzee", "yahtzee.play"),
-                ("C", "Connect", "auth"),
-                ("Q", "Quit", "quit"),
-            ),
-        }
+        # Stub closures. ``_menu_state`` returns ``currentplayer``
+        # with its ``connected`` attribute set from the second arg.
+        ns: dict = {}
+        currentplayer_mock = MagicMock()
+        ns["currentplayer"] = currentplayer_mock
+        ns["remote_client"] = None
+
+        def fake_menu_state(player, connected):
+            player.connected = connected
+            return player
+
+        ns["_menu_state"] = fake_menu_state
+
+        def fake_visible_options(opts, state):
+            return list(opts)
+
+        ns["visible_options"] = fake_visible_options
+        # Provide MenuOption-shaped stubs. ``letter``/``label`` are
+        # the attributes ``mainmenuhelp`` reads; we don't need full
+        # gate semantics for the heading assertion.
+        class _OptStub:
+            def __init__(self, letter, label):
+                self.letter = letter
+                self.label = label
+
+        ns["options"] = (
+            _OptStub("b", "Blackjack"),
+            _OptStub("y", "Yahtzee"),
+            _OptStub("c", "Connect"),
+            _OptStub("q", "Quit"),
+        )
         mock_heading = MagicMock()
         ns["util"] = MagicMock()
         ns["util"].heading = mock_heading
         ns["io"] = MagicMock()
         ns["io"].echo = MagicMock()
-        # Compile and exec just the mainmenuhelp function.
+
         module_ast = ast.Module(body=[mainmenuhelp_node], type_ignores=[])
         ast.fix_missing_locations(module_ast)
         exec(compile(module_ast, "<mainmenuhelp>", "exec"), ns)
+        return ns, mock_heading
 
-        mainmenuhelp = ns["mainmenuhelp"]
-        mock_heading.reset_mock()
-        mainmenuhelp()
+    def test_mainmenuhelp_calls_heading_exactly_once(self):
+        """Each call to mainmenuhelp must invoke util.heading once."""
+        ns, mock_heading = self._exec_mainmenuhelp_in_namespace()
+        ns["mainmenuhelp"]()
         self.assertEqual(mock_heading.call_count, 1)
         self.assertEqual(mock_heading.call_args.args[0], "main menu")
 
     def test_mainmenuhelp_uses_main_menu_title(self):
         """The heading title must be 'main menu' so F1 shows the right banner."""
-        import ast
-        import inspect
-        import textwrap
-        from unittest.mock import MagicMock
-
-        from casino import main as main_module
-
-        src = inspect.getsource(main_module.main)
-        tree = ast.parse(textwrap.dedent(src))
-        mainmenuhelp_node = None
-        for node in ast.walk(tree):
-            if (
-                isinstance(node, ast.FunctionDef)
-                and node.name == "mainmenuhelp"
-            ):
-                mainmenuhelp_node = node
-                break
-
-        ns: dict = {
-            "options": (
-                ("B", "Blackjack", "blackjack.play"),
-            ),
-        }
-        ns["util"] = MagicMock()
-        ns["io"] = MagicMock()
-        module_ast = ast.Module(body=[mainmenuhelp_node], type_ignores=[])
-        ast.fix_missing_locations(module_ast)
-        exec(compile(module_ast, "<mainmenuhelp>", "exec"), ns)
-
+        ns, _mock_heading = self._exec_mainmenuhelp_in_namespace()
         ns["mainmenuhelp"]()
         ns["util"].heading.assert_called_once_with("main menu")
 

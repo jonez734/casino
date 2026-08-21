@@ -3,6 +3,7 @@ from argparse import Namespace
 from bbsengine6 import database, io, member, session, util
 
 from . import _version, auth, lib
+from .menu_lib import MenuOption, visible_options
 
 
 def parse_module_path(path: str) -> tuple[str, str | None]:
@@ -40,41 +41,64 @@ def main(args: Namespace, **kwargs) -> bool | None:
 
     remote_client = None
 
+    # Each ``MenuOption`` carries visibility gates. The runtime filter
+    # lives in :func:`casino.menu_lib.visible_options`; this file is
+    # the static spec plus the rendering loop.
     options = (
-        ("B", "Blackjack", "blackjack.play"),
-        ("P", "Poker", "poker.play"),
-        ("S", "Slots", "slots"),
-        ("Y", "Yahtzee", "yahtzee.play"),
-        ("C", "Connect", "auth"),
-        ("L", "List tables", "table.list"),
-        ("J", "Join table", "table.join"),
-        ("V", "View table", "table.view"),
-        ("W", "Watch table", "admin.watch"),
-        ("U", "Unwatch table", "admin.unwatch"),
-        ("A", "Bet", "game.bet"),
-        ("H", "Hit", "game.hit"),
-        ("T", "Stand", "game.stand"),
-        ("P", "Play", "game.play"),
-        ("G", "Global msg", "chat.global"),
-        ("K", "Bank", "bank"),
-        ("X", "Disconnect", "auth.disconnect"),
-        ("M", "Maintenance", "maint.main"),
+        # ---- Always available ----
+        MenuOption("c", "Connect",       "auth",            requires_seated=False),
+        MenuOption("l", "List tables",   "table.list",      requires_seated=False),
+        MenuOption("j", "Join table",    "table.join",      requires_seated=False),
+        MenuOption("v", "View table",    "table.view",      requires_seated=False),
+        MenuOption("w", "Watch table",   "admin.watch",     requires_seated=False),
+        MenuOption("u", "Unwatch table", "admin.unwatch",   requires_seated=False),
+        MenuOption("g", "Global msg",    "chat.global",     requires_seated=False),
+        MenuOption("k", "Bank",          "bank",            requires_seated=False),
+        MenuOption("x", "Disconnect",    "auth.disconnect", requires_seated=False, requires_connected=True),
+        MenuOption("m", "Maintenance",   "maint.main",      requires_seated=False),
+        # ---- Seat-gated game actions ----
+        # Bet applies to blackjack and poker; Hit/Stand are bj-only.
+        MenuOption("a", "Bet",     "game.bet",   requires_seated=True, allowed_game_types=frozenset({"blackjack", "poker"})),
+        MenuOption("h", "Hit",     "game.hit",   requires_seated=True, allowed_game_types=frozenset({"blackjack"})),
+        MenuOption("t", "Stand",   "game.stand", requires_seated=True, allowed_game_types=frozenset({"blackjack"})),
+        MenuOption("p", "Play",    "game.play",  requires_seated=True),
+        # ---- Game launchers ----
+        # Hide the launcher for the game the player is already at so the
+        # same letter can't be claimed twice in the choice string.
+        # Poker and Play both use ``P``; resolved via visibility (when
+        # seated at a poker table, Play is the only ``P`` visible).
+        MenuOption("b", "Blackjack", "blackjack.play", requires_seated=False, hide_if_seated_type=frozenset({"blackjack"})),
+        MenuOption("p", "Poker",     "poker.play",     requires_seated=False, hide_if_seated_type=frozenset({"poker"})),
+        MenuOption("s", "Slots",     "slots",          requires_seated=False, hide_if_seated_type=frozenset({"slots"})),
+        MenuOption("y", "Yahtzee",   "yahtzee.play",   requires_seated=False, hide_if_seated_type=frozenset({"yahtzee"})),
     )
+
+    def _menu_state(currentplayer, connected):
+        """Build a duck-typed state for ``menu_lib.visible_options``.
+
+        Combines the player's seat state (queried from the DB by
+        ``CasinoPlayer._refresh_seat``) with the loop's WS-connection
+        state (``remote_client is not None``) so the visibility filter
+        has both pieces of information in one place.
+        """
+        currentplayer._refresh_seat()
+        currentplayer.connected = connected
+        return currentplayer
 
     def mainmenuhelp(**kwargs):
         """Render the main menu options.
 
         Per the spec: util.heading() is called exactly once per display
         of help (one F1 press -> one heading), then the option list is
-        echoed.
+        echoed. The option list is filtered through
+        :func:`casino.menu_lib.visible_options` so the help screen
+        matches the prompt.
         """
         util.heading("main menu")
-        for o in options:
-            opt = o[0]
-            t = o[1]
-            _callback = o[2]
+        state = _menu_state(currentplayer, remote_client is not None)
+        for opt in visible_options(options, state):
             io.echo(
-                f"{{/all}}{{optioncolor}}[{opt}]{{/all}} {{valuecolor}} {t}{{/all}}"
+                f"{{/all}}{{optioncolor}}[{opt.letter.upper()}]{{/all}} {{valuecolor}} {opt.label}{{/all}}"
             )
         io.echo("{F6}{optioncolor}[Q]{/all}{valuecolor} Quit :door:{/all}")
 
@@ -129,9 +153,15 @@ def main(args: Namespace, **kwargs) -> bool | None:
 
                 io.echo()
 
+                # Build the choice string from the same filtered set
+                # the help screen displays. ``QX`` is always appended
+                # so the player can quit from any state (matches the
+                # WS-client menu's ``_DEFAULT = "q"`` invariant).
+                state = _menu_state(currentplayer, remote_client is not None)
+                visible_opts = visible_options(options, state)
                 choices = "QX"
-                for o in options:
-                    choices += o[0]
+                for opt in visible_opts:
+                    choices += opt.letter
                 mainmenuhelp()
 
                 try:
@@ -151,15 +181,15 @@ def main(args: Namespace, **kwargs) -> bool | None:
                         done = True
                         break
                     else:
-                        for o in options:
-                            if o[0] != ch:
+                        for opt in visible_opts:
+                            if opt.letter != ch:
                                 continue
-                            option = o[0]
-                            title = o[1]
-                            module_path = o[2]
+                            letter = opt.letter
+                            title = opt.label
+                            module_path = opt.module_path or ""
                             module, subcommand = parse_module_path(module_path)
                             io.echo(
-                                f"{{optioncolor}}{option}{{normalcolor}} -- {title}{{/all}}"
+                                f"{{optioncolor}}{letter}{{normalcolor}} -- {title}{{/all}}"
                             )
 
                             run_kwargs = dict(kwargs)
@@ -175,6 +205,13 @@ def main(args: Namespace, **kwargs) -> bool | None:
 
                             if module == "auth" and subcommand is None:
                                 remote_client = res
+                                # Track connection state for the
+                                # ``requires_connected`` gate on
+                                # ``[X] Disconnect``. The next loop
+                                # iteration's ``_menu_state`` will pick
+                                # this up.
+                                if res is not None:
+                                    currentplayer.connected = True
                             elif res is not True:
                                 io.echo(
                                     f"error running submodule {module_path}, returned {res=}",
