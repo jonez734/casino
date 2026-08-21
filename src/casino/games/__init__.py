@@ -1,22 +1,16 @@
-"""casino/games/__init__.py
+"""
+casino/games/__init__.py
+Game-type catalog and menu-derivation helpers for the casino.
 
-Backwards-compatible re-export of ``bbsengine6.games``.
-
-The catalog moved to ``bbsengine6.games.base`` and the
-menu-derivation helper lives in ``bbsengine6.games.menu``. This
-module re-exports both so legacy ``from casino.games import ...``
-imports keep working and the helper is reachable through the
-``casino.games`` namespace as well.
+Re-exports the catalog (``GameType``, ``GameAction``, ``GAME_ACTIONS``,
+``get_actions_for_game``, ``BaseGame``) so callers can import them
+from a single namespace, and exposes the menu-derivation helper
+``action_menu_option`` for game modules that want their menu options
+auto-derived from ``GAME_ACTIONS``.
 """
 
-from bbsengine6.games import (
-    GAME_ACTIONS,
-    BaseGame,
-    GameAction,
-    GameType,
-    action_menu_option,
-    get_actions_for_game,
-)
+from .base import GAME_ACTIONS, BaseGame, GameAction, GameType, get_actions_for_game
+from .menu import action_menu_option
 
 __all__ = [
     "BaseGame",

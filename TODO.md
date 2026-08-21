@@ -15,7 +15,7 @@ Module-based design: each game's `__init__.py` declares
 launcher + game-specific actions, and `init()` registers the
 module via `register_module(apis={"menu": menu})`. The shared
 Bet lives in `casino.commands.game.menu()`; per-game actions use
-`bbsengine6.games.action_menu_option(GameAction.X, GameType.Y)`.
+`casino.games.action_menu_option(GameAction.X, GameType.Y)`.
 The visibility filter (`requires_seated`, `allowed_game_types`,
 `hide_if_seated_type`, `requires_connected`) is unchanged. Sort
 order is alphabetical-by-module-name; letter collisions are
@@ -55,7 +55,7 @@ resolved at render time by `visible_options()`.
        `menu()` returning the Blackjack launcher (letter `b`,
        `hide_if_seated_type={"blackjack"}`) plus the four
        seat-gated actions: HIT, STAND, DOUBLE, SPLIT. Use
-       `bbsengine6.games.action_menu_option(GameAction.X,
+       `casino.games.action_menu_option(GameAction.X,
        GameType.BLACKJACK)` for each. `init()` registers
        `apis={"menu": menu}`.
 - [ ] `casino/src/casino/poker/__init__.py` -- add `menu()`
@@ -143,7 +143,7 @@ resolved at render time by `visible_options()`.
        `__init__.py` declares its own options; the registry
        walks the module list at render time); document the
        `casino.client` WS-client menu module; document the
-       new `bbsengine6.games` catalog (`GameType.TICTACTOE`,
+       new `casino.games` catalog (`GameType.TICTACTOE`,
        `GameAction.MOVE / JOINT / RESIGN`); cross-reference
        the dropped `bbsengine6.casino` stub and note its
        policy now lives at `casino.access`.
