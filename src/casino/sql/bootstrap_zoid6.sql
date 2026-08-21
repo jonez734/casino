@@ -1,5 +1,5 @@
--- casino/src/casino/sql/bootstrap_opencode.sql
--- Bootstrap opencode user test database. Idempotent; safe to re-run.
+-- casino/src/casino/sql/bootstrap_zoid6.sql
+-- Bootstrap zoid6 user test database. Idempotent; safe to re-run.
 --
 -- Run as a superuser (postgres or jam). This script lives in the same
 -- directory as the canonical casino driver (casino.sql), so the bare
@@ -8,9 +8,9 @@
 -- casino.sql (schema.sql, player.sql, etc.) also resolve correctly:
 --
 --     cd casino/src/casino/sql
---     psql -d <dbname> -U postgres -f bootstrap_opencode.sql
+--     psql -d <dbname> -U postgres -f bootstrap_zoid6.sql
 --
--- Assumes the 'opencode' PostgreSQL role already exists (created by
+-- Assumes the 'zoid6' PostgreSQL role already exists (created by
 -- `bbsengine6.startup` or by hand).  Existence-guarded everywhere so
 -- missing bank/engine schemas no-op cleanly on a fresh DB; the casino
 -- schema is bootstrapped unconditionally from casino.sql.
@@ -48,7 +48,7 @@ $stats$;
 
 -- ===== Schema owners, table owners, GRANTs (existence-guarded) =====
 -- One DO block iterates over bank/engine/casino and applies the full
--- set of opencode-level grants for every schema that exists.  Table
+-- set of zoid6-level grants for every schema that exists.  Table
 -- ownership is set for every table in each schema (information_schema
 -- query, not a hard-coded list, so newly-added tables get picked up
 -- when the script is re-run).
@@ -59,24 +59,24 @@ DECLARE
 BEGIN
     FOR sname IN SELECT unnest(ARRAY['bank', 'engine', 'casino']) LOOP
         IF EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = sname) THEN
-            EXECUTE format('ALTER SCHEMA %I OWNER TO opencode', sname);
-            EXECUTE format('GRANT USAGE ON SCHEMA %I TO opencode', sname);
+            EXECUTE format('ALTER SCHEMA %I OWNER TO zoid6', sname);
+            EXECUTE format('GRANT USAGE ON SCHEMA %I TO zoid6', sname);
             EXECUTE format(
                 'GRANT SELECT, INSERT, UPDATE, DELETE '
-                'ON ALL TABLES IN SCHEMA %I TO opencode',
+                'ON ALL TABLES IN SCHEMA %I TO zoid6',
                 sname
             );
             EXECUTE format(
-                'GRANT ALL ON ALL TABLES IN SCHEMA %I TO opencode',
+                'GRANT ALL ON ALL TABLES IN SCHEMA %I TO zoid6',
                 sname
             );
             EXECUTE format(
                 'GRANT USAGE, SELECT ON ALL SEQUENCES '
-                'IN SCHEMA %I TO opencode',
+                'IN SCHEMA %I TO zoid6',
                 sname
             );
             EXECUTE format(
-                'GRANT ALL ON ALL SEQUENCES IN SCHEMA %I TO opencode',
+                'GRANT ALL ON ALL SEQUENCES IN SCHEMA %I TO zoid6',
                 sname
             );
 
@@ -88,7 +88,7 @@ BEGIN
                 WHERE table_schema = sname
             LOOP
                 EXECUTE format(
-                    'ALTER TABLE %s OWNER TO opencode', table_rec.qualified
+                    'ALTER TABLE %s OWNER TO zoid6', table_rec.qualified
                 );
             END LOOP;
         END IF;
@@ -148,7 +148,7 @@ BEGIN
         END;
         $bankfn$;
 
-        GRANT EXECUTE ON FUNCTION bank.setup_constraints() TO opencode;
+        GRANT EXECUTE ON FUNCTION bank.setup_constraints() TO zoid6;
     END IF;
 
     IF EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'engine') THEN
@@ -171,7 +171,7 @@ BEGIN
         END;
         $enginefn$;
 
-        GRANT EXECUTE ON FUNCTION engine.setup_member_constraints() TO opencode;
+        GRANT EXECUTE ON FUNCTION engine.setup_member_constraints() TO zoid6;
     END IF;
 END
 $helpers$;
