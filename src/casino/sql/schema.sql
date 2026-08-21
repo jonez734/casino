@@ -1,5 +1,5 @@
 create schema if not exists casino;
-grant usage on schema casino to sysop, web, term, opencode;
+grant usage on schema casino to sysop, web, term, zoid6;
 
 -- Create casino house account if not exists
 -- (This requires bank schema permissions - skip if not available)

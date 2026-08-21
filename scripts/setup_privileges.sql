@@ -1,7 +1,7 @@
 -- casino/scripts/setup_privileges.sql
--- Helper functions to allow opencode to modify constraints (run once as sysop)
+-- Helper functions to allow zoid6 to modify constraints (run once as sysop)
 
--- Function to allow opencode to add/drop constraints on bank.__account
+-- Function to allow zoid6 to add/drop constraints on bank.__account
 -- Run this as sysop/postgres ONE TIME to create the helper
 
 CREATE OR REPLACE FUNCTION bank.setup_constraints()
@@ -49,7 +49,7 @@ BEGIN
 END;
 $$;
 
--- Function to allow opencode to add constraint on engine.__member
+-- Function to allow zoid6 to add constraint on engine.__member
 CREATE OR REPLACE FUNCTION engine.setup_member_constraints()
 RETURNS void
 LANGUAGE plpgsql
@@ -70,21 +70,21 @@ BEGIN
 END;
 $$;
 
--- Grant execute on functions to opencode
-GRANT EXECUTE ON FUNCTION bank.setup_constraints() TO opencode;
-GRANT EXECUTE ON FUNCTION engine.setup_member_constraints() TO opencode;
+-- Grant execute on functions to zoid6
+GRANT EXECUTE ON FUNCTION bank.setup_constraints() TO zoid6;
+GRANT EXECUTE ON FUNCTION engine.setup_member_constraints() TO zoid6;
 
--- Grant table permissions to opencode
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA bank TO opencode;
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA casino TO opencode;
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA engine TO opencode;
+-- Grant table permissions to zoid6
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA bank TO zoid6;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA casino TO zoid6;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA engine TO zoid6;
 
--- Grant sequence permissions to opencode
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA bank TO opencode;
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA casino TO opencode;
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA engine TO opencode;
+-- Grant sequence permissions to zoid6
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA bank TO zoid6;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA casino TO zoid6;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA engine TO zoid6;
 
 -- Grant schema usage
-GRANT USAGE ON SCHEMA bank TO opencode;
-GRANT USAGE ON SCHEMA casino TO opencode;
-GRANT USAGE ON SCHEMA engine TO opencode;
+GRANT USAGE ON SCHEMA bank TO zoid6;
+GRANT USAGE ON SCHEMA casino TO zoid6;
+GRANT USAGE ON SCHEMA engine TO zoid6;

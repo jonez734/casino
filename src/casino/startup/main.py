@@ -68,9 +68,9 @@ def main(args, **kwargs):
 
         # 3. Schema privs — hybrid: schema.sql also issues inline GRANTs,
         #    but we re-assert here so privs survive a schema created by any
-        #    other path (manual psql, bootstrap_opencode.sql, etc.).
+        #    other path (manual psql, bootstrap_zoid6.sql, etc.).
         #    Roles are assumed to already exist (bbsengine6.checkroles).
-        for role in ("web", "term", "sysop", "opencode"):
+        for role in ("web", "term", "sysop", "zoid6"):
             io.echo(
                 f"{{var:labelcolor}}priv casino.{{var:valuecolor}}USAGE"
                 f"{{var:labelcolor}} -> {{var:valuecolor}}{role}{{var:labelcolor}}: ",

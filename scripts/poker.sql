@@ -126,9 +126,9 @@ CREATE INDEX IF NOT EXISTS idx_poker_seat_table ON casino.__poker_seat(table_mon
 CREATE INDEX IF NOT EXISTS idx_poker_seat_player ON casino.__poker_seat(player_moniker);
 CREATE INDEX IF NOT EXISTS idx_poker_stats_player ON casino.__poker_stats(player_moniker);
 
--- Grant permissions to opencode user
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA casino TO opencode;
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA casino TO opencode;
+-- Grant permissions to zoid6 user
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA casino TO zoid6;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA casino TO zoid6;
 
 -- Add poker variant and betting structure to existing table if not present
 DO $$
