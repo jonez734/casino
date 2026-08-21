@@ -20,6 +20,7 @@ from typing import Any, Dict, Optional
 
 from bbsengine6 import io, util
 from casino.access import access as _casino_access
+from casino.menu_lib import MenuOption, visible_options
 
 from casino.commands._auth import _require_authenticated_client
 
@@ -231,28 +232,28 @@ def slot_history(args: argparse.Namespace, client=None, **kwargs) -> bool:
     return True
 
 
-# Each entry: (letter, inline_short, long_label, requires_seated, allowed_game_types).
 # Slots submenu exposes [S]pin / [P]aytable (both seat-gated to a slots table)
 # and [H]istory / [Q]uit (always available — slot_history is a player-scope
 # query on the server, see api/handler.py:_handle_history_msg).
 _SLOTS_OPTIONS_SPEC = (
-    ("s", "pin",     "pin (place a bet and pull the lever)", True,  frozenset({"slots"})),
-    ("p", "aytable", "aytable (show the table's paytable)",  True,  frozenset({"slots"})),
-    ("h", "istory",  "istory (list your recent spins)",      False, None),
-    ("q", "uit",     "uit to main menu",                     False, None),
+    MenuOption("s", "pin     (place a bet and pull the lever)", requires_seated=True, allowed_game_types=frozenset({"slots"})),
+    MenuOption("p", "aytable (show the table's paytable)",     requires_seated=True, allowed_game_types=frozenset({"slots"})),
+    MenuOption("h", "istory  (list your recent spins)",         requires_seated=False),
+    MenuOption("q", "uit     (back to main menu)",              requires_seated=False),
 )
 
 
 def _visible_slots_options(client):
-    """Yield ``(letter, short, long_)`` tuples the player may pick."""
-    seated = bool(client and client.current_table_moniker)
-    gt = (getattr(client, "current_table_game_type", None) or "").strip() or None
-    for letter, short, long_, needs_seat, types in _SLOTS_OPTIONS_SPEC:
-        if needs_seat and not seated:
-            continue
-        if needs_seat and types and gt not in types:
-            continue
-        yield (letter, short, long_)
+    """Yield ``(letter, label)`` tuples the player may pick.
+
+    Thin shim around :func:`casino.menu_lib.visible_options`. Kept so
+    callers (including tests) that import ``_visible_slots_options``
+    from this module keep working unchanged.
+    """
+    return [
+        (opt.letter, opt.label)
+        for opt in visible_options(_SLOTS_OPTIONS_SPEC, client)
+    ]
 
 
 def _render_help(client=None, **kwargs) -> None:
@@ -263,11 +264,11 @@ def _render_help(client=None, **kwargs) -> None:
     filtered against the player's seat so it matches the prompt.
     """
     util.heading("Slots")
-    for letter, _short, long_ in _visible_slots_options(client):
+    for letter, label in _visible_slots_options(client):
         # f-string ``{{`` collapses to literal ``{`` so ``io.echo``
         # sees ``{var:optioncolor}`` / ``{var:labelcolor}`` markup.
         io.echo(
-            f"{{var:optioncolor}}[{letter.upper()}]{{var:labelcolor}}{long_}"
+            f"{{var:optioncolor}}[{letter.upper()}]{{var:labelcolor}}{label}"
         )
 
 
@@ -298,13 +299,13 @@ def menu(args: argparse.Namespace, client=None, **kwargs):
         return True
 
     util.heading("Slots")
-    visible = list(_visible_slots_options(client))
-    option_str = ",".join(letter for letter, _short, _long in visible)
+    visible = _visible_slots_options(client)
+    option_str = ",".join(letter for letter, _label in visible)
     inline = "".join(
         # f-string ``{{`` collapses to literal ``{`` so ``io.echo``
         # sees ``{var:optioncolor}`` / ``{var:labelcolor}`` markup.
-        f"{{var:optioncolor}}[{letter.upper()}]{{var:labelcolor}}{short}"
-        for letter, short, _long in visible
+        f"{{var:optioncolor}}[{letter.upper()}]{{var:labelcolor}}{label}"
+        for letter, label in visible
     )
     _render_help(client=client)
     cmd = io.inputchoice(
