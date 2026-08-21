@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### build: depend on `clean` to wipe stale egg-info before each `python -m build`
+
+The root `Makefile` `build` target (`casino/Makefile:63-64`)
+now declares `clean` as a prerequisite so `casino/build/`,
+`casino/dist/`, `casino/*.egg-info/`,
+`casino/src/*.egg-info/`, and `casino/src/casino/*.egg-info/`
+are wiped before every `python -m build` invocation. This
+sidesteps the setuptools SOURCES.txt absolute-path failure
+mode that surfaces when `src/casino.egg-info/SOURCES.txt`
+carries forward absolute paths from a prior run (the working
+tree currently has a stale `src/casino.egg-info/` from a
+recent build).
+
+`casino/Makefile:clean` was extended from `-rm *~` +
+`make -C src clean` to also wipe `build/`, `dist/`,
+`*.egg-info`, and the standard pytest / ruff / mypy cache
+directories, mirroring the pattern shipped in
+`zoid6/src/Makefile:118-124`. The `buildclean` target in
+`src/casino/Makefile:32-33` (which already wipes
+`build/ dist/ *.egg-info` for that subdir) is unchanged and
+remains available for direct invocation.
+
 ### deploy-tui: install from `/srv/repo/casino/` wheel by default; `DEPLOY_EDITABLE=1` for editable
 
 Part of the cross-monorepo Phase 1 work in `deploytool`'s
