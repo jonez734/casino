@@ -31,7 +31,7 @@ def _require_authenticated_client(client: Any, op: str) -> Optional[Any]:
 
     Otherwise prints a single-line error and returns ``None``. The
     caller short-circuits on ``None``. Independent of (and
-    complementary to) the ``bbsengine6.casino.access`` /
+    complementary to) the ``casino.access`` /
     ``bbsengine6.bank.access`` policy gate the wire op itself runs
     through: if the local CLI is missing the auth handshake, the
     server-side gate would deny anyway, but we'd rather short-circuit

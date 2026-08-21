@@ -41,7 +41,7 @@ class YahtzeeServiceHandler:
 
     The handler carries the same optional token wiring as
     ``casino.api.handler.BaseService`` so the per-op
-    :func:`bbsengine6.casino.access` decision is enforced through
+    :func:`casino.access` decision is enforced through
     the shared five-gate pipeline. When the wiring is absent
     (door-mode / legacy tests) the token gates become no-ops and
     authorization falls back to session-based lookup.

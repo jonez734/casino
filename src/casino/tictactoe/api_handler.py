@@ -29,7 +29,7 @@ class TictactoeServiceHandler:
     bank + DB work; the handler authenticates, dispatches, and
     broadcasts.
 
-    Token-aware: the per-op :func:`bbsengine6.casino.access` decision
+    Token-aware: the per-op :func:`casino.access` decision
     is enforced through the shared five-gate pipeline in
     ``casino.api._auth.check_access``. When the optional token
     wiring (``secret`` / ``token_store`` / ``instance_id``) is not

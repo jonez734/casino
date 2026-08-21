@@ -5,7 +5,7 @@
 # authorization: every per-op handler delegates to the same five gates
 # in order -- session resolve, wire-token validation, session-token
 # validation, wire-shape invariants, then
-# ``bbsengine6.casino.access()`` policy.
+# ``casino.access()`` policy.
 #
 # Casino owns its own auth copy (token codec, envelope helpers, the
 # pipeline helpers) instead of importing ``bed.api.*`` because the
@@ -36,7 +36,7 @@
 #      envelope codes are a wire-protocol concern. Helpers for the
 #      common cases (``moniker`` required, positive ``amount``, etc.)
 #      live in :func:`_validate_shape` for ops that share a shape.
-#   5. ``bbsengine6.casino.access()`` policy decision.
+#   5. ``casino.access()`` policy decision.
 #
 # When the service is constructed without ``secret`` /
 # ``token_store`` / ``instance_id`` the token gates become no-ops
@@ -179,7 +179,7 @@ class _CasinoSessionState:
 
     Casino's standalone ``CasinoSessionManager`` stores per-session
     state as plain dicts (``{"moniker": ..., "is_sysop": ...}``) so
-    the existing door-mode handler code keeps working. ``bbsengine6.casino.access``
+    the existing door-mode handler code keeps working. ``casino.access``
     reads state via ``getattr(session, "moniker")`` /
     ``getattr(session, "is_sysop")`` / ``getattr(session, "table_moniker")``
     so we wrap the dict in this adapter for the access() call.
@@ -441,7 +441,7 @@ def _get_or_bind_session_for(
     ``state.auth_service_token`` so subsequent defense-in-depth
     checks see a consistent snapshot. The validated claims are
     stashed on ``message["claims"]`` so the downstream
-    :func:`bbsengine6.casino.access` call can prefer claim-derived
+    :func:`casino.access` call can prefer claim-derived
     ``moniker`` / ``is_sysop`` over the in-memory session attributes.
 
     Returns ``(state, err)`` -- ``err`` is non-None when the WS has
@@ -517,7 +517,7 @@ def _get_or_bind_session_for(
 
 
 def _validate_shape(op: str, message: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """Validate the wire-shape invariants ``bbsengine6.casino.access``
+    """Validate the wire-shape invariants ``casino.access``
     intentionally does not check. Returns ``None`` on success or an
     error envelope on failure. Per-op shape that lives in the handler
     (slot spin ``bet``, yahtzee dice counts, etc.) stays there.
@@ -707,7 +707,7 @@ def check_access(
 
     # Normalize wire shape for the policy: ``kick_player`` carries
     # ``table_monikers`` (plural list) on the wire, but the policy in
-    # :mod:`bbsengine6.casino` looks at ``table_moniker`` (singular).
+    # :mod:`casino` looks at ``table_moniker`` (singular).
     # The handler's per-table loop re-runs the policy with each
     # table's owner, so the gate only needs the first entry to make
     # an authentication-level decision.
@@ -743,7 +743,7 @@ def check_access(
 
 # ----- Map wire-protocol type -> domain verb --------------------------
 
-# The casino router owns the verb vocabulary; ``bbsengine6.casino.access``
+# The casino router owns the verb vocabulary; ``casino.access``
 # takes the domain verb. Each handler's message dispatch translates
 # ``message["type"]`` to the right ``op`` before calling
 # :func:`check_access`.

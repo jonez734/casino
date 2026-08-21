@@ -117,7 +117,7 @@ class TestDispatch:
             MagicMock(), MagicMock(), "/",
             {"type": "tictactoe_move", "cell": 0},
         ))
-        # After the bank-style ``bbsengine6.casino.access()``
+        # After the bank-style ``casino.access()``
         # migration the seat-at check lives in the policy. An
         # authenticated session that is not seated at the target
         # table is denied as ``forbidden`` (the bank equivalent).

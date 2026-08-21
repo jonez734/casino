@@ -129,7 +129,7 @@ class TestCommandsSlotsMainDispatch(unittest.TestCase):
 class TestSlotSpinUsesClient(unittest.TestCase):
     """commands/slots/lib.py:slot_spin() must go through the WS client
     so the bearer token is auto-injected on every wire call. The
-    access gate uses ``bbsengine6.casino.access`` so the local CLI
+    access gate uses ``casino.access`` so the local CLI
     agrees with the server's per-op authorization.
     """
 

@@ -3,7 +3,7 @@
 #
 # Casino's pre-migration test suite stubbed the session manager via
 # ``sessions.get_moniker.return_value = "alice"``. After the migration
-# to the bank-style ``bbsengine6.casino.access()`` pipeline, the
+# to the bank-style ``casino.access()`` pipeline, the
 # per-op ``_check_access`` looks the session up via
 # ``sessions.get_by_websocket(str(ws.id))`` and expects an
 # attribute-style state object (``bed.api.session.SessionState`` or
@@ -31,7 +31,7 @@ def make_mock_state(
     session_id: str = "s1",
     websocket_id: str = "ws-1",
 ) -> SimpleNamespace:
-    """Build a ``SimpleNamespace`` that satisfies ``bbsengine6.casino.access``'s
+    """Build a ``SimpleNamespace`` that satisfies ``casino.access``'s
     attribute reads (``state.moniker`` / ``state.is_sysop`` /
     ``state.table_moniker``) and the casino handler's
     ``getattr(state, "...")`` probes.

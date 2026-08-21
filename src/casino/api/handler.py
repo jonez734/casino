@@ -405,7 +405,7 @@ class TableServiceHandler(BaseService):
         if not table_moniker:
             return {"type": "error", "code": "invalid_request", "message": "moniker required"}
 
-        # Resolve the table owner from the DB so ``bbsengine6.casino.access``
+        # Resolve the table owner from the DB so ``casino.access``
         # can compare it against the session moniker for non-sysop ops.
         try:
             owner_table = self.table_service.list_tables(None, is_sysop=True)

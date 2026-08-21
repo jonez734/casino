@@ -1,5 +1,153 @@
 # Casino - Not Implemented Features
 
+## Refactor casino menu registrations onto `bbsengine6.menu_next`
+
+The hard-coded 19-entry tuple in `casino/main.py` and the 15-entry
+tuple in `casino/client/menu.py` move to per-game `menu()` methods
+on each bbsengine6 module. The menu registry walks the module list
+at render time. The parallel `menu_next.register_menu_options(
+name, ...)` API and the "registrar name" concept go away. The
+legacy `bbsengine6.casino` authorization stub is already dropped
+in this branch.
+
+Module-based design: each game's `__init__.py` declares
+`def menu(args, **kw) -> tuple[MenuOption, ...]`, returns the
+launcher + game-specific actions, and `init()` registers the
+module via `register_module(apis={"menu": menu})`. The shared
+Bet lives in `casino.commands.game.menu()`; per-game actions use
+`bbsengine6.games.action_menu_option(GameAction.X, GameType.Y)`.
+The visibility filter (`requires_seated`, `allowed_game_types`,
+`hide_if_seated_type`, `requires_connected`) is unchanged. Sort
+order is alphabetical-by-module-name; letter collisions are
+resolved at render time by `visible_options()`.
+
+- [ ] `bbsengine6/py/src/bbsengine6/menu_next/registry.py` --
+       rewrite `registered_options(name=None, args=None, **kw)`
+       to walk `bbsengine6.module.get_all_modules()`, call each
+       module's `menu` api, and return the union sorted by
+       module name. Drop `register_menu_options()` and the
+       private `_OPTIONS` list. `clear_registry()` unregisters
+       every module that exposes a `menu` api (test-only).
+- [ ] `bbsengine6/py/src/bbsengine6/menu_next/__init__.py` and
+       `bbsengine6/py/src/bbsengine6/__init__.py` -- drop the
+       `register_menu_options` re-export from both.
+- [ ] `bbsengine6/py/tests/test_menu_next_registry.py` --
+       rewrite for the module-based shape. Tests register a
+       module via `register_module(name=..., apis={"menu":
+       static_fn})`, then call `registered_options()` and
+       assert the union / per-module filter / unknown-name
+       empty / thread-safety smoke. Autouse fixture calls
+       `clear_registry()` after each test.
+- [ ] `bbsengine6/py/tests/test_menu_next_visibility.py` --
+       no change; `visible_options` is unaffected.
+- [ ] `casino/src/casino/__init__.py` -- replace the inline
+       `menu_next.register_menu_options("casino.lib", ...)`
+       call (staged in this branch) with a
+       `def menu(args, **kw) -> tuple[MenuOption, ...]`
+       method that returns the same 11 door-mode core options:
+       Connect (`c`), List tables (`l`), Join table (`j`), View
+       table (`v`), Watch table (`w`), Unwatch table (`u`),
+       Global msg (`g`), Bank (`k`), Disconnect (`x`,
+       `requires_connected=True`), Maintenance (`m`), Play
+       (`p`, `requires_seated=True`). `init()` registers the
+       module with `apis={"menu": menu}`.
+- [ ] `casino/src/casino/blackjack/__init__.py` -- add
+       `menu()` returning the Blackjack launcher (letter `b`,
+       `hide_if_seated_type={"blackjack"}`) plus the four
+       seat-gated actions: HIT, STAND, DOUBLE, SPLIT. Use
+       `bbsengine6.games.action_menu_option(GameAction.X,
+       GameType.BLACKJACK)` for each. `init()` registers
+       `apis={"menu": menu}`.
+- [ ] `casino/src/casino/poker/__init__.py` -- add `menu()`
+       returning the Poker launcher (letter `p`,
+       `hide_if_seated_type={"poker"}`). No game-specific
+       actions in v1; CHECK / CALL / RAISE / FOLD / ALLIN stay
+       out of the registry.
+- [ ] `casino/src/casino/slots/__init__.py` -- add `menu()`
+       returning the Slots launcher (letter `s`,
+       `hide_if_seated_type={"slots"}`) plus the seat-gated
+       SPIN action.
+- [ ] `casino/src/casino/yahtzee/__init__.py` -- add `menu()`
+       returning the Yahtzee launcher (letter `y`,
+       `hide_if_seated_type={"yahtzee"}`) plus the seat-gated
+       ROLL and LOCK actions.
+- [ ] `casino/src/casino/commands/game/__init__.py` -- add
+       `menu()` returning the shared Bet option (letter `a`,
+       `requires_seated=True`,
+       `allowed_game_types={"blackjack", "poker"}`). Dispatch
+       still goes through `casino.commands.game`; the registry
+       just advertises it.
+- [ ] `casino/src/casino/commands/tictactoe/` (NEW) -- create
+       the shim package, mirroring
+       `casino/src/casino/commands/blackjack/`. New
+       `__init__.py` registers the module and exposes `menu()`.
+       New `lib.py` dispatches to the existing
+       `casino.tictactoe` service. `menu()` returns the
+       TicTacToe launcher (letter `n`,
+       `hide_if_seated_type={"tictactoe"}`) plus the three
+       seat-gated actions: MOVE (`m`), JOINT (`j`), RESIGN
+       (`g`).
+- [ ] `casino/src/casino/client/__init__.py` (NEW) -- promote
+       `casino.client` to a registered bbsengine6 module. New
+       `__init__.py` exposes `menu()` returning the 15
+       WS-client options (word-stem labels like `et`, `it`,
+       `tand`, plus Create / Update / Leave, plus the four
+       TicTacToe client actions Move / JoinT / Resign / TicTac)
+       and an `init()` that registers with
+       `apis={"menu": menu}`. WS-client letters deliberately
+       differ from the door-mode letters; each consumer filters
+       on its own module name via `registered_options(name=
+       "casino.client")`.
+- [ ] `casino/src/casino/client/menu.py` -- drop the hard-
+       coded `_OPTIONS_SPEC` tuple (lines 22-38). Replace with
+       `_OPTIONS_SPEC = tuple(menu_next.registered_options(
+       "casino.client"))`. Update the import on line 10.
+- [ ] `casino/src/casino/main.py` -- drop the 19-entry hard-
+       coded `options = (...)` tuple (lines 47-74). Replace
+       with `options = tuple(menu_next.registered_options())`.
+       Update the import on line 6 to drop `MenuOption,
+       visible_options` and just import `menu_next`. Update
+       the two `visible_options(...)` call sites (lines 99,
+       161) to `menu_next.visible_options(...)`.
+- [ ] `casino/src/casino/commands/slots/lib.py:23` -- update
+       the `from casino.menu_lib import MenuOption,
+       visible_options` import to `from bbsengine6 import
+       MenuOption, menu_next`. Update the `visible_options(...)`
+       call site to `menu_next.visible_options(...)`.
+- [ ] `casino/tests/test_main_menu_visibility.py` -- rewrite.
+       The current AST walker that grepped `main.py` for the
+       tuple literal goes away. The new test boots the registry
+       by calling every game module's `init(args)` (which
+       registers the module + menu), then calls
+       `menu_next.registered_options()`, and asserts the
+       expected set of `(letter, label, module_path, gates)`
+       per state.
+- [ ] `casino/tests/test_commands.py` -- update
+       `TestMainmenuOptions`, `TestMainmenuHelpWiring`,
+       `TestMainmenuDuplicateP`, and `TestSlotsMenuOptions`
+       to use the registry instead of the hard-coded spec.
+- [ ] `casino/tests/test_menu_registration.py` (NEW) -- per-
+       game registration contract test. For each game's
+       `init(args)`, call
+       `menu_next.registered_options("casino.<game>")` and
+       assert the expected set of `MenuOption`s (letter, label,
+       module_path, visibility gates).
+- [ ] `casino/src/casino/menu_lib.py` -- delete once every
+       consumer (`main.py`, `client/menu.py`,
+       `commands/slots/lib.py`, tests) has migrated off it.
+       `MenuOption` and `visible_options` now live in
+       `bbsengine6.menu_next`.
+- [ ] `casino/handbook/specs/` and `bbsengine6/handbook/` --
+       update menu-related docs / specs in both repos:
+       describe the module-based registry (each game's
+       `__init__.py` declares its own options; the registry
+       walks the module list at render time); document the
+       `casino.client` WS-client menu module; document the
+       new `bbsengine6.games` catalog (`GameType.TICTACTOE`,
+       `GameAction.MOVE / JOINT / RESIGN`); cross-reference
+       the dropped `bbsengine6.casino` stub and note its
+       policy now lives at `casino.access`.
+
 ## Refactor `CasinoClient` transport onto `BedConnection`
 
 - [ ] `CasinoClient.connect`/`disconnect`/`send`/`receive`/

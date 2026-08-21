@@ -4,12 +4,12 @@
 Mirrors the structure of ``bed/tests/test_auth_integration.py`` at the
 casino layer:
 
-- ``bbsengine6.casino.access()`` is the single source of truth for
+- ``casino.access()`` is the single source of truth for
   the per-op policy (verified by
   ``casino/tests/test_casino_access.py``).
 - ``casino.api._auth.check_access()`` runs the five-gate pipeline
   in order -- session resolve, wire-token validate, session-token
-  validate, shape, then ``bbsengine6.casino.access()`` (verified by
+  validate, shape, then ``casino.access()`` (verified by
   ``bed/tests/test_casino_service.py``).
 - ``casino.auth._connect_with_token()`` is the CLI entry point that
   binds a saved bearer token to a freshly-opened WebSocket via
@@ -382,11 +382,11 @@ def test_connect_falls_back_to_legacy_prompt_when_token_file_unset():
 
 
 # ---------------------------------------------------------------------
-# bbsengine6.casino.access() end-to-end with token-derived claims
+# casino.access() end-to-end with token-derived claims
 
 
 def test_casino_access_uses_token_claims_for_kick_player_authorization():
-    """A ``bbsengine6.casino.access("kick_player")`` decision driven
+    """A ``casino.access("kick_player")`` decision driven
     from a verified token's claims (with a synthetic session whose
     attributes match the claims) gates correctly: a sysop claim
     passes; a non-owner non-sysop claim denies; the in-message
@@ -617,7 +617,7 @@ def test_check_access_allows_list_tables_without_token():
         _, err = check_access(self_ref, ws, "list_tables", {})
 
     # Either no error (allow), or a policy denial (forbidden /
-    # not_authenticated from bbsengine6.casino.access) -- but
+    # not_authenticated from casino.access) -- but
     # *NOT* the gate's not_authenticated.
     assert err is None or err["code"] != "not_authenticated"
 

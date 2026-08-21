@@ -1,7 +1,7 @@
 # commands/game/lib.py
 # Game command functions for the casino CLI.
 #
-# Authorization is delegated to ``bbsengine6.casino.access`` -- the
+# Authorization is delegated to ``casino.access`` -- the
 # module-level policy the casino WS handler in
 # :mod:`casino.api.handler` uses -- so the local CLI agrees with the
 # server's per-op authorization. Game actions are table-bound so the
@@ -18,7 +18,7 @@ from bbsengine6 import io
 from casino.access import access as _casino_access
 
 
-# Subcommand -> domain verb understood by ``bbsengine6.casino.access``.
+# Subcommand -> domain verb understood by ``casino.access``.
 # The casino module owns the verb vocabulary; this dict is the only
 # place the CLI needs to maintain the translation.
 _SUBCMD_TO_OP: Dict[str, str] = {
@@ -37,7 +37,7 @@ def get_client():
 
 
 def _make_session(args: argparse.Namespace, moniker: Optional[str] = None) -> SimpleNamespace:
-    """Build a SessionState-like stub for ``bbsengine6.casino.access``.
+    """Build a SessionState-like stub for ``casino.access``.
 
     Precedence for ``.moniker``: explicit argument > claim-derived
     ``args._session_moniker`` > explicit ``args.moniker`` flag.
@@ -81,7 +81,7 @@ def _check_access(
     table_moniker: Optional[str] = None,
     **message_fields: Any,
 ) -> bool:
-    """Gate a game CLI subcommand through ``bbsengine6.casino.access``.
+    """Gate a game CLI subcommand through ``casino.access``.
 
     Returns True if access is allowed, False otherwise. On False,
     prints a one-line error so the caller can short-circuit.

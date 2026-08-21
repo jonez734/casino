@@ -113,7 +113,7 @@ class TestDispatch:
             MagicMock(), MagicMock(), "/", {"type": "yahtzee_roll"},
         ))
         assert result["type"] == "error"
-        # After the bank-style ``bbsengine6.casino.access()``
+        # After the bank-style ``casino.access()``
         # migration the seat-at check lives in the policy, so an
         # authenticated session that is not seated at the target
         # table is denied as ``forbidden`` (the bank equivalent).

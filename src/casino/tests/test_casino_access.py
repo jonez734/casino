@@ -7,7 +7,7 @@ decision matrix. These are unit-only: no DB connection required.
 Moved from ``bbsengine6/py/tests/test_casino_access.py`` to live
 alongside the casino code that consumes the policy; the underlying
 implementation under test now lives in ``casino.access`` (it was
-moved out of ``bbsengine6.casino`` when that stub was dropped).
+moved out of ``casino`` when that stub was dropped).
 """
 
 from __future__ import annotations

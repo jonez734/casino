@@ -3,8 +3,8 @@
 # connected ``CasinoClient`` so ``CasinoClient.send`` auto-injects the
 # bearer token on every wire call. Mirrors ``commands/bank/lib.py``
 # (which uses ``bbsengine6.bank.access``) and ``commands/table/lib.py``
-# (which uses ``bbsengine6.casino.access``); the gate here uses
-# ``bbsengine6.casino.access`` so the local CLI's authorization agrees
+# (which uses ``casino.access``); the gate here uses
+# ``casino.access`` so the local CLI's authorization agrees
 # with the WS handler in :mod:`casino.api.handler`.
 #
 # The legacy door-mode play loop lives in ``casino/slots/play.py`` and
@@ -25,7 +25,7 @@ from casino.menu_lib import MenuOption, visible_options
 from casino.commands._auth import _require_authenticated_client
 
 
-# Subcommand -> domain verb understood by ``bbsengine6.casino.access``.
+# Subcommand -> domain verb understood by ``casino.access``.
 # The casino module owns the verb vocabulary; this dict is the only
 # place the CLI needs to maintain the translation.
 _SUBCMD_TO_OP: Dict[str, str] = {
@@ -44,7 +44,7 @@ def get_client():
 def _make_session(
     args: argparse.Namespace, moniker: Optional[str] = None
 ) -> SimpleNamespace:
-    """Build a SessionState-like stub for ``bbsengine6.casino.access``.
+    """Build a SessionState-like stub for ``casino.access``.
 
     Precedence for ``.moniker``: explicit argument > claim-derived
     ``args._session_moniker`` (set after a successful token-file
@@ -101,7 +101,7 @@ def _check_access(
     table_moniker: Optional[str] = None,
     **message_fields: Any,
 ) -> bool:
-    """Gate a slots CLI subcommand through ``bbsengine6.casino.access``.
+    """Gate a slots CLI subcommand through ``casino.access``.
 
     Returns True if access is allowed, False otherwise. On False,
     prints a one-line error so the caller can short-circuit.
@@ -281,7 +281,7 @@ def menu(args: argparse.Namespace, client=None, **kwargs):
     option that does run goes through the WS client, so the bearer
     token is auto-injected on every wire call (see
     ``CasinoClient.send``) and the server-side
-    ``bbsengine6.casino.access`` re-verifies it.
+    ``casino.access`` re-verifies it.
 
     The visible option set is filtered against
     ``client.current_table_moniker`` and
