@@ -301,7 +301,7 @@ performs the casino-specific bootstrap work that depends on the
    `opencode` and `manage_schema_priv("grant", "create",
    "casino", "sysop")`. Re-issuing here means privs survive
    any path that may have skipped `schema.sql`'s inline
-   grants (manual psql, `bootstrap_opencode.sql`, etc.).
+   grants (manual psql, `bootstrap_zoid6.sql`, etc.).
 5. **Class import** — 26 entries in FK resolution order.
    Migration files (`hidden_table_migration.sql`,
    `table_shoe_migration.sql`) are deliberately omitted; their

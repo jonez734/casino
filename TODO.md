@@ -217,7 +217,7 @@ resolved at render time by `visible_options()`.
 
 ## `bootstrap_opencode.sql` resets `casino` schema ownership back to `opencode`
 
-- [ ] Remove `casino` from the schema-owner loop in
+- [x] Remove `casino` from the schema-owner loop in
       `casino/src/casino/sql/bootstrap_opencode.sql:60-62` so that
       running the out-of-band opencode bootstrap script does
       not undo `casino.startup.checkcasino`'s reassignment to
@@ -228,13 +228,26 @@ resolved at render time by `visible_options()`.
       to work; the casino schema should stay `zoid6`-owned so
       the SECURITY DEFINER helper `manage_schema_priv` can
       GRANT on it.
-- [ ] Update the docstring at
+- [x] Update the docstring at
       `casino/src/casino/sql/bootstrap_opencode.sql:1-16` so the
       "Schema owners, table owners, GRANTs" section reflects the
       change. The follow-up is idempotent on re-run (running
       `casino.startup.main` again would re-fix the ownership),
       but pinning it once at the source avoids the silent
       dependency on re-running casino startup.
+
+**Closed.** Resolved by the `bootstrap_opencode.sql` →
+`bootstrap_zoid6.sql` rename: the script now issues
+`ALTER SCHEMA ... OWNER TO zoid6` and `GRANT ... TO zoid6`
+across `bank`, `engine`, and `casino` (see
+`casino/src/casino/sql/bootstrap_zoid6.sql:60-95`). The
+`checkcasino` reassignment is no longer undone by an out-of-band
+bootstrap run, and `casino.startup.main` no longer needs the
+re-run fallback. The `opencode` role is now referenced nowhere
+in the casino SQL layer; the test fixtures that mention
+`opencode` (e.g. `test_startup_checkcasino.py`) intentionally
+simulate a pre-migration prior owner for the BC reassignment
+path and stay as-is.
 
 ## `casino.lib.runmodule` kwarg: rename `prefix=` to `package=`
 
