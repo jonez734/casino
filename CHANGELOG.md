@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### test(casino): create-member + casino-auth prompt integration tests
+
+New file `casino/src/casino/tests/test_member_create_and_casino_auth.py`
+exercises the create-member → casino-auth round-trip in 5 tests,
+all marked `pytest.mark.integration`:
+
+- `test_a1_create_via_member_setpassword` — insert a fresh
+  `engine.__member` row, set the password through
+  `bbsengine6.member.setpassword` (the public API the
+  `console.member.add` flow uses), then round-trip the plaintext
+  through `bbsengine6.member.checkpassword` to prove
+  `crypt(plain, gen_salt('bf'))` matches.
+- `test_a2_create_via_raw_crypt_sql` — same shape but inserts
+  with `password = crypt('pw', gen_salt('bf'))` inline (the path
+  `test_blackjack_flow.py` uses directly), again asserting
+  `checkpassword` returns True.
+- `test_prompt_sends_moniker_and_password` — pins the wire shape
+  `casino.auth.auth_prompt` emits: with `io.inputstring` and
+  `util.inputpassword` mocked, `client.send.await_args` is
+  exactly `{"type": "auth", "moniker": ..., "password": "pw"}`.
+- `test_b1_login_through_casino_prompt_setpassword_path` — drives
+  `casino.auth.auth_prompt` against an in-process bed server
+  using the real `PasswordCredentialProvider` (which calls
+  `bbsengine6.member.checkpassword` for real); the member
+  created in `(a.1)` is accepted, server replies
+  `auth_result.success=True` with a minted token.
+- `test_b2_login_through_casino_prompt_raw_crypt_sql_path` —
+  same e2e flow but recreates the member via the `(a.2)` raw
+  `crypt()` SQL path so the e2e covers both create paths
+  symmetrically.
+
+Each test uses a unique `alice_<label>_<secrets.token_hex(3)>`
+moniker so reruns against a dirty DB self-heal. The four
+DB-backed tests `skipTest(...)` when `engine.__member` is not
+reachable; the mocked (b.1) prompt test runs regardless.
+
+A self-contained `_BedServerHarness` keeps an in-process bed
+`WebSocketServer` in a daemon thread with its own asyncio loop
+(mirrors the pattern at
+`bed/src/bed/tests/_auth_helpers.py:BedServerContext`); shutdown
+cancels every task on the loop instead of awaiting
+`WebSocketServer.stop()` so the close-handshake never hangs.
+
 ### build: depend on `clean` to wipe stale egg-info before each `python -m build`
 
 The root `Makefile` `build` target (`casino/Makefile:63-64`)
