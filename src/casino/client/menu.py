@@ -102,9 +102,12 @@ def menu(client: "CasinoClient | None" = None, **kwargs) -> str | None:
             else ""
         )
     )
-    inline = "".join(
+    inline = "{f6}".join(
         # f-string ``{{`` collapses to literal ``{`` so ``io.echo``
         # sees ``{var:optioncolor}`` / ``{var:labelcolor}`` markup.
+        # ``{f6}`` between options puts each entry on its own line so
+        # the long option list is readable instead of one horizontal
+        # wall of ``[T]ables,[C]reate,...``.
         f"{{var:optioncolor}}[{letter.upper()}]{{var:labelcolor}}{label}"
         for letter, label in visible
     )
