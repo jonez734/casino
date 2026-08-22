@@ -7,6 +7,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### fix(casino): wire --token-file through merged CLI + CasinoClient.run
+
+The bearer-token modules (`CasinoClient._bearer_token`,
+`CasinoClient.send` auto-injection, `casino.auth._connect_with_token`)
+all landed in earlier commits, but the merged `casino` CLI never
+registered `--token-file` on its argparse, and
+`CasinoClient.run()` never consulted `args.token_file`. So `casino
+--token-file <path>` failed with `argparse: unrecognized arguments`
+even when a valid token file was supplied, and `casino` (with no
+flag) always fell through to the legacy prompt flow regardless of
+`$XDG_RUNTIME_DIR/bed.token`.
+
+This change wires the token-file flow end-to-end on the merged CLI:
+
+- `casino.lib.buildargs()` now calls `casino.auth.buildargs(parser=parser)`
+  so `--token-file` lands on the merged CLI's argparse. The flag mirrors
+  `bed.tools._token.build_token_file_arg` so the default path and
+  perm-check semantics are shared with `bed tools bank` /
+  `bed tools auth login`.
+- `casino.__main__.main()` resolves the default token-file path
+  via `_token.ensure_token_file_arg(args)` after argparse parsing,
+  then runs `_resolve_token_file(args)` which silently clears
+  `args.token_file` to `None` when the resolved file is empty
+  or missing — so `casino` falls through to the prompt cleanly
+  before the operator has run `bed auth login`.
+- `casino.auth._connect_with_token` now takes an optional
+  `client=` kwarg: when supplied (by `CasinoClient.run`), the
+  supplied client is mutated in place (loop, WS, reconnect reply
+  state). The default `client=None` shape is preserved for the
+  BBS-dispatch path (`casino.auth.connect`) and its existing tests.
+- `CasinoClient.run()` now dispatches to
+  `auth._connect_with_token(self.args, host, port, client=self)`
+  when `args.token_file` is set; otherwise the legacy prompt
+  flow (`self.connect()` → `self.cmd_auth()`) runs unchanged.
+
+New regression pins in
+`src/casino/tests/test_casino_cli_token.py`:
+- `casino.lib.buildargs()` registers `--token-file`.
+- `CasinoClient.run()` dispatches to `_connect_with_token` when
+  `args.token_file` points at a non-empty file (and does NOT
+  call `self.cmd_auth`).
+- `CasinoClient.run()` falls through to the prompt when
+  `args.token_file is None`.
+- `_resolve_token_file` clears `args.token_file` when the
+  default path resolves to an empty / missing file.
+- `_connect_with_token(args, host, port, client=existing)`
+  mutates `existing` in place (no second client constructed).
+
+See `casino/docs/AUTH.md` for the full casino-side contract.
+See `bed/TODO.md` "Bearer token" for the broader adoption
+plan (lobby browsing, spectator mode, bot accounts).
+
 ### feat(casino): centralize casino player-record lifecycle (member → casino player)
 
 Casino has its own auth on top of the BBS member layer

@@ -289,7 +289,22 @@ the f-string shim, forward `package=` through to
 
 ## BED bearer token
 
-- [ ] See `bed/TODO.md` "Bearer token" — adopt `bed.api.auth.AuthService` for BED-mode authentication and reconnect. Replaces per-game `auth` implementations. Casino benefits strongly: lobby browsing, spectator mode, multi-table clients, bot accounts.
+- [x] `--token-file` registered on the merged `casino` CLI's argparse
+      (`casino.lib.buildargs` → `casino.auth.buildargs(parser=parser)`).
+- [x] `CasinoClient.run()` dispatches to
+      `casino.auth._connect_with_token` when `args.token_file` is set;
+      falls back to the legacy prompt path otherwise.
+- [x] `casino.auth._resolve_token_file(args)` silently clears
+      `args.token_file` when the resolved path is empty / missing so
+      an operator running `casino` before `bed auth login` still gets
+      the prompt.
+- [x] `casino.auth._connect_with_token` takes an optional `client=`
+      kwarg so the post-auth menu loop can run on the same instance
+      (`CasinoClient.run` mutation-in-place path).
+- [ ] See `bed/TODO.md` "Bearer token" — adopt `bed.api.auth.AuthService`
+      for BED-mode authentication and reconnect more broadly. Casino
+      benefits strongly: lobby browsing, spectator mode, multi-table
+      clients, bot accounts.
 
 ## Casino player lifecycle (lazy, audit-on-create)
 
@@ -3129,4 +3144,93 @@ bank submenu) and asserts the trailing prompt lands on the last
 chunk when the prompt is split on `{f6}`. Spec at
 `SPEC.md` §6.1 ("Menu rendering contract (WS-client inline
 prompts)").
+
+---
+
+## Test fixture migration: `gen_salt('md5')` → `gen_salt('bf')` (`@since 20260822`)
+
+**Context (2026-08-22, follow-up to the `bbsengine6` password column
+hardening).** `bbsengine6/sql/manage_password_format.sql` (new;
+`\i`-included from `bbsengine6/sql/bbsengine6.sql` after `member.sql`)
+adds `chk_member_password_bcrypt` on `engine.__member.password`:
+
+    check (password is null or password ~ '^\$2[abxy]\$')
+
+The constraint rejects **any** non-NULL, non-bcrypt write — including
+the `$1$` MD5-crypt hashes that nine casino test files currently
+seed via `crypt('test', gen_salt('md5'))`. Once the constraint is
+applied to a live DB (via `bbsengine6` `make schema-init` or a fresh
+`psql -f bbsengine6.sql` against the test DB), every one of these
+fixtures fails with a CHECK-violation error and the test suite is
+wedged.
+
+**Files affected (9):**
+
+```
+casino/src/casino/sql/test_data.sql
+casino/src/casino/tests/test_blackjack_flow.py:215-216
+casino/src/casino/tests/test_blackjack_three_hands.py:130-140
+casino/src/casino/tests/test_member_services.py:54
+casino/src/casino/tests/test_new_features_integration.py:78-79
+casino/src/casino/tests/test_player_observer.py:207-217
+casino/src/casino/tests/test_player_stats_integration.py:48-49
+casino/src/casino/tests/test_slots_integration.py:47,574-575
+```
+
+(The `test_data.sql` line for `__dealer__` uses
+`crypt('__no_password__', gen_salt('md5'))` — same prefix issue.)
+
+### [ ] Migrate every `crypt(?, gen_salt('md5'))` to `crypt(?, gen_salt('bf'))`
+
+Mechanical substitution; no semantic change to the seed plaintexts
+(`'test'`, `'x'`, `'__no_password__'`). Each fixture currently asserts
+the seeded user can `auth login` with that plaintext; the round-trip
+is the same once the algorithm is bcrypt — `crypt('test', stored)`
+still returns `stored` because bcrypt uses the stored `$2b$` prefix
+to select the algorithm.
+
+Two notes on the migration shape:
+
+1. The plaintext `'__no_password__'` for `__dealer__` is a sentinel,
+   not a real password. Bcrypt's `$2b$` output is still 60 chars and
+   the round-trip still works — `crypt('__no_password__', stored)`
+   returns `stored` if and only if `stored` was hashed from
+   `'__no_password__'`. No code change to the sentinel; just the
+   `gen_salt` argument.
+
+2. The 9 fixtures use `crypt(?, gen_salt('bf'))` as the literal
+   embedded in the SQL string, not a parameter — i.e.
+   `crypt('test', gen_salt('bf'))` rather than `crypt(%s,
+   gen_salt('bf'))` with `(plaintext,)` as params. The substitution
+   is purely literal. **Do not** migrate these to bound parameters
+   in the same commit; that's a separate cleanup (and `checkpassword`
+   already binds the plaintext via `%s` per the `member auth hot
+   path` TODO entry).
+
+Resolution: zero `gen_salt('md5')` matches in `casino/`. Pin a
+regression test in `tests/test_password_algorithm_no_md5.py` (new)
+that greps the entire `casino/` tree for `gen_salt('md5')` and
+asserts zero matches. The grep must exclude vendored code (none
+today, but if `casino/vendor/` ever grows, add `--exclude-dir=vendor`).
+
+Verification:
+
+- [ ] `grep -rn "gen_salt('md5')" casino/src casino/tests` returns
+      zero matches.
+- [ ] `tests/test_blackjack_flow.py`, `test_blackjack_three_hands.py`,
+      `test_slots_integration.py`, and the rest still pass against a
+      DB with `chk_member_password_bcrypt` applied.
+- [ ] `tests/test_password_algorithm_no_md5.py` passes (the
+      operator signal that no fixture is left behind).
+- [ ] Live casino test DB (`zoid6`) has the constraint applied
+      (run `bbsengine6/sql/bbsengine6.sql` against it once; the
+      constraint creation is idempotent via `DROP CONSTRAINT IF EXISTS`
+      + `ADD CONSTRAINT`).
+
+Cross-ref: `bbsengine6/TODO.md` (line 35 cross-ref notes this casino
+TODO is the operator-facing follow-up to the schema-side CHECK
+constraint), `zoid6/TODO.md` "Password column hardening — legacy
+MD5-crypt migration (@since 20260822)" (the parent incident), and
+`bbsengine6/CHANGELOG.md` "[Unreleased] member + sql: password
+column hardening" (the constraint that triggers this entry).
 
