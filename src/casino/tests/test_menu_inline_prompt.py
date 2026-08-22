@@ -50,10 +50,12 @@ class TestClientMenuInlinePrompt(unittest.TestCase):
         """The visible option set is filtered by
         ``visible_options`` (seat / connection gates). For an
         unseated, disconnected client the default 15-entry
-        WS-client spec yields 8 visible options, so the prompt
-        must contain exactly 7 ``{f6}`` markers between them.
-        Status prefix and trailing ``casino_client: `` are not
-        separated by ``{f6}``.
+        WS-client spec yields 8 visible options. The prompt now
+        separates the status prefix (balance) from the option
+        list and the option list from the trailing ``casino_client:``
+        prompt, so the prompt must contain exactly
+        ``len(visible) + 1`` ``{f6}`` markers — 7 between
+        options plus the two boundary seams (9 total).
         """
         from casino.client.menu import menu as client_menu
 
@@ -65,26 +67,23 @@ class TestClientMenuInlinePrompt(unittest.TestCase):
         self.assertEqual(mock_ic.call_count, 1)
         prompt = mock_ic.call_args[0][0]
 
-        # Count the {f6} markers that come from the option-list
-        # join. The status prefix and trailing prompt do not emit
-        # ``{f6}`` themselves, so the total ``{f6}`` count equals
-        # the option-list seam count.
+        # 8 visible options + 2 boundary seams = 9 ``{f6}`` markers
         f6_count = prompt.count("{f6}")
         self.assertEqual(
             f6_count,
-            7,
-            f"expected 7 {{f6}} separators (8 visible options "
-            f"minus one), got {f6_count} in: {prompt!r}",
+            9,
+            f"expected 9 {{f6}} separators (8 visible options "
+            f"plus balance-tail and prompt-head seams), got "
+            f"{f6_count} in: {prompt!r}",
         )
 
     def test_main_menu_prompt_each_option_on_its_own_line(self):
-        """Splitting the prompt on ``{f6}`` gives ``len(visible)``
-        chunks: the status prefix is concatenated to option 1 with
-        no separator (status opens with promptcolor, option 1
-        opens with optioncolor), and the trailing ``casino_client:``
-        prompt is concatenated to the last option with no
-        separator. The ``{f6}`` markers are exactly the seams
-        between adjacent options.
+        """Splitting the prompt on ``{f6}`` gives ``len(visible) + 2``
+        chunks: chunk 0 is the bare status prefix (balance), chunks
+        1..len(visible) are the per-option entries, and the final
+        chunk is the bare trailing ``casino_client:`` prompt. The
+        ``{f6}`` markers are exactly the seams between adjacent
+        options plus the two boundary seams.
         """
         from casino.client.menu import menu as client_menu
         from casino.client.menu import _visible_options
@@ -96,24 +95,28 @@ class TestClientMenuInlinePrompt(unittest.TestCase):
 
         prompt = mock_ic.call_args[0][0]
         lines = prompt.split("{f6}")
-        # 8 options joined by 7 {f6} -> 8 chunks when split.
-        self.assertEqual(len(lines), len(_visible_options(client)))
+        # 8 options joined by 7 {f6} + 2 boundary {f6} -> 10 chunks.
+        self.assertEqual(len(lines), len(_visible_options(client)) + 2)
 
-        # The first chunk should start with the status prefix
-        # ``[alice] Balance: 100`` (no separator before option 1).
+        # The first chunk is the status prefix
+        # ``[alice] Balance: 100`` alone (no option concatenated).
         self.assertIn("[alice] Balance: 100", lines[0])
+        self.assertNotIn("[T]", lines[0])
 
-        # The last chunk should end with the trailing prompt
-        # ``casino_client:`` (no separator after last option).
-        self.assertTrue(
-            lines[-1].rstrip().endswith("casino_client: {var:inputcolor}"),
-            f"last chunk should end with the trailing prompt, got: {lines[-1]!r}",
+        # The last chunk is the bare trailing prompt
+        # ``casino_client: {var:inputcolor}`` (no option concatenated).
+        self.assertEqual(
+            lines[-1].rstrip(),
+            "{var:promptcolor}casino_client: {var:inputcolor}",
+            f"last chunk should be the bare trailing prompt, "
+            f"got: {lines[-1]!r}",
         )
 
     def test_main_menu_prompt_seated_at_blackjack(self):
         """When the player is seated at a blackjack table, the
         seat-gated options become visible (Leave / Bet / Hit /
-        Stand). 8 + 4 = 12 visible -> 11 ``{f6}`` separators.
+        Stand). 8 + 4 = 12 visible -> 11 ``{f6}`` between options
+        + 2 boundary seams = 13 ``{f6}`` markers.
         """
         from casino.client.menu import menu as client_menu
 
@@ -126,12 +129,14 @@ class TestClientMenuInlinePrompt(unittest.TestCase):
             client_menu(client)
 
         prompt = mock_ic.call_args[0][0]
-        self.assertEqual(prompt.count("{f6}"), 11)
+        self.assertEqual(prompt.count("{f6}"), 13)
 
-    def test_main_menu_prompt_seam_count_matches_visible_minus_one(self):
-        """General invariant: ``{f6}`` count == ``len(visible) - 1``
+    def test_main_menu_prompt_seam_count_matches_visible_plus_one(self):
+        """General invariant: ``{f6}`` count == ``len(visible) + 1``
         across representative states. This is the contract from
-        SPEC.md §6.1.
+        SPEC.md §6.1: one ``{f6}`` between adjacent options plus
+        one ``{f6}`` after the balance and one ``{f6}`` before the
+        trailing prompt.
         """
         from casino.client.menu import menu as client_menu
         from casino.client.menu import _visible_options
@@ -159,20 +164,21 @@ class TestClientMenuInlinePrompt(unittest.TestCase):
                 client_menu(client)
             prompt = mock_ic.call_args[0][0]
             visible = _visible_options(client)
-            expected = len(visible) - 1
+            expected = len(visible) + 1
             actual = prompt.count("{f6}")
             self.assertEqual(
                 actual,
                 expected,
                 f"[{label}] expected {expected} {{f6}} separators "
-                f"(len(visible)={len(visible)} - 1), got {actual} in: {prompt!r}",
+                f"(len(visible)={len(visible)} + 1 for balance-tail "
+                f"and prompt-head seams), got {actual} in: {prompt!r}",
             )
 
     def test_main_menu_prompt_empty_visible_does_not_crash(self):
         """Defensive: if ``visible_options`` somehow returns an
         empty list (e.g. during a transient state), the prompt must
-        still be a valid string with zero ``{f6}`` markers and not
-        raise.
+        still be a valid string with only the two boundary seams
+        (balance-tail and prompt-head) and not raise.
         """
         from casino.client.menu import menu as client_menu
 
@@ -186,7 +192,7 @@ class TestClientMenuInlinePrompt(unittest.TestCase):
             client_menu(client)
 
         prompt = mock_ic.call_args[0][0]
-        self.assertEqual(prompt.count("{f6}"), 0)
+        self.assertEqual(prompt.count("{f6}"), 2)
 
 
 class TestBankSubmenuInlinePrompt(unittest.TestCase):
