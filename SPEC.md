@@ -1,6 +1,6 @@
 # casino — Specification
 
-> **Last updated:** 2026-08-18.
+> **Last updated:** 2026-08-21.
 > **Status:** Alpha (`Development Status :: 3 - Alpha`); production
 > wiring (MessageRouter + CasinoSessionManager + bed-native auth)
 > in place; games are feature-complete per their READMEs.
@@ -200,6 +200,36 @@ from the command line. Auth always prompts for password (commit
 The legacy `casino-client` shell shim and console-script entry point
 were removed; `python -m casino.client_cli` still works for callers
 that imported the entry point directly.
+
+### 6.1 Menu rendering contract (WS-client inline prompts)
+
+Two prompts in the WS-client put the visible option list **inline**
+on the same terminal line as the status prefix — these are the only
+spots in the casino that join multiple `[X]label` fragments into a
+single `io.inputchoice(...)` prompt string:
+
+1. `src/casino/client/menu.py:menu()` — the main casino_client
+   prompt. `status` (`[moniker] Balance: X [Table: Y]`) is followed
+   by the visible options, then the final `casino_client: ` prompt.
+2. `src/casino/client/casino_client.py:cmd_bank_menu()` — the bank
+   submenu prompt.
+
+Both prompts must put **one `{f6}` between every adjacent option
+entry**. The pre-fix behavior was `"".join(...)` /
+`"…{/all}{var:optioncolor}[A]…"`, which rendered the entire option
+list as one continuous horizontal string
+(`[T]ables,[C]reate,[U]pdate,...`) and was hard to read. The
+contract is now: each option gets its own line, the trailing
+`casino_client: ` / `: ` sits on the final line after the last
+option.
+
+The F1 help callback (`_render_help`, `client/menu.py:55-69`) and
+the door-mode `mainmenuhelp` (`main.py:88-103`) are not affected —
+both already use one `io.echo()` per option, and `io.echo` appends
+`\n` via `end=ECHO_END`, so each option naturally lands on its
+own line. The inline-prompt case is the one that needs an explicit
+`{f6}` because the option list is concatenated before being handed
+to `io.inputchoice`.
 
 ## 7. Poker variant plugin system
 

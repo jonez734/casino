@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### fix(client): main menu and bank submenu inline prompts — one option per line
+
+Two `io.inputchoice()` prompts in the WS-client rendered the visible
+option list as a single horizontal string — every `[X]label` fragment
+was concatenated with no separator, so a 13-option menu printed as one
+wall of `[T]ables,[C]reate,[U]pdate,...` text and was hard to scan.
+
+Both prompts now put `{f6}` between adjacent option entries:
+
+- `src/casino/client/menu.py:menu()` — main casino_client prompt.
+  The `inline` join separator changes from `""` to `"{f6}"`, so the
+  status prefix (`[moniker] Balance: X [Table: Y]`) is followed by
+  one option per line and the trailing `casino_client: ` prompt
+  sits on its own line.
+- `src/casino/client/casino_client.py:cmd_bank_menu()` — bank
+  submenu. The seven `[B]alance/[A]dd/[W]ithdraw/[T]ransfer/
+  [P]ending/[H]istory/[L]ist all/[Q]uit` entries are now
+  `{/all}`-closed with a `{f6}` before the next `{var:optioncolor}`
+  opens, putting each on its own line.
+
+The door-mode `mainmenuhelp` (`main.py:88-103`) and the WS-client
+`_render_help` F1 callback (`client/menu.py:55-69`) already use one
+`io.echo()` per option and are unaffected — `io.echo` appends `\n`
+via `end=ECHO_END`, so each option naturally lands on its own line.
+The inline-prompt case is the one that needed an explicit `{f6}`
+because the option list is concatenated before being handed to
+`io.inputchoice`. Documented in `SPEC.md` §6.1 ("Menu rendering
+contract (WS-client inline prompts)"). Regression guard:
+`tests/test_menu_inline_prompt.py` (new) — asserts the constructed
+prompt string contains exactly `len(visible) - 1` `{f6}` separators
+for both call sites.
+
 ### build: add `PREPARE_BUILD` macro to root Makefile
 
 `casino/Makefile` lacked the `PREPARE_BUILD` helper that
