@@ -215,13 +215,27 @@ single `io.inputchoice(...)` prompt string:
    submenu prompt.
 
 Both prompts must put **one `{f6}` between every adjacent option
-entry**. The pre-fix behavior was `"".join(...)` /
-`"…{/all}{var:optioncolor}[A]…"`, which rendered the entire option
-list as one continuous horizontal string
+entry**, plus **one `{f6}` after the status prefix** (so the
+balance lands on its own line) and **one `{f6}` before the
+trailing prompt** (so `casino_client: ` lands on its own line).
+Net: `len(visible) + 1` `{f6}` markers in the main prompt, and
+`len(visible) - 1` in the bank submenu (the bank submenu prompt
+does not prepend a status line). The pre-fix behavior was
+`"".join(...)` / `"…{/all}{var:optioncolor}[A]…"`, which rendered
+the entire option list as one continuous horizontal string
 (`[T]ables,[C]reate,[U]pdate,...`) and was hard to read. The
-contract is now: each option gets its own line, the trailing
-`casino_client: ` / `: ` sits on the final line after the last
-option.
+contract is now: each option gets its own line, the status
+prefix (balance) sits on the line above the first option, and
+the trailing `casino_client: ` / `: ` sits on the line below the
+last option.
+
+In addition, every option dispatch site in the WS-client loop
+(`CasinoClient.run` for the main menu, `cmd_bank_menu` for the
+bank submenu) emits a one-line `io.echo("Label")` immediately
+before invoking the handler, so the operator sees what action
+was just selected before the handler's output (e.g. `io.echo("Bank")`
+fires before `cmd_bank_menu()` runs). `[Q]uit` does not emit a
+label since it breaks the loop without invoking a handler.
 
 The F1 help callback (`_render_help`, `client/menu.py:55-69`) and
 the door-mode `mainmenuhelp` (`main.py:88-103`) are not affected —

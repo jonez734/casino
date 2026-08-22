@@ -7,6 +7,96 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### fix(client/menu): bracket the inline prompt with `{f6}` seams around the option list
+
+`casino_client.py:menu()`'s `io.inputchoice` prompt rendered the
+status prefix (`[moniker] Balance: X`) on the **same line** as
+the first option (`[T]ables`), and the last option (`[Q]uit`) on
+the **same line** as the trailing `casino_client: ` prompt. The
+status and the trailing prompt were glued to their neighbors with
+no separator, so the operator saw a single horizontal line like:
+
+```
+[jam] Balance: 100000[T]ables  (list open tables)...[Q]uitcasino_client: 
+```
+
+instead of the expected layout (balance on its own line, each
+option on its own line, prompt on its own line).
+
+Two boundary `{f6}` seams are added:
+
+- `status` now ends with `{f6}` so the balance lands on its own
+  line above the option list.
+- The trailing prompt is now prefixed with `{f6}` so
+  `casino_client: ` lands on its own line below the last option.
+
+Combined with the existing `{f6}` join between adjacent options,
+the main menu's `{f6}` count is now `len(visible) + 1` (e.g. 8
+visible options → 9 `{f6}` markers; 12 visible at a blackjack
+seat → 13). The bank submenu's prompt string itself is unchanged
+(8 options → 7 `{f6}` markers) — only the dispatcher's body now
+emits label `io.echo()` calls (see next entry). Regression guards
+updated in `tests/test_menu_inline_prompt.py`:
+
+- `test_main_menu_prompt_has_one_f6_per_option_seam`: 7 → 9
+- `test_main_menu_prompt_each_option_on_its_own_line`: chunk
+  count is now `len(visible) + 2` (status, options, trailing
+  prompt) instead of `len(visible)`.
+- `test_main_menu_prompt_seated_at_blackjack`: 11 → 13.
+- `test_main_menu_prompt_seam_count_matches_visible_plus_one`
+  (renamed from `…_minus_one`): invariant is now
+  `len(visible) + 1`.
+- `test_main_menu_prompt_empty_visible_does_not_crash`: 0 → 2
+  (still no per-option seams, but the two boundary seams are
+  present).
+
+### feat(client/casino_client): echo a label at every dispatch site in the main + bank submenus
+
+Every option handler in the WS-client's main loop
+(`CasinoClient.run`) and the bank submenu loop
+(`cmd_bank_menu`) now emits a one-line `io.echo("Label")`
+immediately before invoking the handler. Plain text, no markup —
+the operator sees what action was just selected before the
+handler's own output runs.
+
+Main loop labels:
+
+| Key | Label | Handler |
+|---|---|---|
+| `[T]` | `Tables` | `cmd_list_tables` |
+| `[C]` | `Create` | `cmd_create_table` |
+| `[U]` | `Update` | `cmd_update_table` |
+| `[J]` | `Join` | `cmd_join_table` |
+| `[L]` | `Leave` | `cmd_leave_table` |
+| `[B]` | `Bet` | `cmd_bet` |
+| `[H]` | `Hit` | inline `send({"type": "hit"})` |
+| `[S]` | `Stand` | inline `send({"type": "stand"})` |
+| `[M]` | `Message` | `cmd_table_chat` / `cmd_chat` |
+| `[K]` | `Bank` | `cmd_bank_menu` |
+| `[X]` | `TicTac` | `cmd_tictactoe_quick_play` |
+| `[V]` | `Move` | `cmd_tictactoe_move` |
+| `[N]` | `JoinT` | `cmd_tictactoe_join` |
+| `[G]` | `Resign` | `cmd_tictactoe_resign` |
+| `[Q]` | (none) | loop break |
+
+Bank submenu labels:
+
+| Key | Label | Handler |
+|---|---|---|
+| `[B]` | `Balance` | `cmd_bank_balance` |
+| `[A]` | `Add` | `cmd_bank_add` |
+| `[W]` | `Withdraw` | `cmd_bank_remove` |
+| `[T]` | `Transfer` | `cmd_bank_transfer` |
+| `[P]` | `Pending` | `cmd_bank_pending` |
+| `[H]` | `History` | `cmd_bank_history` |
+| `[L]` | `List all` | `cmd_bank_list_all` |
+| `[Q]` | (none) | loop break |
+
+Labels are emitted at the dispatch site (in `run` /
+`cmd_bank_menu`), not inside the handler bodies — a future
+caller that invokes a `cmd_*` method directly (e.g. from a
+test) will not see a duplicate label.
+
 ### fix(client): main menu and bank submenu inline prompts — one option per line
 
 Two `io.inputchoice()` prompts in the WS-client rendered the visible
