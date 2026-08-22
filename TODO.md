@@ -3074,3 +3074,40 @@ against the production `zoid6` database. Three latent gaps in
         same DB — all classes show `ok` via `classexists`, no
         failures.
 
+---
+
+## Inline menu prompts — one option per line (Done)
+
+**Status:** COMPLETED (commit landed; regression guard in
+`tests/test_menu_inline_prompt.py`).
+
+Two `io.inputchoice()` call sites in the WS-client joined the
+visible option list with `""`, so the entire menu rendered as a
+single horizontal wall of `[T]ables,[C]reate,[U]pdate,...` text
+that was hard to scan:
+
+- `src/casino/client/menu.py:menu()` — main casino_client prompt.
+  The `inline` join separator is now `"{f6}"` so each option gets
+  its own line; status prefix and trailing `casino_client: ` are
+  unchanged.
+- `src/casino/client/casino_client.py:cmd_bank_menu()` — bank
+  submenu. The seven option entries are now `{/all}`-closed with
+  `{f6}` between each, putting `[B]alance / [A]dd / [W]ithdraw /
+  [T]ransfer / [P]ending / [H]istory / [L]ist all / [Q]uit` on
+  separate lines.
+
+Door-mode `mainmenuhelp` (`main.py:88-103`) and the WS-client F1
+help callback (`client/menu.py:_render_help`) are unaffected —
+both already use one `io.echo()` per option, and `io.echo` appends
+`\n` via `end=ECHO_END`. The inline-prompt case is the one that
+needs an explicit `{f6}` because the option list is concatenated
+before being handed to `io.inputchoice`.
+
+Regression guard:
+`tests/test_menu_inline_prompt.py` — pins the seam count
+(`len(visible) - 1` `{f6}` markers for the main prompt; 7 for the
+bank submenu) and asserts the trailing prompt lands on the last
+chunk when the prompt is split on `{f6}`. Spec at
+`SPEC.md` §6.1 ("Menu rendering contract (WS-client inline
+prompts)").
+

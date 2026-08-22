@@ -101,3 +101,30 @@ with the trailing reset, a `print()` call that follows another
 see any leftover state from `io.echo` runs — but it also won't
 benefit from any color tag expansion, and a future regression
 that re-introduces an ACS leak would not be guarded.
+
+## Inline `io.inputchoice()` prompts need `{f6}` between options
+
+The WS-client has two call sites where multiple `[X]label`
+fragments are joined into a single `io.inputchoice()` prompt
+string (see `SPEC.md` §6.1):
+
+- `src/casino/client/menu.py:menu()` — main casino_client prompt.
+- `src/casino/client/casino_client.py:cmd_bank_menu()` — bank
+  submenu.
+
+`io.inputchoice` writes the prompt string verbatim via `io.echo`
+machinery, so any `\n` inside the prompt is meaningless — there
+is no implicit separator between concatenated fragments. Use
+`"{f6}".join(...)` (or insert `"{f6}"` between entries in a
+hand-built string), not `"".join(...)`. Without `{f6}` the entire
+option list renders on one horizontal line and is hard to read.
+
+Door-mode `mainmenuhelp` (`main.py:88-103`) and the F1 help
+callback (`client/menu.py:_render_help`) are not affected: both
+loop and call `io.echo()` per option, and `io.echo` appends `\n`
+via `end=ECHO_END`. The inline-prompt case is the one that needs
+the explicit `{f6}`.
+
+Regression guard: `tests/test_menu_inline_prompt.py` pins the
+seam count (`len(visible) - 1` `{f6}` markers for the main
+prompt; 7 for the bank submenu).
