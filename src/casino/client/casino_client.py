@@ -803,18 +803,25 @@ class CasinoClient:
             )
 
             if cmd == "b":
+                io.echo("Balance")
                 self.cmd_bank_balance()
             elif cmd == "a":
+                io.echo("Add")
                 self.cmd_bank_add()
             elif cmd == "w":
+                io.echo("Withdraw")
                 self.cmd_bank_remove()
             elif cmd == "t":
+                io.echo("Transfer")
                 self.cmd_bank_transfer()
             elif cmd == "p":
+                io.echo("Pending")
                 self.cmd_bank_pending()
             elif cmd == "h":
+                io.echo("History")
                 self.cmd_bank_history()
             elif cmd == "l":
+                io.echo("List all")
                 self.cmd_bank_list_all()
             elif cmd == "q":
                 break
@@ -839,35 +846,49 @@ class CasinoClient:
             cmd = _client_menu(self)
 
             if cmd == "T":
+                io.echo("Tables")
                 self.cmd_list_tables()
             elif cmd == "C":
+                io.echo("Create")
                 self.cmd_create_table()
             elif cmd == "U":
+                io.echo("Update")
                 self.cmd_update_table()
             elif cmd == "J":
+                io.echo("Join")
                 self.cmd_join_table()
             elif cmd == "L":
+                io.echo("Leave")
                 self.cmd_leave_table()
             elif cmd == "B":
+                io.echo("Bet")
                 self.cmd_bet()
             elif cmd == "H":
+                io.echo("Hit")
                 self._loop.run_until_complete(self.send({"type": "hit"}))
             elif cmd == "S":
+                io.echo("Stand")
                 self._loop.run_until_complete(self.send({"type": "stand"}))
             elif cmd == "M":
+                io.echo("Message")
                 if self.current_table_moniker:
                     self.cmd_table_chat()
                 else:
                     self.cmd_chat()
             elif cmd == "K":
+                io.echo("Bank")
                 self.cmd_bank_menu()
             elif cmd == "X":
+                io.echo("TicTac")
                 self.cmd_tictactoe_quick_play()
             elif cmd == "V":
+                io.echo("Move")
                 self.cmd_tictactoe_move()
             elif cmd == "N":
+                io.echo("JoinT")
                 self.cmd_tictactoe_join()
             elif cmd == "G":
+                io.echo("Resign")
                 self.cmd_tictactoe_resign()
             elif cmd == "Q":
                 break
