@@ -797,7 +797,7 @@ class CasinoClient:
         """Bank management submenu."""
         while True:
             cmd = io.inputchoice(
-                "{var:promptcolor}{var:optioncolor}[B]{var:labelcolor}alance{/all}{var:optioncolor}[A]{var:labelcolor}dd{/all}{var:optioncolor}[W]{var:labelcolor}ithdraw{/all}{var:optioncolor}[T]{var:labelcolor}ransfer{/all}{var:optioncolor}[P]{var:labelcolor}ending{/all}{var:optioncolor}[H]{var:labelcolor}istory{/all}{var:optioncolor}[L]{var:labelcolor}ist all{/all}{var:optioncolor}[Q]{var:labelcolor}uit{/all}{var:promptcolor}: {var:inputcolor}",
+                "{var:promptcolor}{var:optioncolor}[B]{var:labelcolor}alance{/all}{f6}{var:optioncolor}[A]{var:labelcolor}dd{/all}{f6}{var:optioncolor}[W]{var:labelcolor}ithdraw{/all}{f6}{var:optioncolor}[T]{var:labelcolor}ransfer{/all}{f6}{var:optioncolor}[P]{var:labelcolor}ending{/all}{f6}{var:optioncolor}[H]{var:labelcolor}istory{/all}{f6}{var:optioncolor}[L]{var:labelcolor}ist all{/all}{f6}{var:optioncolor}[Q]{var:labelcolor}uit{/all}{var:promptcolor}: {var:inputcolor}",
                 "b,a,w,t,p,h,l,q",
                 default="q",
             )
