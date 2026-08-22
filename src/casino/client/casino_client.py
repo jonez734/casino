@@ -829,18 +829,37 @@ class CasinoClient:
             self._loop.run_until_complete(asyncio.sleep(0.1))
 
     def run(self) -> None:
-        """Run the client - auto-connect, direct to auth."""
-        self._loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(self._loop)
+        """Run the client - auto-connect, direct to auth.
 
-        if not self._loop.run_until_complete(self.connect()):
-            self._loop.close()
-            return
+        When ``args.token_file`` points at a non-empty token file (set
+        either by ``--token-file`` on the merged CLI or by
+        :func:`bed.tools._token.ensure_token_file_arg`'s default-path
+        resolution in :func:`casino.__main__.main`), bind the existing
+        bearer token via :func:`casino.auth._connect_with_token`
+        (which mirrors ``bed tools bank``'s ``auth reconnect`` flow).
+        Otherwise fall back to the legacy prompt-based flow:
+        ``self.connect()`` then ``self.cmd_auth()``.
+        """
+        from .. import auth
 
-        self._receive_task = self._loop.create_task(self.receive_loop())
+        token_path = getattr(self.args, "token_file", None)
+        if token_path:
+            host = getattr(self.args, "bed_host", "127.0.0.1")
+            port = int(getattr(self.args, "bed_port", 8765))
+            if not auth._connect_with_token(self.args, host, port, client=self):
+                return
+        else:
+            self._loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(self._loop)
 
-        self._loop.run_until_complete(self.cmd_auth())
-        self._loop.run_until_complete(asyncio.sleep(0.5))
+            if not self._loop.run_until_complete(self.connect()):
+                self._loop.close()
+                return
+
+            self._receive_task = self._loop.create_task(self.receive_loop())
+
+            self._loop.run_until_complete(self.cmd_auth())
+            self._loop.run_until_complete(asyncio.sleep(0.5))
 
         while self.connected and self.authenticated:
             cmd = _client_menu(self)
