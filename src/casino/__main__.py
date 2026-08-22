@@ -124,6 +124,16 @@ def main(argv: list[str] | None = None) -> int:
     remaining_argv: list
     args, remaining_argv = parser.parse_known_args(argv)
 
+    # Auto-detect the default token-file path (``$XDG_RUNTIME_DIR/bed.token``
+    # or ``/tmp/bed-<uid>/bed.token``) when the operator did not pass
+    # ``--token-file`` explicitly. If the resolved file is empty,
+    # clear ``args.token_file`` so the ``if args.token_file:`` check
+    # in :meth:`CasinoClient.run` and :func:`casino.auth.connect`
+    # cleanly falls through to the prompt path.
+    from casino.auth import _resolve_token_file
+
+    _resolve_token_file(args)
+
     if remaining_argv and remaining_argv[0] == _BLACKJACK_SUBCOMMAND:
         return _run_blackjack(args, remaining_argv[1:])
 

@@ -736,6 +736,14 @@ def buildargs(args: Namespace | None = None, **kwargs: Any) -> argparse.Argument
     }
     database.buildarggroup(parser, defaults)
 
+    # Register ``--token-file`` so the merged ``casino`` CLI accepts the
+    # same flag ``bed tools bank`` / ``bed tools auth login`` accept.
+    # ``casino.auth.buildargs`` mirrors ``bed.tools._token.build_token_file_arg``
+    # so the default path (``$XDG_RUNTIME_DIR/bed.token`` or
+    # ``/tmp/bed-<uid>/bed.token``) and the perm check are shared.
+    from . import auth
+    auth.buildargs(args=None, parser=parser)
+
     from . import _routing
     _routing.build_client_args(parser)
 
