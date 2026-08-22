@@ -284,7 +284,7 @@ class TestMainmenuOptions(unittest.TestCase):
 
 
 class TestMainmenuHelpWiring(unittest.TestCase):
-    """casino.main.mainmenuhelp() must wire util.heading("main menu")
+    """casino.main.mainmenuhelp() must wire util.heading("casino main menu")
     so that KEY_HELP redraws the option list with a banner. Each
     invocation of mainmenuhelp must call util.heading exactly once.
     """
@@ -375,13 +375,13 @@ class TestMainmenuHelpWiring(unittest.TestCase):
         ns, mock_heading = self._exec_mainmenuhelp_in_namespace()
         ns["mainmenuhelp"]()
         self.assertEqual(mock_heading.call_count, 1)
-        self.assertEqual(mock_heading.call_args.args[0], "main menu")
+        self.assertEqual(mock_heading.call_args.args[0], "casino main menu")
 
     def test_mainmenuhelp_uses_main_menu_title(self):
-        """The heading title must be 'main menu' so F1 shows the right banner."""
+        """The heading title must be 'casino main menu' so F1 shows the right banner."""
         ns, _mock_heading = self._exec_mainmenuhelp_in_namespace()
         ns["mainmenuhelp"]()
-        ns["util"].heading.assert_called_once_with("main menu")
+        ns["util"].heading.assert_called_once_with("casino main menu")
 
 
 class TestMainmenuDuplicateP(unittest.TestCase):

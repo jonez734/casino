@@ -94,7 +94,7 @@ def main(args: Namespace, **kwargs) -> bool | None:
         :func:`casino.menu_lib.visible_options` so the help screen
         matches the prompt.
         """
-        util.heading("main menu")
+        util.heading("casino main menu")
         state = _menu_state(currentplayer, remote_client is not None)
         for opt in visible_options(options, state):
             io.echo(
