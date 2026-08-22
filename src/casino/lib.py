@@ -585,12 +585,32 @@ class Player:
 
 
 class CasinoPlayer:
+    """Door-mode player facade.
+
+    Mirrors the duck-typed attrs the WS-client ``CasinoClient`` exposes
+    (``moniker``, ``credits``, ``current_table_moniker``,
+    ``current_table_game_type``, ``connected``) so the visibility
+    filter in :func:`casino.menu_lib.visible_options` works against
+    either object without branching.
+
+    Construction idempotently materializes the matching
+    ``casino.__player`` row via
+    :func:`casino.services.player.ensure_casino_player` so the bottombar
+    (``_casino_credits_fragment``), the stats menu
+    (``casino.menu.show_player_stats``), and the table-seating filter
+    (``_refresh_seat``) all see real values from the first frame.
+    """
+
     def __init__(self, args, membermoniker=None, pool=None):
         self.args = args
         self.pool = pool
         self.moniker = membermoniker
+        # Default credits/stat/lastplayed; ``ensure_casino_player``
+        # below overwrites ``credits`` and ``lastplayed`` from the row
+        # so the bottombar shows real numbers, not the placeholder.
         self.credits = 1000
         self.stats = {}
+        self.lastplayed = None
         # Visibility state, populated lazily by ``_refresh_seat`` so
         # the door-mode menu in ``casino.main`` can mirror the WS-client
         # menu in ``casino.client.menu`` (which reads the same attrs on
@@ -603,7 +623,43 @@ class CasinoPlayer:
         # to hide the ``[X] Disconnect`` option until a connection is
         # open.
         self.connected: bool = False
+        self._ensure_player_row()
         self._load()
+
+    def _ensure_player_row(self):
+        """Idempotently create the casino.__player row for this member.
+
+        Mirrors the WS-client path (``PlayerService.authenticate``),
+        which also calls ``ensure_casino_player`` on every successful
+        login. After this call, the row is present and ``self.credits``
+        / ``self.lastplayed`` / ``self.stats`` are populated from the
+        row so the bottombar and stats menu render real values on the
+        first frame. ``audit=True`` emits one debug-level echo so a
+        sysop running ``casino --debug`` can see which members were
+        auto-materialized.
+
+        Best-effort: a DB error is swallowed and the placeholder
+        attrs (``credits=1000``, ``stats={}``, ``lastplayed=None``)
+        stay so the menu still renders. Commands that need a real
+        row will error at their own access gate.
+        """
+        try:
+            from .dal import player as dal_player
+            from .services.player import ensure_casino_player
+
+            row = ensure_casino_player(
+                self.args, self.moniker, pool=self.pool, audit=True
+            )
+            if row is not None:
+                self.lastplayed = row.get("lastplayed")
+                self.credits = dal_player.get_player_balance(
+                    self.args, self.moniker
+                )
+                self.stats = dal_player.get_player_stats(
+                    self.args, self.moniker
+                )
+        except Exception:
+            pass
 
     def _load(self):
         self._refresh_seat()

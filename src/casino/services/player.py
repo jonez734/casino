@@ -1,11 +1,69 @@
 # casino/services/player.py
 # Player service - authentication and profile management
+#
+# Casino has its own auth on top of the BBS member layer (``bbsengine6.member``)
+# so many concurrent members can play casino at once, each with their own
+# 1:1 casino player record. The casino player record (``casino.__player``)
+# holds casino-specific state (``lastplayed``, ``attrs``, ``stats``) keyed
+# by ``membermoniker`` with a FK to ``engine.__member(moniker)``.
+#
+# Lifecycle:
+#
+# - The casino player row is **lazily** materialized the first time a
+#   member touches casino. There is no explicit ``casino init <moniker>``
+#   step. Both entry paths converge on a single helper,
+#   :func:`ensure_casino_player`, so a row created by one path is visible
+#   to the other on the next read.
+#
+# - When ``audit=True`` (the door-mode default), an auto-created row emits
+#   one debug-level ``io.echo`` so a sysop running ``casino --debug`` can
+#   see who was auto-materialized. WS-client auth and tests pass
+#   ``audit=False`` to keep the wire and test output silent.
+#
+# See ``casino/docs/AUTH.md`` ("Member vs casino player") and
+# ``casino/SPEC.md`` §2 ("Member vs casino player") for the rationale.
+
+from __future__ import annotations
 
 from typing import Any, Optional
 
-from bbsengine6 import database, member
+from bbsengine6 import database, io, member
 
 from casino.dal import player as dal_player
+
+
+def ensure_casino_player(
+    args: Any,
+    moniker: str,
+    *,
+    pool: Any = None,
+    audit: bool = False,
+) -> dict[str, Any]:
+    """Idempotently ensure a ``casino.__player`` row exists for ``moniker``.
+
+    Returns the row (existing or newly created). The returned dict has
+    keys: ``membermoniker``, ``location``, ``lastplayed``, ``attrs``.
+
+    When ``audit`` is True and the row was newly created, emits one
+    ``io.echo(..., level="debug")`` so a sysop running with debug
+    logging can audit who was auto-materialized. The audit echo is
+    silent by default (and in tests).
+
+    The caller passes ``pool`` to reuse an existing connection pool
+    (CONN_POOL_PATTERN); when ``pool`` is None, the helper falls back
+    to ``database.getpool(args, ...)``.
+    """
+    existing = dal_player.get_player_by_moniker(args, moniker)
+    if existing is not None:
+        return existing
+
+    if audit:
+        io.echo(
+            f"casino.services.player.ensure_casino_player: "
+            f"auto-creating casino.__player row for {moniker}",
+            level="debug",
+        )
+    return dal_player.get_or_create_player(args, moniker)
 
 
 class PlayerService:
@@ -60,8 +118,14 @@ class PlayerService:
                     "message": "Invalid password",
                 }
 
-        # Get or create casino player record
-        dal_player.get_or_create_player(self.args, moniker)
+        # Idempotently materialize the casino player record. WS-client
+        # auth path goes through here on every successful login; the
+        # helper is a no-op read once the row exists, and a single
+        # INSERT + debug-level audit echo on the first login. Door mode
+        # also calls :func:`ensure_casino_player` directly from
+        # ``lib.CasinoPlayer.__init__``, so the row materialized by
+        # either path is visible to the other.
+        ensure_casino_player(self.args, moniker, pool=pool, audit=False)
 
         # Get balance
         balance = dal_player.get_player_balance(self.args, moniker)

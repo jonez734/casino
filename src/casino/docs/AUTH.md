@@ -20,6 +20,44 @@ token shape, CLI flags, persistence modes, the custom-router kwargs
 contract) lives in `bed/docs/BED_AUTH.md`. This file documents only
 the casino-side half.
 
+## Member vs casino player
+
+Casino sits on top of the BBS member layer (`bbsengine6.member`) and
+adds a **casino player record** (`casino.__player`) per member. The
+two rows have distinct responsibilities:
+
+| Identity | Table | Holds |
+|---|---|---|
+| BBS **member** | `engine.__member` | BBS-level credentials (moniker, password), global `credits`, flags (SYSOP / APPROVED), email |
+| **Casino player** | `casino.__player` | Casino-specific state: `lastplayed`, `attrs`, per-game `stats` counters |
+
+The casino player row has `membermoniker citext` with a FK to
+`engine.__member(moniker)` (`casino/src/casino/sql/player.sql`), so
+the relationship is **1:1 by membermoniker** — every casino player
+has exactly one BBS member, and every BBS member has at most one
+casino player. "Many players" means many BBS members playing casino
+concurrently, not multiple casino rows per member.
+
+Members are created by a sysop via the `bbsengine6-console` flow
+(`console.member.add`); casino never creates members. The casino
+player row is **lazily** materialized the first time a member touches
+casino, via
+[`casino.services.player.ensure_casino_player`](../services/player.py),
+called from both entry paths:
+
+- WS-client auth: `PlayerService.authenticate` calls the helper on
+  every successful login (with `audit=False` so the wire stays clean).
+- Door-mode facade: `lib.CasinoPlayer.__init__` calls it on every
+  construction (with `audit=True` so `casino --debug` shows who was
+  auto-materialized).
+
+When `audit=True` and a row is newly created, one
+`io.echo(..., level="debug")` fires with the membermoniker. Subsequent
+constructions for the same member are silent. There is no explicit
+`casino init <moniker>` step in v1 — the audit echo is the sysop's
+window into "who got auto-created." See `SPEC.md` §2.1 for the full
+rationale.
+
 ## Connection model
 
 The client opens a single WebSocket to a BED daemon (default

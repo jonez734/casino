@@ -78,12 +78,57 @@ It does **not** own:
                        ▲                          ▲
                        │ (door-mode)              │ (TUI client)
                        │                          │
-                ┌──────┴─────────┐         ┌──────┴─────────┐
-                │ main.py menu   │         │ CasinoClient   │
-                │ --direct flag  │         │ default branch │
-                │ bbsengine6 BBS │         │ ws://bed:8765/ │
-                └────────────────┘         └────────────────┘
+┌──────┴─────────┐         ┌──────┴─────────┐
+                 │ main.py menu   │         │ CasinoClient   │
+                 │ --direct flag  │         │ default branch │
+                 │ bbsengine6 BBS │         │ ws://bed:8765/ │
+                 └────────────────┘         └────────────────┘
 ```
+
+### 2.1 Member vs casino player
+
+Casino has its own auth (`PlayerService.authenticate`,
+`AuthService._handle_auth`) on top of the BBS member layer
+(`bbsengine6.member`) so many concurrent BBS members can play casino at
+once, each with their own 1:1 casino player record. Two distinct rows
+back each casino user:
+
+| Identity | Table | Created by | Holds |
+|---|---|---|---|
+| **Member** | `engine.__member` | Sysop via `bbsengine6-console` (interactive `console.member.add`) | BBS-level credentials (`moniker`, `password`), global `credits`, flags (`SYSOP`, `APPROVED`), email |
+| **Casino player** | `casino.__player` | Lazily, on first casino touch — see below | Casino-specific state: `lastplayed`, `attrs`, `stats` (per-game counters: wins / losses / net / `blackjack.blackjacks` / `slots.biggest_win` / …) |
+
+The casino player row has `membermoniker citext` with a FK to
+`engine.__member(moniker)` (`casino/src/casino/sql/player.sql`), so the
+relationship is **1:1 by membermoniker** — every casino player has
+exactly one BBS member, and every BBS member has at most one casino
+player. "Many players" means many BBS members running casino clients
+concurrently, not multiple casino rows per member. The 1:1 shape is
+preserved across the whole stack; no schema migration is required to
+add casino users.
+
+**Lifecycle (lazy, audit-on-create).** The casino player row is
+materialized by a single helper,
+`casino.services.player.ensure_casino_player(args, moniker, *, audit)`,
+called from both entry paths:
+
+- WS-client auth: `PlayerService.authenticate` calls
+  `ensure_casino_player(audit=False)` on every successful login so the
+  wire stays clean even on the first login.
+- Door-mode facade: `lib.CasinoPlayer.__init__` calls
+  `ensure_casino_player(audit=True)` so the bottombar (`_casino_credits_fragment`),
+  stats menu (`casino.menu.show_player_stats`), and table-seat filter
+  (`_refresh_seat`) see real values from the first frame.
+- When `audit=True` and a row is newly created, one `io.echo(..., level="debug")`
+  fires with the membermoniker so a sysop running `casino --debug` can
+  audit who was auto-materialized. Subsequent constructions for the
+  same member are silent.
+
+There is **no** explicit `casino init <moniker>` step in v1 — the
+audit echo is the sysop's window into "who got auto-created." A
+follow-up could add an explicit init command if operators want
+finer-grained control.
+
 
 ## 3. Layered package layout
 

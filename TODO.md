@@ -291,6 +291,25 @@ the f-string shim, forward `package=` through to
 
 - [ ] See `bed/TODO.md` "Bearer token" — adopt `bed.api.auth.AuthService` for BED-mode authentication and reconnect. Replaces per-game `auth` implementations. Casino benefits strongly: lobby browsing, spectator mode, multi-table clients, bot accounts.
 
+## Casino player lifecycle (lazy, audit-on-create)
+
+- [x] Centralize casino player-row materialization in
+      `casino.services.player.ensure_casino_player`. Both the WS-client
+      auth path (`PlayerService.authenticate`) and the door-mode facade
+      (`lib.CasinoPlayer.__init__`) now call the same helper. The
+      door-mode facade sets `audit=True` so `casino --debug` shows who
+      was auto-materialized; the WS-client path sets `audit=False` to
+      keep the wire clean. 1:1 member-to-player shape is preserved
+      (no schema change). See `SPEC.md` §2.1 and `docs/AUTH.md`
+      ("Member vs casino player") for the rationale.
+- [ ] Optional follow-up: an explicit `casino init <moniker>` command
+      for sysops who want finer-grained control over who gets a casino
+      player row. Not in v1 — the audit echo is enough for now.
+- [ ] Optional follow-up: re-introduce an async DAL for player reads
+      (the previous `dal/aiosql/player.py` was deleted in this change
+      because it was schema-drifted and unused). Only worth doing if
+      a real async caller materializes.
+
 ## Adopt `bed.client` for WebSocket transport
 
 - [ ] See `bed/src/bed/client/` (new subpackage) and the plan discussed

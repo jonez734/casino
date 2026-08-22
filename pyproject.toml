@@ -87,7 +87,8 @@ addopts = [
 ]
 markers = [
     "integration: marks tests as integration tests (require BED server running)",
-]
+    "unit: marks tests as fast unit tests (no DB or WS required)",
+] 
 filterwarnings = [
     "error",
     "ignore::DeprecationWarning:bbsengine6.*",

@@ -7,6 +7,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### feat(casino): centralize casino player-record lifecycle (member → casino player)
+
+Casino has its own auth on top of the BBS member layer
+(`bbsengine6.member`) so many concurrent BBS members can play at once,
+each with their own 1:1 casino player record. Until now the casino
+player row (`casino.__player`) was only materialized via the WS-client
+auth path (`PlayerService.authenticate → dal_player.get_or_create_player`),
+so a member entering the door-mode casino menu had no casino row to
+back their bottombar / stats / seat — the door-mode `CasinoPlayer`
+facade rendered placeholders (`credits=1000`, `lastplayed=None`,
+`stats={}`).
+
+A single helper,
+[`casino.services.player.ensure_casino_player`](src/casino/services/player.py),
+now drives the lifecycle:
+
+- `PlayerService.authenticate` (WS-client auth, every login) calls
+  `ensure_casino_player(audit=False)` so the wire output stays clean.
+- `lib.CasinoPlayer.__init__` (door-mode facade) calls
+  `ensure_casino_player(audit=True)` so the bottombar, stats menu, and
+  table-seat filter see real values from the first frame.
+- When `audit=True` and a row is newly created, one `io.echo(..., level="debug")`
+  fires with the membermoniker so a sysop running `casino --debug` can
+  see who was auto-materialized. Subsequent constructions for the same
+  member are silent.
+
+Lifecycle is **lazy**: there is no explicit `casino init <moniker>`
+step. Both entry paths converge on the same helper, so a row created
+by one is visible to the other on the next read. The 1:1 member-to-player
+shape is preserved (the FK in `casino/src/casino/sql/player.sql` is
+unchanged); no schema migration needed.
+
+Side cleanups:
+
+- `lib.CasinoPlayer.__init__` populates `self.credits`, `self.lastplayed`,
+  and `self.stats` from the freshly-materialized row (via
+  `dal_player.get_player_balance` / `dal_player.get_player_stats`) so
+  the placeholder values are no longer user-visible.
+- Deleted unused `src/casino/dal/aiosql/player.py` — schema-drifted
+  from the sync DAL and `sql/player.sql`, and not wired into any
+  production path (`api/handler.py:23` is the only consumer of the
+  async DAL and it only imports `async_dal_table`).
+
+Regression coverage:
+
+- `src/casino/tests/test_player_service.py::TestEnsureCasinoPlayer`
+  (4 tests: idempotency, audit-on-create, audit-off, refactor smoke
+  that `PlayerService.authenticate` calls the helper).
+- `src/casino/tests/test_door_casino_player.py` (3 tests: row created,
+  `credits` / `stats` populated, audit echo on first construction).
+- `src/casino/tests/test_member_create_and_casino_auth.py::TestCreateMemberThenDoorModeCasinoPlayer`
+  (1 test: the round-trip create-member → door-mode auto-creates
+  the casino row, without a separate init step).
+
+See `SPEC.md` §2 ("Member vs casino player") and
+`docs/AUTH.md` ("Member vs casino player") for the rationale.
+
 ### fix(client/menu): bracket the inline prompt with `{f6}` seams around the option list
 
 `casino_client.py:menu()`'s `io.inputchoice` prompt rendered the

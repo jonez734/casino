@@ -8,12 +8,14 @@ import argparse
 import os
 import sys
 import unittest
+from unittest.mock import patch
 
 sys.path.insert(0, "/home/opencode/data/work/casino/src")
 
 
 DB_ENV = "CASINO_TEST_DB"
 TEST_MONIKER = "null_credits_test_user"
+ENSURE_MONIKER = "ensure_player_test_user"
 
 
 def _db_available() -> bool:
@@ -52,6 +54,21 @@ def _ensure_null_credits_member(cur, moniker: str) -> None:
         "UPDATE engine.__member SET password = NULL, credits = NULL "
         "WHERE moniker = %s",
         (moniker,),
+    )
+
+
+def _ensure_simple_member(cur, moniker: str, *, credits: int = 100) -> None:
+    """Insert a member with a known non-null credits value.
+
+    Used by ``TestEnsureCasinoPlayer`` so the balance / stats assertions
+    are deterministic against a freshly-materialized casino.__player
+    row. ``ON CONFLICT`` so reruns against a dirty DB self-heal.
+    """
+    cur.execute(
+        "INSERT INTO engine.__member (moniker, email, credits) "
+        "VALUES (%s, %s, %s) "
+        "ON CONFLICT (moniker) DO UPDATE SET credits = EXCLUDED.credits",
+        (moniker, f"{moniker}@test.local", credits),
     )
 
 
@@ -142,6 +159,144 @@ class TestPlayerService(unittest.TestCase):
         self.assertTrue(result.get("success"))
         self.assertEqual(result.get("moniker"), TEST_MONIKER)
         self.assertEqual(result.get("balance"), 0)
+
+
+@unittest.skipUnless(_db_available(), f"{DB_ENV} env var not set; skipping DB tests")
+class TestEnsureCasinoPlayer(unittest.TestCase):
+    """Regression tests for :func:`casino.services.player.ensure_casino_player`.
+
+    Pins the lazy-but-auditable lifecycle: idempotent materialization,
+    audit-echo on create, audit-echo suppressed when disabled, and the
+    refactor that ``PlayerService.authenticate`` calls the helper
+    instead of poking ``dal.player`` directly.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        from bbsengine6 import database
+        cls._args = _make_args()
+        with database.connect(cls._args) as conn, database.cursor(conn) as cur:
+            cur.execute("SELECT 1")
+            cur.fetchone()
+
+    def setUp(self):
+        from bbsengine6 import database
+        with database.connect(self._args) as conn, database.cursor(conn) as cur:
+            _delete_test_member(cur, ENSURE_MONIKER)
+            _ensure_simple_member(cur, ENSURE_MONIKER, credits=500)
+
+    def tearDown(self):
+        from bbsengine6 import database
+        with database.connect(self._args) as conn, database.cursor(conn) as cur:
+            _delete_test_member(cur, ENSURE_MONIKER)
+
+    def test_ensure_casino_player_is_idempotent(self):
+        """Calling ``ensure_casino_player`` twice for the same member
+        returns the same row and does not create a duplicate. The
+        second call is a pure read.
+        """
+        from bbsengine6 import database
+
+        from casino.services.player import ensure_casino_player
+
+        first = ensure_casino_player(self._args, ENSURE_MONIKER, audit=False)
+        self.assertEqual(first["membermoniker"], ENSURE_MONIKER)
+
+        with database.connect(self._args) as conn, database.cursor(conn) as cur:
+            cur.execute(
+                "SELECT COUNT(*) AS n FROM casino.__player "
+                "WHERE membermoniker = %s",
+                (ENSURE_MONIKER,),
+            )
+            row = cur.fetchone()
+            self.assertEqual(row["n"], 1)
+
+        second = ensure_casino_player(self._args, ENSURE_MONIKER, audit=False)
+        self.assertEqual(second["membermoniker"], ENSURE_MONIKER)
+        self.assertEqual(first.get("location"), second.get("location"))
+
+    def test_ensure_casino_player_emits_audit_on_create(self):
+        """When ``audit=True`` and the row is newly created, one
+        debug-level echo is emitted containing the membermoniker. The
+        second call does NOT emit because the row already exists.
+        """
+        from bbsengine6 import io
+
+        from casino.services.player import ensure_casino_player
+
+        with patch.object(io, "echo") as mocked_echo:
+            ensure_casino_player(self._args, ENSURE_MONIKER, audit=True)
+            create_calls = [
+                c for c in mocked_echo.call_args_list
+                if "auto-creating" in str(c)
+            ]
+            self.assertEqual(
+                len(create_calls),
+                1,
+                f"expected exactly one audit echo on create, got {len(create_calls)}",
+            )
+            self.assertIn(ENSURE_MONIKER, str(create_calls[0]))
+
+        with patch.object(io, "echo") as mocked_echo:
+            ensure_casino_player(self._args, ENSURE_MONIKER, audit=True)
+            create_calls = [
+                c for c in mocked_echo.call_args_list
+                if "auto-creating" in str(c)
+            ]
+            self.assertEqual(
+                len(create_calls),
+                0,
+                "audit echo must not fire when the row already exists",
+            )
+
+    def test_ensure_casino_player_does_not_audit_when_disabled(self):
+        """``audit=False`` (the WS-client default) suppresses the
+        audit echo entirely, even on the create path.
+        """
+        from bbsengine6 import io
+
+        from casino.services.player import ensure_casino_player
+
+        with patch.object(io, "echo") as mocked_echo:
+            ensure_casino_player(self._args, ENSURE_MONIKER, audit=False)
+            audit_calls = [
+                c for c in mocked_echo.call_args_list
+                if "auto-creating" in str(c)
+            ]
+            self.assertEqual(
+                len(audit_calls),
+                0,
+                "audit=False must suppress the debug echo on create",
+            )
+
+    def test_player_service_authenticate_calls_ensure_casino_player(self):
+        """``PlayerService.authenticate`` goes through
+        ``ensure_casino_player`` (not ``dal.player.get_or_create_player``
+        directly) so both entry paths converge on the same lifecycle.
+        """
+        from casino.services.player import PlayerService
+
+        service = PlayerService(self._args)
+        with patch(
+            "casino.services.player.ensure_casino_player"
+        ) as mock_ensure, patch(
+            "casino.services.player.dal_player.get_player_balance",
+            return_value=0,
+        ):
+            mock_ensure.return_value = {
+                "membermoniker": ENSURE_MONIKER,
+                "location": "casino",
+                "lastplayed": None,
+                "attrs": {},
+            }
+            result = service.authenticate(ENSURE_MONIKER, "any")
+
+        self.assertTrue(result["success"])
+        mock_ensure.assert_called_once()
+        # Caller passes audit=False on the WS-client path so the
+        # wire output stays clean even on the first successful login.
+        _, kwargs = mock_ensure.call_args
+        self.assertEqual(kwargs.get("audit"), False)
 
 
 if __name__ == "__main__":

@@ -454,6 +454,123 @@ class TestCasinoAuthEndToEnd(unittest.IsolatedAsyncioTestCase):
 
 
 # ---------------------------------------------------------------------
+# (c) Create-member → door-mode ``CasinoPlayer`` auto-materializes the
+# casino player row.
+#
+# This is the round-trip that motivated the lazy-but-auditable
+# lifecycle: a freshly-created BBS member should be able to enter the
+# door-mode casino menu and have the matching ``casino.__player`` row
+# come into existence via ``CasinoPlayer.__init__`` --
+# ``ensure_casino_player(...)``, without needing a separate
+# ``casino init <moniker>`` step.
+
+
+class TestCreateMemberThenDoorModeCasinoPlayer(unittest.IsolatedAsyncioTestCase):
+    """Step (c): a fresh member's ``CasinoPlayer`` constructor
+    materializes the casino row."""
+
+    async def asyncSetUp(self):
+        from bbsengine6 import database
+
+        self.args = _build_args()
+        if not _member_table_reachable(self.args):
+            self.skipTest("engine.__member not reachable on this DB")
+
+        self.pool = database.getpool(self.args)
+        self.moniker = _make_unique_moniker("alice_door_casino")
+        self.password = "pw"
+
+        # Path (a.1) creates the BBS member only. No casino row yet.
+        from bbsengine6 import member as libmember
+
+        with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
+            cur.execute(
+                "INSERT INTO engine.__member "
+                "(moniker, loginid, email, credits, attrs) "
+                "VALUES (%s, %s, %s, %s, %s::jsonb) "
+                "ON CONFLICT (moniker) DO UPDATE SET "
+                "loginid = EXCLUDED.loginid, "
+                "email = EXCLUDED.email, "
+                "credits = EXCLUDED.credits, "
+                "attrs = EXCLUDED.attrs",
+                (
+                    self.moniker,
+                    self.moniker,
+                    f"{self.moniker}@test.local",
+                    1000,
+                    "{}",
+                ),
+            )
+        self.assertIs(
+            libmember.setpassword(self.args, self.password, self.moniker, pool=self.pool),
+            True,
+        )
+
+        # Sanity: no casino row exists for this member yet.
+        with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
+            cur.execute(
+                "DELETE FROM casino.__player WHERE membermoniker = %s",
+                (self.moniker,),
+            )
+            cur.execute(
+                "SELECT COUNT(*) AS n FROM casino.__player "
+                "WHERE membermoniker = %s",
+                (self.moniker,),
+            )
+            self.assertEqual(cur.fetchone()["n"], 0)
+
+    async def asyncTearDown(self):
+        from bbsengine6 import database
+
+        try:
+            with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
+                cur.execute(
+                    "DELETE FROM casino.__player WHERE membermoniker = %s",
+                    (self.moniker,),
+                )
+                cur.execute(
+                    "DELETE FROM engine.__member WHERE moniker = %s",
+                    (self.moniker,),
+                )
+        except Exception:
+            pass
+        with contextlib.suppress(Exception):
+            self.pool.close()
+
+    async def test_c1_door_mode_construction_creates_casino_player_row(self):
+        """Constructing ``CasinoPlayer`` for a freshly-created member
+        materializes the ``casino.__player`` row. After construction,
+        the row is queryable with the expected default attrs and the
+        player's ``credits`` / ``lastplayed`` are populated.
+        """
+        from bbsengine6 import database
+        from casino.lib import CasinoPlayer
+
+        player = CasinoPlayer(
+            self.args, membermoniker=self.moniker, pool=self.pool
+        )
+
+        with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
+            cur.execute(
+                "SELECT membermoniker, location, lastplayed, attrs, stats "
+                "FROM casino.__player WHERE membermoniker = %s",
+                (self.moniker,),
+            )
+            row = cur.fetchone()
+        self.assertIsNotNone(row, "casino.__player row must exist after CasinoPlayer init")
+        self.assertEqual(row["membermoniker"], self.moniker)
+        self.assertEqual(row["location"], "casino")
+        self.assertEqual(row["attrs"], {})
+        self.assertEqual(row["stats"], {})
+
+        # The casino player facade populates ``credits`` from
+        # engine.__member.credits via the DAL so the bottombar shows
+        # the real number (1000 from the seed), not the 1000 placeholder.
+        self.assertEqual(player.credits, 1000)
+        self.assertEqual(player.moniker, self.moniker)
+
+
+# ---------------------------------------------------------------------
 # Local BedServerContext -- a slim copy of
 # bed/src/bed/tests/_auth_helpers.py:BedServerContext scoped to what
 # these tests need. Importing the upstream helper would pull in the
