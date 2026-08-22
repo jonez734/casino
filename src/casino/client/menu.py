@@ -101,6 +101,7 @@ def menu(client: "CasinoClient | None" = None, **kwargs) -> str | None:
             if client and client.current_table_moniker
             else ""
         )
+        + "{f6}"
     )
     inline = "{f6}".join(
         # f-string ``{{`` collapses to literal ``{`` so ``io.echo``
@@ -111,7 +112,7 @@ def menu(client: "CasinoClient | None" = None, **kwargs) -> str | None:
         f"{{var:optioncolor}}[{letter.upper()}]{{var:labelcolor}}{label}"
         for letter, label in visible
     )
-    prompt = status + inline + "{var:promptcolor}casino_client: {var:inputcolor}"
+    prompt = status + inline + "{f6}{var:promptcolor}casino_client: {var:inputcolor}"
     return io.inputchoice(
         prompt,
         option_str,
