@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 from typing import TYPE_CHECKING
 
 from bbsengine6 import bottombar, io, util
@@ -68,24 +69,30 @@ def access(args, op: str, **kwargs) -> bool:
     return True
 
 
-def buildargs(args, **kwargs):
+def buildargs(args, parser: argparse.ArgumentParser | None = None, **kwargs):
     """Register casino-specific CLI flags.
 
-    Adds ``--token-file`` so :func:`connect` can pick up an existing
-    bed bearer token (the same path used by ``bed tools bank``). The
-    flag mirrors :func:`bed.tools._token.build_token_file_arg` so the
-    default path (``$XDG_RUNTIME_DIR/bed.token`` or
-    ``/tmp/bed-<uid>/bed.token``) and permission checks are shared.
-    """
-    from bed.tools import _token
+    Adds ``--token-file`` so :func:`connect` and :func:`CasinoClient.run`
+    can pick up an existing bed bearer token (the same path used by
+    ``bed tools bank``). The flag mirrors
+    :func:`bed.tools._token.build_token_file_arg` so the default path
+    (``$XDG_RUNTIME_DIR/bed.token`` or ``/tmp/bed-<uid>/bed.token``) and
+    permission checks are shared.
 
-    parser = args._parser if hasattr(args, "_parser") else None
+    Two call shapes:
+
+    - ``buildargs(args, parser=parser)`` from the merged ``casino``
+      CLI's parser-build path (``casino.lib.buildargs``). The parser
+      is required so the flag lands on the merged CLI's argparse.
+    - ``buildargs(args)`` from the BBS-dispatch path
+      (``bbsengine6.module.runmodule`` → ``casino.lib.buildargs``).
+      No parser is available; the function only ensures
+      ``args.token_file`` defaults to ``None``.
+    """
     if parser is not None:
-        try:
-            _token.build_token_file_arg(parser)
-        except Exception:
-            pass
-    if not hasattr(args, "token_file"):
+        from bed.tools import _token
+        _token.build_token_file_arg(parser)
+    if args is not None and not hasattr(args, "token_file"):
         args.token_file = None
     return None
 
@@ -129,6 +136,28 @@ def _read_token_file(path: str) -> str:
     return ""
 
 
+def _resolve_token_file(args) -> None:
+    """Resolve ``args.token_file`` to a usable state.
+
+    Mutates ``args`` in place:
+
+    1. If ``args.token_file`` is unset, fill it with the default
+       ``$XDG_RUNTIME_DIR/bed.token`` (or ``/tmp/bed-<uid>/bed.token``)
+       via :func:`bed.tools._token.ensure_token_file_arg`.
+    2. If ``args.token_file`` is set but the file is empty (or
+       missing), clear it back to ``None`` so downstream
+       ``if args.token_file:`` checks cleanly fall through to the
+       prompt path. This is the silent-fallback that lets an
+       operator run ``casino`` without a token file (e.g. before
+       they have run ``bed auth login``) and still get the prompt.
+    """
+    from bed.tools import _token
+
+    _token.ensure_token_file_arg(args)
+    if args.token_file and not _read_token_file(args.token_file):
+        args.token_file = None
+
+
 def _open_loop_for(client) -> asyncio.AbstractEventLoop:
     """Create and bind a fresh event loop to ``client`` if it doesn't
     already have one. Returns the loop. This lets callers inject a
@@ -141,13 +170,29 @@ def _open_loop_for(client) -> asyncio.AbstractEventLoop:
     return client._loop
 
 
-def _connect_with_token(args, host: str, port: int) -> CasinoClient | None:
+def _connect_with_token(
+    args,
+    host: str,
+    port: int,
+    client: CasinoClient | None = None,
+) -> CasinoClient | None:
     """Connect and bind an existing bearer token via ``auth reconnect``.
 
     Mirrors ``bed.tools.bank._authenticate_ws`` minus the token
     rotation logic. The returned client has ``authenticated=True``
     and the resolved token stashed on ``client._bearer_token`` so
     per-op sends can inject it on every wire call.
+
+    ``client``: when ``None`` (default, the BBS-dispatch path used by
+    :func:`connect`), a fresh :class:`CasinoClient` is constructed
+    from ``args`` and returned. When supplied
+    (e.g. by :meth:`CasinoClient.run` on the merged CLI's BED-mode
+    path), ``client`` is mutated in place: the loop is opened, the
+    WebSocket is opened, ``BedAuthServiceClient.reconnect(token)`` is
+    driven against the shared ``bed.client.get_bed_connection`` WS,
+    and the resolved state (``authenticated``, ``moniker``,
+    ``is_sysop``, ``balance``, ``_bearer_token``, ``_receive_task``)
+    is set on ``client``. Returns ``None`` on failure in either shape.
     """
     from bed.client import get_bed_connection
     from bed.client.authservice import BedAuthServiceClient
@@ -164,7 +209,9 @@ def _connect_with_token(args, host: str, port: int) -> CasinoClient | None:
         )
         return None
 
-    client = CasinoClient(args)
+    if client is None:
+        client = CasinoClient(args)
+
     _open_loop_for(client)
 
     if not client._loop.run_until_complete(client.connect()):
@@ -205,8 +252,11 @@ def _connect_with_token(args, host: str, port: int) -> CasinoClient | None:
 
     client.authenticated = True
     client.moniker = reply.get("moniker", "") or ""
-    client.is_sysop = bool(reply.get("is_sysop", False))
     client.balance = int(reply.get("balance", 0) or 0)
+    is_sysop = bool(reply.get("is_sysop", False))
+    if not hasattr(client, "is_sysop"):
+        with contextlib.suppress(AttributeError, TypeError):
+            client.is_sysop = is_sysop
     client._bearer_token = reply.get("token") or token
     client._receive_task = client._loop.create_task(client.receive_loop())
     return client
