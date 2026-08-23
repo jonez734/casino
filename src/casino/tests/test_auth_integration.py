@@ -147,6 +147,14 @@ def _make_mock_casino_client(moniker: str = "alice") -> MagicMock:
     loop_mock.run_until_complete = MagicMock(side_effect=_run)
     loop_mock.create_task = MagicMock(side_effect=real_loop.create_task)
     loop_mock.close = MagicMock(side_effect=real_loop.close)
+    # ``_close_loop_for`` calls ``loop.shutdown_asyncgens()`` and
+    # ``loop.shutdown_default_executor()`` and drives them through
+    # ``run_until_complete``. Mocking those methods as ``AsyncMock``
+    # makes the resulting call go through the same ``_run`` path as
+    # ``client.disconnect`` (the real loop drives the coroutine to
+    # completion so the assertion side_effects run).
+    loop_mock.shutdown_asyncgens = AsyncMock(return_value=None)
+    loop_mock.shutdown_default_executor = AsyncMock(return_value=None)
     client._loop = loop_mock
     return client
 

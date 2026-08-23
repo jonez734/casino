@@ -855,7 +855,7 @@ class CasinoClient:
             asyncio.set_event_loop(self._loop)
 
             if not self._loop.run_until_complete(self.connect()):
-                self._loop.close()
+                auth._close_loop_for(self)
                 return
 
             self._receive_task = self._loop.create_task(self.receive_loop())
@@ -917,4 +917,4 @@ class CasinoClient:
             self._loop.run_until_complete(asyncio.sleep(0.1))
 
         self._loop.run_until_complete(self.disconnect())
-        self._loop.close()
+        auth._close_loop_for(self)

@@ -170,6 +170,53 @@ def _open_loop_for(client) -> asyncio.AbstractEventLoop:
     return client._loop
 
 
+def _close_loop_for(
+    client,
+    loop: asyncio.AbstractEventLoop | None = None,
+) -> None:
+    """Close ``client._loop`` (or ``loop``), letting pending tasks
+    finish gracefully first.
+
+    Mirrors the shutdown sequence ``asyncio.run()`` uses in CPython
+    3.12: identify every task still owned by the loop, request
+    cancellation on each, then await them so the ``CancelledError``
+    propagates through each coroutine (closing sockets, flushing
+    buffers, etc.). Then shut down async generators and the default
+    executor, and finally close the loop. Everything runs inside a
+    ``finally`` block so the loop is always closed, even if a task's
+    cancellation handler itself raises.
+
+    Without the cancel-then-await drain, websockets' internal
+    ``Connection.keepalive`` task (and anything else the loop owns
+    that's still pending) is left in pending state when
+    ``loop.close()`` runs, and Python prints ``RuntimeWarning: Task
+    was destroyed but it is pending!`` at interpreter shutdown.
+
+    Args:
+        client: an object carrying ``_loop`` (e.g. a ``CasinoClient``).
+            Ignored when ``loop`` is passed directly.
+        loop: the loop to close. When ``None``, falls back to
+            ``client._loop``. When neither resolves, the function is
+            a no-op so call sites don't have to guard against a
+            missing loop.
+    """
+    target = loop if loop is not None else getattr(client, "_loop", None)
+    if target is None:
+        return
+    try:
+        pending = [t for t in asyncio.all_tasks(target) if not t.done()]
+        for t in pending:
+            t.cancel()
+        if pending:
+            target.run_until_complete(
+                asyncio.gather(*pending, return_exceptions=True)
+            )
+        target.run_until_complete(target.shutdown_asyncgens())
+        target.run_until_complete(target.shutdown_default_executor())
+    finally:
+        target.close()
+
+
 def _connect_with_token(
     args,
     host: str,
@@ -215,7 +262,7 @@ def _connect_with_token(
     _open_loop_for(client)
 
     if not client._loop.run_until_complete(client.connect()):
-        client._loop.close()
+        _close_loop_for(client)
         io.echo("Failed to connect", level="error")
         return None
 
@@ -247,7 +294,7 @@ def _connect_with_token(
         else:
             io.echo(f"{code}: {message}".rstrip(), level="error")
         client._loop.run_until_complete(client.disconnect())
-        client._loop.close()
+        _close_loop_for(client)
         return None
 
     client.authenticated = True
@@ -287,7 +334,7 @@ def connect(args, **kwargs) -> CasinoClient | None:
         _open_loop_for(client)
 
         if not client._loop.run_until_complete(client.connect()):
-            client._loop.close()
+            _close_loop_for(client)
             io.echo("Failed to connect", level="error")
             return None
 
@@ -295,7 +342,7 @@ def connect(args, **kwargs) -> CasinoClient | None:
 
         if not client._loop.run_until_complete(auth_prompt(args, client)):
             client._loop.run_until_complete(client.disconnect())
-            client._loop.close()
+            _close_loop_for(client)
             io.echo("Auth aborted", level="error")
             return None
 
@@ -303,7 +350,7 @@ def connect(args, **kwargs) -> CasinoClient | None:
 
         if not client.authenticated:
             client._loop.run_until_complete(client.disconnect())
-            client._loop.close()
+            _close_loop_for(client)
             io.echo("Authentication failed", level="error")
             return None
 
@@ -324,7 +371,7 @@ def disconnect(args, client: CasinoClient | None = None, **kwargs) -> bool:
         io.echo("Not connected.", level="error")
         return False
     client._loop.run_until_complete(client.disconnect())
-    client._loop.close()
+    _close_loop_for(client)
     if client.moniker in _clients:
         del _clients[client.moniker]
     if _current_moniker == client.moniker:
