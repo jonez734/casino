@@ -612,17 +612,33 @@ a bed wiring change. When bed later wires the section explicitly
 
   **Note (2026-08-22, password column hardening follow-up):**
   Casino test fixtures MUST provision `engine.__member` rows via
-  `bbsengine6.member.setpassword(args, password, moniker, pool=pool)`,
-  never via a raw `INSERT ... crypt('test', gen_salt('md5'))` SQL
-  string. The `chk_member_password_bcrypt` CHECK constraint
-  installed at every `bbsengine6.startup` rejects any non-NULL,
-  non-bcrypt write — including the legacy `$1$` MD5-crypt hashes
-  the previous fixture shape produced. The canonical migration
-  shape is at
-  `casino/tests/test_member_create_and_casino_auth.py:294-319`:
-  insert with the `password` column omitted (so it stays NULL, which
-  the constraint allows), then call `setpassword` to write
-  `crypt($1, gen_salt('bf'))`. See `casino/TODO.md` "Test fixture
+  `casino.tests._ensure_test_member.ensure_test_member(args, moniker,
+  plaintext, *, pool, ...)`, never via a raw
+  `INSERT ... crypt('test', gen_salt('md5'))` SQL string and never
+  via an unguarded `bbsengine6.member.setpassword` call. The
+  `chk_member_password_bcrypt` CHECK constraint installed at every
+  `bbsengine6.startup` rejects any non-NULL, non-bcrypt write —
+  including the legacy `$1$` MD5-crypt hashes the previous fixture
+  shape produced. The helper composes with
+  `bbsengine6.member.audit_password_hash` (which exposes the
+  column's structural flags as a `PasswordHashAudit` namedtuple —
+  `is_bcrypt`, `length_ok`, `present`, `non_empty`, `is_md5crypt`):
+  the helper INSERTs the row (loginid / email / credits reset on
+  conflict — the fixture contract), then calls `setpassword` only
+  when the audit reports the column is unhealthy
+  (`is_bcrypt=False`, `length_ok=False`) or absent. On a fresh DB
+  (`zoid6test`) the row is missing → `setpassword` runs. On a dev
+  DB (`zoid6`) where the operator set their own bcrypt password on
+  the fixture moniker the gate skips the write, preserving the
+  operator's credentials across test runs. All seven fixtures
+  listed in `0d84cf7` route their password writes through this
+  helper; their monikers have additionally been renamed off the
+  bare `'jam'` string to the `oc_test_*` family
+  (`oc_test_blackjack`, `oc_test_blackjack_three`, `oc_test_features`,
+  `oc_test_observer`, `oc_test_slots_1`, `oc_test_slots_2`,
+  `slots_oc_test_1`, `blackjack_oc_test_1`) so the engine.__member
+  row never collides with the operator's personal `'jam'` account at
+  the member-row level. See `casino/TODO.md` "Test fixture
   migration: `gen_salt('md5')` → `gen_salt('bf')` (@since 20260822)"
   for the audit trail.
 - **Daemon lifecycle** — bed.

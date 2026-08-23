@@ -7,6 +7,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### tests(casino): audit-gate setpassword + rename fixtures off `'jam'`
+
+The `0d84cf7` migration fixed the bcrypt-format problem (raw MD5
+hashes rejected by `chk_member_password_bcrypt`) but did **not**
+stop fixtures from stomping the operator's personal `jam` password.
+Every test run wrote `crypt('test', gen_salt('bf'))` over the
+operator's column, silently breaking `bed auth login` until the
+operator re-ran `bbsengine6/scripts/setpassword.py`.
+
+Two changes:
+
+1. **`src/casino/tests/_ensure_test_member.py`** (new file) exposes
+   `ensure_test_member(args, moniker, plaintext, *, pool, ...)`. The
+   helper INSERTs the row (loginid / email / credits reset on
+   conflict — the fixture contract), then calls
+   `bbsengine6.member.audit_password_hash` and only writes the
+   password column when the audit reports the column is unhealthy
+   (`is_bcrypt=False`, `length_ok=False`) or absent. On a fresh
+   DB (`zoid6test`) the row is missing → `setpassword` runs. On
+   a dev DB (`zoid6`) where the operator set their own bcrypt
+   password the gate skips the write, preserving the operator's
+   credentials across test runs.
+
+2. **Fixture monikers** renamed off `'jam'`. The four fixtures
+   that hardcoded the bare `'jam'` string move to the `oc_test_*`
+   family; the slots constants that used `'jam_1'` / `'jam_2'` /
+   `'slots_jam_1'` / `'blackjack_jam_1'` move to `oc_test_slots_*`:
+
+   ```
+   test_blackjack_flow.py            jam           -> oc_test_blackjack
+   test_blackjack_three_hands.py     jam           -> oc_test_blackjack_three
+   test_new_features_integration.py  jam           -> oc_test_features
+   test_player_observer.py           jam           -> oc_test_observer
+   test_slots_integration.py         jam_1         -> oc_test_slots_1
+                                     jam_2         -> oc_test_slots_2
+                                     slots_jam_1   -> slots_oc_test_1
+                                     blackjack_jam_1 -> blackjack_oc_test_1
+   ```
+
+   The fixtures no longer collide with the operator's personal
+   `'jam'` account at the member-row level. The audit gate still
+   applies as a defense-in-depth backstop in case a future fixture
+   collides by accident.
+
+Composes with:
+- `bbsengine6/sql/manage_password_format.sql` (`chk_member_password_bcrypt`)
+- `bbsengine6/py/src/bbsengine6/member/lib.py:879` (`audit_password_hash`)
+- `bbsengine6/py/src/bbsengine6/member/lib.py:840` (`setpassword`)
+
+Scope: just the 7 fixtures from `0d84cf7`. The other `'jam'`
+references in `casino/tests` (`test_client`, `test_api`,
+`test_blackjack_two_players_three_games_bed`,
+`test_blackjack_three_hands_bed`, `test_permissions`) are test-
+specific fixtures not in the migration set; they remain on `'jam'`
+and are protected by the audit gate.
+
+### feat(casino/sql): casino.__player — promote moniker citext to PK
 ### feat(casino/sql): casino.__player — promote moniker citext to PK
 
 The casino player record (`casino.__player`) was previously keyed by

@@ -3247,3 +3247,77 @@ MD5-crypt migration (@since 20260822)" (the parent incident), and
 `bbsengine6/CHANGELOG.md` "[Unreleased] member + sql: password
 column hardening" (the constraint that triggers this entry).
 
+
+### [x] Audit-gate `setpassword` + rename `'jam'` fixtures to `oc_test_*`
+
+Follow-up to the MD5→bcrypt migration above. The bcrypt migration
+fixed the format problem but the seven fixtures still called
+`libmember.setpassword(args, "test", <moniker>, pool=pool)`
+unconditionally, which silently overwrote the operator's personal
+password on the `'jam'` (and `'viewer'`/etc.) member row in any
+dev DB that had one. The 2026-08-22 `bed auth login` incident was
+the trigger; the operator's `'jam'` password was missing after a
+test run and `checkpassword` returned `False` against the freshly
+written bcrypt hash.
+
+Two changes:
+
+1. **`src/casino/tests/_ensure_test_member.py`** (new file) exposes
+   `ensure_test_member(args, moniker, plaintext, *, pool, ...)`.
+   The helper INSERTs the row, then calls
+   `bbsengine6.member.audit_password_hash` and only writes the
+   password column when the audit reports the column is unhealthy
+   (`is_bcrypt=False`, `length_ok=False`) or absent. Fresh DB
+   (`zoid6test`) → row missing → `setpassword` runs and writes
+   `crypt('test', gen_salt('bf'))`. Dev DB (`zoid6`) where the
+   operator set their own bcrypt password → audit reports a
+   healthy hash → `setpassword` is skipped and the operator's
+   credentials are preserved.
+
+2. **Fixture monikers** renamed off `'jam'`. The four fixtures
+   that hardcoded the bare `'jam'` string move to the `oc_test_*`
+   family; the slots constants that used `'jam_1'` / `'jam_2'` /
+   `'slots_jam_1'` / `'blackjack_jam_1'` move to `oc_test_slots_*`:
+
+   ```
+   test_blackjack_flow.py            jam           -> oc_test_blackjack
+   test_blackjack_three_hands.py     jam           -> oc_test_blackjack_three
+   test_new_features_integration.py  jam           -> oc_test_features
+   test_player_observer.py           jam           -> oc_test_observer
+   test_slots_integration.py         jam_1         -> oc_test_slots_1
+                                     jam_2         -> oc_test_slots_2
+                                     slots_jam_1   -> slots_oc_test_1
+                                     blackjack_jam_1 -> blackjack_oc_test_1
+   ```
+
+   The fixtures no longer collide with the operator's personal
+   `'jam'` account at the member-row level. The audit gate still
+   applies as a defense-in-depth backstop in case a future fixture
+   collides by accident.
+
+Resolution: zero `gen_salt('md5')` matches in `casino/`, plus all
+seven fixtures route their password writes through
+`_ensure_test_member.ensure_test_member` (the audit-gated path).
+
+Regression guards:
+
+- `grep -rn "gen_salt('md5')" casino/src casino/tests` returns
+  zero matches.
+- `grep -rn "'jam'" casino/src/casino/tests/` against the seven
+  fixtures returns zero matches; the only remaining `'jam'`
+  references in `casino/tests` are in `test_client`, `test_api`,
+  `test_blackjack_three_hands_bed`,
+  `test_blackjack_two_players_three_games_bed`, and
+  `test_permissions`, which are out of scope for this migration
+  (they're test-specific fixtures not in the `0d84cf7` set) and
+  are protected by the audit gate.
+- `grep -rn "libmember\.setpassword" casino/src/casino/tests/`
+  outside the helper file and outside
+  `test_member_create_and_casino_auth.py` (which exercises
+  `setpassword` as the public API under test) returns zero
+  matches.
+
+Cross-ref: `bbsengine6/TODO.md` (line 35 cross-ref), `bbsengine6/
+py/src/bbsengine6/member/lib.py:879` (`audit_password_hash`),
+`bbsengine6/sql/manage_password_format.sql` (`chk_member_password_bcrypt`).
+
