@@ -7,6 +7,8 @@
 
 \echo player
 \i player.sql
+\echo player_migration
+\i player_migration.sql
 \echo player_view
 \i player_view.sql
 

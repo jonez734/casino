@@ -31,9 +31,9 @@ def buildargs(args, **kwargs):
 def main(args, **kwargs):
     with database.getpool(args) as pool, database.connect(args, pool=pool) as conn:
 
-        # 1. Extensions — citext is required by casino.__player.membermoniker
-        #    and by the new __bank_player.membermoniker.  Fresh-DB bootstrap
-        #    crashes on the first table creation without this.
+        # 1. Extensions — citext is required by casino.__player.moniker,
+        #    casino.__player.membermoniker, and __bank_player.player_moniker.
+        #    Fresh-DB bootstrap crashes on the first table creation without this.
         io.echo("extension {var:valuecolor}citext{var:labelcolor}: ", end="")
         if database.extensionavailable(args, "citext", conn=conn) is False:
             io.echo("not in pg_available_extensions", level="error")

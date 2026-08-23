@@ -18,7 +18,8 @@ INSERT INTO bank.__account (moniker, balance, maxtransfer)
 VALUES ('jam', 100000, 1000000)
 ON CONFLICT (moniker) DO UPDATE SET balance = 100000;
 
--- Set up casino player record
-INSERT INTO casino.__player (membermoniker)
-VALUES ('jam')
-ON CONFLICT DO NOTHING;
+-- Set up casino player record (legacy 1:1 shape; `moniker = membermoniker`
+-- so existing `WHERE moniker = 'jam'` queries continue to find the row).
+INSERT INTO casino.__player (membermoniker, moniker)
+VALUES ('jam', 'jam')
+ON CONFLICT (moniker) DO NOTHING;

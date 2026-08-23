@@ -22,29 +22,41 @@ CREATE EXTENSION IF NOT EXISTS citext;
 -- ===== Bootstrap casino schema (creates it if missing) =====
 \i casino.sql
 
--- ===== Stats migration (existence-guarded) =====
+-- ===== Player migration (existence-guarded) =====
 -- On a totally fresh DB without the bank/engine schemas, the casino
 -- driver above fails partway (FKs to engine.__member etc.), so
 -- casino.__player may not exist yet.  No-op cleanly in that case; a
 -- fully-populated test DB will run bbsengine6.startup before this
--- script and casino.__player will exist.
-DO $stats$
+-- script and casino.__player will exist. The new schema includes
+-- `stats` by default and `moniker citext NOT NULL PRIMARY KEY` is the
+-- PK, so the migration below only fires on legacy tables still
+-- carrying the `id` bigserial PK.
+DO $player$
 BEGIN
     IF EXISTS (
         SELECT 1 FROM pg_class c
         JOIN pg_namespace n ON c.relnamespace = n.oid
         WHERE n.nspname = 'casino' AND c.relname = '__player'
+    ) AND EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'casino'
+          AND table_name = '__player'
+          AND column_name = 'id'
     ) AND NOT EXISTS (
         SELECT 1 FROM information_schema.columns
         WHERE table_schema = 'casino'
-        AND table_name = '__player'
-        AND column_name = 'stats'
+          AND table_name = '__player'
+          AND column_name = 'moniker'
     ) THEN
+        DELETE FROM casino.__player;
+        ALTER TABLE casino.__player DROP COLUMN id CASCADE;
+        ALTER TABLE casino.__player ADD COLUMN moniker citext;
+        ALTER TABLE casino.__player ALTER COLUMN moniker SET NOT NULL;
         ALTER TABLE casino.__player
-        ADD COLUMN stats jsonb default '{}'::jsonb;
+            ADD CONSTRAINT pk_player_moniker PRIMARY KEY (moniker);
     END IF;
 END
-$stats$;
+$player$;
 
 -- ===== Schema owners, table owners, GRANTs (existence-guarded) =====
 -- One DO block iterates over bank/engine/casino and applies the full
