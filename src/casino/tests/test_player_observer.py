@@ -202,11 +202,11 @@ class TestPlayerAndObserver(unittest.IsolatedAsyncioTestCase):
         self.pool = database.getpool(self.args)
 
         from casino.tests._ensure_test_member import ensure_test_member
-        ensure_test_member(self.args, "jam", "test", pool=self.pool)
+        ensure_test_member(self.args, "oc_test_observer", "test", pool=self.pool)
         ensure_test_member(self.args, "viewer", "test", pool=self.pool)
         with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
             cur.execute(
-                "INSERT INTO bank.__account (moniker, balance) VALUES ('jam', 100000) "
+                "INSERT INTO bank.__account (moniker, balance) VALUES ('oc_test_observer', 100000) "
                 "ON CONFLICT (moniker) DO UPDATE SET balance = 100000"
             )
             cur.execute(
@@ -238,8 +238,8 @@ class TestPlayerAndObserver(unittest.IsolatedAsyncioTestCase):
         if hasattr(self, "pool") and self.pool is not None:
             try:
                 with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
-                    cur.execute("UPDATE engine.__member SET credits = 100000 WHERE moniker = 'jam'")
-                    cur.execute("UPDATE bank.__account SET balance = 100000 WHERE moniker = 'jam'")
+                    cur.execute("UPDATE engine.__member SET credits = 100000 WHERE moniker = 'oc_test_observer'")
+                    cur.execute("UPDATE bank.__account SET balance = 100000 WHERE moniker = 'oc_test_observer'")
                     cur.execute("UPDATE engine.__member SET credits = 100000 WHERE moniker = 'viewer'")
                     cur.execute("UPDATE bank.__account SET balance = 100000 WHERE moniker = 'viewer'")
                     cur.execute("DELETE FROM casino.__bank_table WHERE table_moniker LIKE 'blackjack-%'")
@@ -271,7 +271,7 @@ class TestPlayerAndObserver(unittest.IsolatedAsyncioTestCase):
             print("\n=== Step 1: Player sets up game ===")
 
             await self.player_client.send(
-                {"type": "auth", "moniker": "jam", "password": "test"}
+                {"type": "auth", "moniker": "oc_test_observer", "password": "test"}
             )
             response = await self.player_client.receive()
             self.assertEqual(response["type"], "auth_result")
@@ -475,7 +475,7 @@ class TestPlayerAndObserver(unittest.IsolatedAsyncioTestCase):
             await self.observer_client.connect()
 
             await self.player_client.send(
-                {"type": "auth", "moniker": "jam", "password": "test"}
+                {"type": "auth", "moniker": "oc_test_observer", "password": "test"}
             )
             response = await self.player_client.receive()
             self.assertEqual(response["type"], "auth_result")

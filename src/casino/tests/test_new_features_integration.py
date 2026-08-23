@@ -37,50 +37,50 @@ class BaseIntegrationTest(unittest.IsolatedAsyncioTestCase):
         # Clean up any leftover test data
         try:
             with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
-                cur.execute("DELETE FROM casino.__betlog WHERE cardtablemoniker = 'blackjack-jam'")
+                cur.execute("DELETE FROM casino.__betlog WHERE cardtablemoniker = 'blackjack-oc_test_features'")
         except Exception:
             pass  # Ignore cleanup errors
 
         try:
             with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
-                    cur.execute("DELETE FROM casino.__hand WHERE gameid IN (SELECT id FROM casino.__game WHERE tablemoniker = 'blackjack-jam')")
+                    cur.execute("DELETE FROM casino.__hand WHERE gameid IN (SELECT id FROM casino.__game WHERE tablemoniker = 'blackjack-oc_test_features')")
         except Exception:
             pass  # Ignore cleanup errors
 
         try:
             with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
-                cur.execute("DELETE FROM casino.__game WHERE tablemoniker = 'blackjack-jam'")
+                cur.execute("DELETE FROM casino.__game WHERE tablemoniker = 'blackjack-oc_test_features'")
         except Exception:
             pass  # Ignore cleanup errors
 
         try:
             with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
-                cur.execute("DELETE FROM casino.__table WHERE moniker = 'blackjack-jam'")
+                cur.execute("DELETE FROM casino.__table WHERE moniker = 'blackjack-oc_test_features'")
         except Exception:
             pass  # Ignore cleanup errors
 
         try:
             with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
-                cur.execute("DELETE FROM casino.map_cardtable_player WHERE cardtablemoniker = 'blackjack-jam'")
+                cur.execute("DELETE FROM casino.map_cardtable_player WHERE cardtablemoniker = 'blackjack-oc_test_features'")
         except Exception:
             pass  # Ignore cleanup errors
 
         try:
             with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
-                cur.execute("DELETE FROM casino.__bank_table WHERE table_moniker = 'blackjack-jam'")
+                cur.execute("DELETE FROM casino.__bank_table WHERE table_moniker = 'blackjack-oc_test_features'")
         except Exception:
             pass  # Ignore cleanup errors
 
         try:
             from casino.tests._ensure_test_member import ensure_test_member
-            ensure_test_member(self.args, "jam", "test", pool=self.pool)
+            ensure_test_member(self.args, "oc_test_features", "test", pool=self.pool)
         except Exception as e:
             print(f"Warning: Could not set up member: {e}")
 
         try:
             with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
                 cur.execute(
-                    "INSERT INTO bank.__account (moniker, balance) VALUES ('jam', 100000) "
+                    "INSERT INTO bank.__account (moniker, balance) VALUES ('oc_test_features', 100000) "
                     "ON CONFLICT (moniker) DO UPDATE SET balance = 100000"
                 )
         except Exception as e:
@@ -107,12 +107,12 @@ class BaseIntegrationTest(unittest.IsolatedAsyncioTestCase):
         if hasattr(self, "pool") and self.pool is not None:
             try:
                 with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
-                        cur.execute("DELETE FROM casino.__betlog WHERE cardtablemoniker = 'blackjack-jam'")
-                        cur.execute("DELETE FROM casino.__hand WHERE gameid IN (SELECT id FROM casino.__game WHERE tablemoniker = 'blackjack-jam')")
-                        cur.execute("DELETE FROM casino.__game WHERE tablemoniker = 'blackjack-jam'")
-                        cur.execute("DELETE FROM casino.__table WHERE moniker = 'blackjack-jam'")
-                        cur.execute("DELETE FROM casino.map_cardtable_player WHERE cardtablemoniker = 'blackjack-jam'")
-                        cur.execute("DELETE FROM casino.__bank_table WHERE table_moniker = 'blackjack-jam'")
+                        cur.execute("DELETE FROM casino.__betlog WHERE cardtablemoniker = 'blackjack-oc_test_features'")
+                        cur.execute("DELETE FROM casino.__hand WHERE gameid IN (SELECT id FROM casino.__game WHERE tablemoniker = 'blackjack-oc_test_features')")
+                        cur.execute("DELETE FROM casino.__game WHERE tablemoniker = 'blackjack-oc_test_features'")
+                        cur.execute("DELETE FROM casino.__table WHERE moniker = 'blackjack-oc_test_features'")
+                        cur.execute("DELETE FROM casino.map_cardtable_player WHERE cardtablemoniker = 'blackjack-oc_test_features'")
+                        cur.execute("DELETE FROM casino.__bank_table WHERE table_moniker = 'blackjack-oc_test_features'")
             except Exception as e:
                 print(f"Cleanup error: {e}")
                 pass
@@ -133,7 +133,7 @@ class TestSurrenderIntegration(BaseIntegrationTest):
         try:
             await client.connect()
 
-            await client.send({"type": "auth", "moniker": "jam", "password": "test"})
+            await client.send({"type": "auth", "moniker": "oc_test_features", "password": "test"})
             response = await client.receive()
             self.assertEqual(response["type"], "auth_result")
             self.assertTrue(response["success"])
@@ -210,7 +210,7 @@ class TestHoleCardIntegration(BaseIntegrationTest):
         try:
             await client.connect()
 
-            await client.send({"type": "auth", "moniker": "jam", "password": "test"})
+            await client.send({"type": "auth", "moniker": "oc_test_features", "password": "test"})
             response = await client.receive()
             self.assertEqual(response["type"], "auth_result")
             self.assertTrue(response["success"])
@@ -289,7 +289,7 @@ class TestSoft17Integration(BaseIntegrationTest):
         try:
             await client.connect()
 
-            await client.send({"type": "auth", "moniker": "jam", "password": "test"})
+            await client.send({"type": "auth", "moniker": "oc_test_features", "password": "test"})
             response = await client.receive()
             self.assertEqual(response["type"], "auth_result")
             self.assertTrue(response["success"])
@@ -343,7 +343,7 @@ class TestSoft17Integration(BaseIntegrationTest):
         try:
             await client.connect()
 
-            await client.send({"type": "auth", "moniker": "jam", "password": "test"})
+            await client.send({"type": "auth", "moniker": "oc_test_features", "password": "test"})
             response = await client.receive()
             self.assertEqual(response["type"], "auth_result")
             self.assertTrue(response["success"])
@@ -401,7 +401,7 @@ class TestFiveCardCharlieIntegration(BaseIntegrationTest):
         try:
             await client.connect()
 
-            await client.send({"type": "auth", "moniker": "jam", "password": "test"})
+            await client.send({"type": "auth", "moniker": "oc_test_features", "password": "test"})
             response = await client.receive()
             self.assertEqual(response["type"], "auth_result")
             self.assertTrue(response["success"])
@@ -483,7 +483,7 @@ class TestSurrenderDisabled(BaseIntegrationTest):
         try:
             await client.connect()
 
-            await client.send({"type": "auth", "moniker": "jam", "password": "test"})
+            await client.send({"type": "auth", "moniker": "oc_test_features", "password": "test"})
             response = await client.receive()
             self.assertEqual(response["type"], "auth_result")
             self.assertTrue(response["success"])

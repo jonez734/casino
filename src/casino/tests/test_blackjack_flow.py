@@ -208,10 +208,10 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
         self.pool = database.getpool(self.args)
 
         from casino.tests._ensure_test_member import ensure_test_member
-        ensure_test_member(self.args, "jam", "test", pool=self.pool)
+        ensure_test_member(self.args, "oc_test_blackjack", "test", pool=self.pool)
         with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
             cur.execute(
-                "INSERT INTO bank.__account (moniker, balance) VALUES ('jam', 100000) "
+                "INSERT INTO bank.__account (moniker, balance) VALUES ('oc_test_blackjack', 100000) "
                 "ON CONFLICT (moniker) DO UPDATE SET balance = 100000"
             )
 
@@ -243,15 +243,15 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
         if hasattr(self, "pool") and self.pool is not None:
             try:
                 with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
-                    # Reset jam's credits and bank balance for next test
-                    cur.execute("UPDATE engine.__member SET credits = 100000 WHERE moniker = 'jam'")
-                    cur.execute("UPDATE bank.__account SET balance = 100000 WHERE moniker = 'jam'")
-                    # Clean up test tables (blackjack-jam)
-                    cur.execute("DELETE FROM casino.__bank_table WHERE table_moniker = 'blackjack-jam'")
-                    cur.execute("DELETE FROM casino.__table WHERE moniker = 'blackjack-jam'")
+                    # Reset oc_test_blackjack's credits and bank balance for next test
+                    cur.execute("UPDATE engine.__member SET credits = 100000 WHERE moniker = 'oc_test_blackjack'")
+                    cur.execute("UPDATE bank.__account SET balance = 100000 WHERE moniker = 'oc_test_blackjack'")
+                    # Clean up test tables (blackjack-oc_test_blackjack)
+                    cur.execute("DELETE FROM casino.__bank_table WHERE table_moniker = 'blackjack-oc_test_blackjack'")
+                    cur.execute("DELETE FROM casino.__table WHERE moniker = 'blackjack-oc_test_blackjack'")
                     # Clean up test games
-                    cur.execute("DELETE FROM casino.__game WHERE tablemoniker = 'blackjack-jam'")
-                    cur.execute("DELETE FROM casino.map_cardtable_player WHERE cardtablemoniker = 'blackjack-jam'")
+                    cur.execute("DELETE FROM casino.__game WHERE tablemoniker = 'blackjack-oc_test_blackjack'")
+                    cur.execute("DELETE FROM casino.map_cardtable_player WHERE cardtablemoniker = 'blackjack-oc_test_blackjack'")
                     # Clean up betlog entries for test tables
                     cur.execute("DELETE FROM casino.__betlog WHERE cardtablemoniker LIKE 'blackjack-%'")
             except Exception:
@@ -294,7 +294,7 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
                 row = cur.fetchone()
                 self.assertIsNotNone(row, f"No betlog entry found for table {table_moniker}")
 
-                self.assertEqual(row["playermoniker"], "jam", "Player moniker should be 'jam'")
+                self.assertEqual(row["playermoniker"], "oc_test_blackjack", "Player moniker should be 'oc_test_blackjack'")
                 self.assertEqual(row["cardtablemoniker"], table_moniker, "Table moniker should match")
                 self.assertEqual(row["amount"], expected_amount, f"Bet amount should be {expected_amount}")
                 self.assertEqual(row["status"], "pending", "Bet status should be 'pending'")
@@ -323,13 +323,13 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
 
             # Step 1: Authenticate
             await self.client.send(
-                {"type": "auth", "moniker": "jam", "password": "test"}
+                {"type": "auth", "moniker": "oc_test_blackjack", "password": "test"}
             )
 
             response = await self.client.receive()
             self.assertEqual(response["type"], "auth_result")
             self.assertTrue(response["success"])
-            self.assertEqual(response["moniker"], "jam")
+            self.assertEqual(response["moniker"], "oc_test_blackjack")
             print(
                 f"\n✓ Authenticated as {response['moniker']} with balance {response['balance']}"
             )
@@ -462,7 +462,7 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
         await self.client.connect()
 
         # Send auth
-        await self.client.send({"type": "auth", "moniker": "jam", "password": "test"})
+        await self.client.send({"type": "auth", "moniker": "oc_test_blackjack", "password": "test"})
         response = await self.client.receive()
         self.assertEqual(response["type"], "auth_result")
 
@@ -474,7 +474,7 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
         await self.client.connect()
 
         # Should be able to auth again
-        await self.client.send({"type": "auth", "moniker": "jam", "password": "test"})
+        await self.client.send({"type": "auth", "moniker": "oc_test_blackjack", "password": "test"})
         response = await self.client.receive()
         self.assertEqual(response["type"], "auth_result")
 
@@ -491,7 +491,7 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
 
             # Authenticate
             await self.client.send(
-                {"type": "auth", "moniker": "jam", "password": "test"}
+                {"type": "auth", "moniker": "oc_test_blackjack", "password": "test"}
             )
             response = await self.client.receive()
             self.assertEqual(response["type"], "auth_result")
@@ -579,7 +579,7 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
 
             # Authenticate
             await self.client.send(
-                {"type": "auth", "moniker": "jam", "password": "test"}
+                {"type": "auth", "moniker": "oc_test_blackjack", "password": "test"}
             )
             response = await self.client.receive()
             self.assertEqual(response["type"], "auth_result")
@@ -680,7 +680,7 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
 
             # Authenticate
             await self.client.send(
-                {"type": "auth", "moniker": "jam", "password": "test"}
+                {"type": "auth", "moniker": "oc_test_blackjack", "password": "test"}
             )
             response = await self.client.receive()
             self.assertEqual(response["type"], "auth_result")
@@ -804,7 +804,7 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
             await self.client.connect()
 
             # Authenticate
-            await self.client.send({"type": "auth", "moniker": "jam", "password": "test"})
+            await self.client.send({"type": "auth", "moniker": "oc_test_blackjack", "password": "test"})
             response = await self.client.receive()
             self.assertEqual(response["type"], "auth_result")
             self.assertTrue(response["success"])
@@ -897,7 +897,7 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
             await self.client.connect()
 
             # Authenticate
-            await self.client.send({"type": "auth", "moniker": "jam", "password": "test"})
+            await self.client.send({"type": "auth", "moniker": "oc_test_blackjack", "password": "test"})
             response = await self.client.receive()
             self.assertEqual(response["type"], "auth_result")
             self.assertTrue(response["success"])
@@ -1003,7 +1003,7 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
             await self.client.connect()
 
             # Authenticate
-            await self.client.send({"type": "auth", "moniker": "jam", "password": "test"})
+            await self.client.send({"type": "auth", "moniker": "oc_test_blackjack", "password": "test"})
             response = await self.client.receive()
             self.assertEqual(response["type"], "auth_result")
             self.assertTrue(response["success"])
@@ -1044,13 +1044,13 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
             # ``datepostedlocal`` column depends on
             # ``engine.__member.loginid = current_user`` so the PG role
             # needs to match a member for the timezone column to be
-            # populated. We SET LOCAL ROLE jam (a PG role created by the
-            # engine startup script whose loginid matches jam's row in
+            # populated. We SET LOCAL ROLE oc_test_blackjack (a PG role created by the
+            # engine startup script whose loginid matches oc_test_blackjack's row in
             # engine.__member) inside a transaction so the role switch
             # is scoped to this query.
             from bbsengine6 import database
             with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
-                cur.execute("SET LOCAL ROLE jam")
+                cur.execute("SET LOCAL ROLE oc_test_blackjack")
                 cur.execute(
                     database.query(
                         """SELECT playermoniker, cardtablemoniker, amount, status, currenthand,
@@ -1065,7 +1065,7 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
                 self.assertIsNotNone(row, "No bet found in betlog view")
 
                 # Verify base columns
-                self.assertEqual(row["playermoniker"], "jam")
+                self.assertEqual(row["playermoniker"], "oc_test_blackjack")
                 self.assertEqual(row["cardtablemoniker"], table_id)
                 self.assertEqual(row["amount"], 50)
                 self.assertEqual(row["status"], "pending")
@@ -1100,7 +1100,7 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
         with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
             cur.execute(
                 database.query(
-                    """SELECT COUNT(*) as cnt FROM casino.__betlog WHERE playermoniker = 'jam'"""
+                    """SELECT COUNT(*) as cnt FROM casino.__betlog WHERE playermoniker = 'oc_test_blackjack'"""
                 )
             )
             initial_count = cur.fetchone()["cnt"]
@@ -1113,7 +1113,7 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
             await self.client.connect()
 
             # Authenticate
-            await self.client.send({"type": "auth", "moniker": "jam", "password": "test"})
+            await self.client.send({"type": "auth", "moniker": "oc_test_blackjack", "password": "test"})
             response = await self.client.receive()
             self.assertEqual(response["type"], "auth_result")
             self.assertTrue(response["success"])
@@ -1143,7 +1143,7 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
             with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
                 cur.execute(
                     database.query(
-                        """SELECT COUNT(*) as cnt FROM casino.__betlog WHERE playermoniker = 'jam'"""
+                        """SELECT COUNT(*) as cnt FROM casino.__betlog WHERE playermoniker = 'oc_test_blackjack'"""
                     )
                 )
                 count_after_first = cur.fetchone()["cnt"]
@@ -1153,7 +1153,7 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
             with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
                     cur.execute(
                         database.query(
-                            """SELECT amount FROM casino.__betlog WHERE playermoniker = 'jam' ORDER BY dateposted DESC LIMIT 1"""
+                            """SELECT amount FROM casino.__betlog WHERE playermoniker = 'oc_test_blackjack' ORDER BY dateposted DESC LIMIT 1"""
                         )
                     )
                     row = cur.fetchone()

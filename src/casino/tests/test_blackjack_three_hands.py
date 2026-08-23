@@ -125,11 +125,11 @@ class TestBlackjackThreeHands(unittest.IsolatedAsyncioTestCase):
         self.pool = database.getpool(self.args)
 
         from casino.tests._ensure_test_member import ensure_test_member
-        ensure_test_member(self.args, "jam", "test", pool=self.pool)
+        ensure_test_member(self.args, "oc_test_blackjack_three", "test", pool=self.pool)
         ensure_test_member(self.args, "__dealer__", "x", pool=self.pool, email="dealer@casino.local", credits=0)
         with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
             cur.execute(
-                "INSERT INTO bank.__account (moniker, balance) VALUES ('jam', 100000) "
+                "INSERT INTO bank.__account (moniker, balance) VALUES ('oc_test_blackjack_three', 100000) "
                 "ON CONFLICT (moniker) DO UPDATE SET balance = 100000"
             )
 
@@ -159,8 +159,8 @@ class TestBlackjackThreeHands(unittest.IsolatedAsyncioTestCase):
         if hasattr(self, "pool") and self.pool is not None:
             try:
                 with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
-                    cur.execute("UPDATE engine.__member SET credits = 100000 WHERE moniker = 'jam'")
-                    cur.execute("UPDATE bank.__account SET balance = 100000 WHERE moniker = 'jam'")
+                    cur.execute("UPDATE engine.__member SET credits = 100000 WHERE moniker = 'oc_test_blackjack_three'")
+                    cur.execute("UPDATE bank.__account SET balance = 100000 WHERE moniker = 'oc_test_blackjack_three'")
                     for sql in (
                         "DELETE FROM casino.__bank_table WHERE table_moniker LIKE :p",
                         "DELETE FROM casino.__table WHERE moniker LIKE :p",
@@ -216,16 +216,16 @@ class TestBlackjackThreeHands(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(self.client._running, "Failed to connect")
 
         # 1. Authenticate
-        await self.client.send({"type": "auth", "moniker": "jam", "password": "test"})
+        await self.client.send({"type": "auth", "moniker": "oc_test_blackjack_three", "password": "test"})
         auth = await self.client.receive()
         self.assertEqual(auth["type"], "auth_result")
         self.assertTrue(auth["success"])
-        self.assertEqual(auth["moniker"], "jam")
+        self.assertEqual(auth["moniker"], "oc_test_blackjack_three")
         starting_balance = int(auth["balance"])
         self.assertGreater(starting_balance, 0, "test player should have balance > 0")
 
         # 2. Create a blackjack table (use a unique moniker to avoid duplicates)
-        table_moniker = f"{TEST_TABLE_PREFIX}jam"
+        table_moniker = f"{TEST_TABLE_PREFIX}oc_test_blackjack_three"
         await self.client.send(
             {
                 "type": "create_table",
@@ -303,8 +303,8 @@ class TestBlackjackThreeHands(unittest.IsolatedAsyncioTestCase):
         await self.client.connect()
         self.assertTrue(self.client._running, "Failed to connect")
 
-        # Authenticate as jam.
-        await self.client.send({"type": "auth", "moniker": "jam", "password": "test"})
+        # Authenticate as oc_test_blackjack_three.
+        await self.client.send({"type": "auth", "moniker": "oc_test_blackjack_three", "password": "test"})
         auth = await self.client.receive()
         self.assertEqual(auth["type"], "auth_result")
         self.assertTrue(auth["success"])
@@ -333,7 +333,7 @@ class TestBlackjackThreeHands(unittest.IsolatedAsyncioTestCase):
         # ``receive`` is the duplicate response.
         await self.client.receive_messages(max_count=20, timeout=1.5)
 
-        # Second create with the same moniker — owner is jam, so the
+        # Second create with the same moniker — owner is oc_test_blackjack_three, so the
         # server should route to the table_exists short-circuit and
         # return stats (empty here, no hands played).
         await self.client.send(
@@ -353,7 +353,7 @@ class TestBlackjackThreeHands(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(second["moniker"], dup_moniker)
         self.assertEqual(second["game_type"], "blackjack")
-        self.assertEqual(second["owner"], "jam")
+        self.assertEqual(second["owner"], "oc_test_blackjack_three")
         self.assertFalse(
             second.get("hidden", False),
             "owner-created test table should be public",
