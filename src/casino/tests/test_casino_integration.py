@@ -33,6 +33,8 @@ import sys
 import threading
 from typing import Any, Dict, Optional
 
+import pytest
+
 
 sys.path.insert(0, "/home/opencode/data/work/casino/src")
 sys.path.insert(0, "/home/opencode/data/work/bbsengine6/py/src")
@@ -334,3 +336,103 @@ def test_wire_token_garbage_denies_casino_op():
         reply = _run(_drive())
         assert reply.get("type") == "error"
         assert reply.get("code") == "token_invalid"
+
+
+@pytest.mark.filterwarnings("ignore::ResourceWarning")
+@pytest.mark.filterwarnings("ignore::pytest.PytestUnraisableExceptionWarning")
+def test_token_rejection_close_loop_does_not_warn():
+    """Regression for the user-reported bug.
+
+    When ``casino`` is run with an expired/revoked token, the
+    rejection path in ``casino.auth._connect_with_token`` opens a
+    WebSocket (which spawns a websockets ``Connection.keepalive``
+    task), receives the rejection reply, calls ``disconnect()``,
+    then closes the event loop. Before ``_close_loop_for`` was
+    introduced, the loop closed while the websockets keepalive
+    task was still in pending state -- ``Task.__del__`` then
+    reported ``"Task was destroyed but it is pending!"`` via
+    ``loop.call_exception_handler`` when the loop was GC'd.
+
+    With ``_close_loop_for`` in place, the loop's pending tasks
+    are cancelled and awaited to completion before ``loop.close()``,
+    so the handler never fires.
+
+    This test reproduces the exact scenario by driving
+    ``_connect_with_token`` against a real ``_MiniBedServer`` with a
+    purged token, hooking ``BaseEventLoop.call_exception_handler``
+    so we can observe any "Task was destroyed" reports the asyncio
+    runtime emits as the loop is GC'd, and asserting none survived.
+
+    We hook at the handler layer (rather than capturing stderr or
+    warnings) because asyncio routes the report through
+    ``loop.call_exception_handler`` -> the loop's exception handler
+    -> (by default) ``logger.error``; pytest's logging plugin
+    intercepts the ``asyncio`` logger and discards its output, so
+    stderr capture would not see it under pytest.
+    """
+    import argparse
+    import asyncio
+    import gc
+    import os
+    import tempfile
+
+    from casino.auth import _connect_with_token
+
+    captured: list = []
+    original_handler = asyncio.base_events.BaseEventLoop.call_exception_handler
+
+    def _capture(self, context):
+        captured.append(context)
+
+    asyncio.base_events.BaseEventLoop.call_exception_handler = _capture
+
+    try:
+        with _MiniBedServer() as ctx:
+            # Issue a real token, then purge it from the store so a
+            # subsequent reconnect comes back as ``token_revoked`` --
+            # the exact code path the user hit.
+            stale = _login(ctx)
+            ctx.token_store.delete(stale)
+
+            # Write the stale token to a file the way the casino CLI
+            # finds it via ``$XDG_RUNTIME_DIR/bed.token``.
+            with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".token", delete=False
+            ) as f:
+                f.write(stale + "\n")
+                token_path = f.name
+            try:
+                args = argparse.Namespace(
+                    token_file=token_path,
+                    bed_host="127.0.0.1",
+                    bed_port=ctx.port,
+                    bed_path="/",
+                )
+
+                # The reconnect reply is ``token_revoked`` ->
+                # ``_connect_with_token`` returns ``None`` after
+                # running the rejection cleanup path.
+                result = _connect_with_token(
+                    args, "127.0.0.1", ctx.port
+                )
+                assert result is None
+
+                # Force GC so any pending task is destroyed while
+                # our handler is still installed (the
+                # "Task was destroyed" report fires from
+                # ``Task.__del__`` when the loop is collected).
+                gc.collect()
+
+                leaked = [
+                    c for c in captured
+                    if "destroyed but it is pending" in c.get("message", "")
+                ]
+                assert leaked == [], (
+                    "loop closed with pending task(s); "
+                    f"captured handler contexts: "
+                    + repr([c.get("message") for c in leaked])
+                )
+            finally:
+                os.unlink(token_path)
+    finally:
+        asyncio.base_events.BaseEventLoop.call_exception_handler = original_handler
