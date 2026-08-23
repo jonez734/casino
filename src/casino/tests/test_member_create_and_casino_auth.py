@@ -509,12 +509,12 @@ class TestCreateMemberThenDoorModeCasinoPlayer(unittest.IsolatedAsyncioTestCase)
         # Sanity: no casino row exists for this member yet.
         with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
             cur.execute(
-                "DELETE FROM casino.__player WHERE membermoniker = %s",
+                "DELETE FROM casino.__player WHERE moniker = %s",
                 (self.moniker,),
             )
             cur.execute(
                 "SELECT COUNT(*) AS n FROM casino.__player "
-                "WHERE membermoniker = %s",
+                "WHERE moniker = %s",
                 (self.moniker,),
             )
             self.assertEqual(cur.fetchone()["n"], 0)
@@ -525,7 +525,7 @@ class TestCreateMemberThenDoorModeCasinoPlayer(unittest.IsolatedAsyncioTestCase)
         try:
             with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
                 cur.execute(
-                    "DELETE FROM casino.__player WHERE membermoniker = %s",
+                    "DELETE FROM casino.__player WHERE moniker = %s",
                     (self.moniker,),
                 )
                 cur.execute(
@@ -552,13 +552,14 @@ class TestCreateMemberThenDoorModeCasinoPlayer(unittest.IsolatedAsyncioTestCase)
 
         with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
             cur.execute(
-                "SELECT membermoniker, location, lastplayed, attrs, stats "
-                "FROM casino.__player WHERE membermoniker = %s",
+                "SELECT membermoniker, moniker, location, lastplayed, attrs, stats "
+                "FROM casino.__player WHERE moniker = %s",
                 (self.moniker,),
             )
             row = cur.fetchone()
         self.assertIsNotNone(row, "casino.__player row must exist after CasinoPlayer init")
         self.assertEqual(row["membermoniker"], self.moniker)
+        self.assertEqual(row["moniker"], self.moniker)
         self.assertEqual(row["location"], "casino")
         self.assertEqual(row["attrs"], {})
         self.assertEqual(row["stats"], {})

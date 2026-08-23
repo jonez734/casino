@@ -60,7 +60,7 @@ def _ensure_member(cur, moniker: str, *, credits: int = 250) -> None:
 
 
 def _delete_test_member(cur, moniker: str) -> None:
-    cur.execute("DELETE FROM casino.__player WHERE membermoniker = %s", (moniker,))
+    cur.execute("DELETE FROM casino.__player WHERE moniker = %s", (moniker,))
     cur.execute("DELETE FROM engine.__member WHERE moniker = %s", (moniker,))
 
 
@@ -100,7 +100,7 @@ class TestDoorCasinoPlayer(unittest.TestCase):
         with database.connect(self._args) as conn, database.cursor(conn) as cur:
             cur.execute(
                 "SELECT COUNT(*) AS n FROM casino.__player "
-                "WHERE membermoniker = %s",
+                "WHERE moniker = %s",
                 (DOOR_MONIKER,),
             )
             self.assertEqual(cur.fetchone()["n"], 0)
@@ -109,13 +109,14 @@ class TestDoorCasinoPlayer(unittest.TestCase):
 
         with database.connect(self._args) as conn, database.cursor(conn) as cur:
             cur.execute(
-                "SELECT membermoniker, location, lastplayed, attrs "
-                "FROM casino.__player WHERE membermoniker = %s",
+                "SELECT membermoniker, moniker, location, lastplayed, attrs "
+                "FROM casino.__player WHERE moniker = %s",
                 (DOOR_MONIKER,),
             )
             row = cur.fetchone()
             self.assertIsNotNone(row, "casino.__player row must exist after init")
             self.assertEqual(row["membermoniker"], DOOR_MONIKER)
+            self.assertEqual(row["moniker"], DOOR_MONIKER)
             self.assertEqual(row["location"], "casino")
             self.assertIsNone(
                 row["lastplayed"],

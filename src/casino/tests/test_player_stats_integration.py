@@ -54,7 +54,7 @@ class TestPlayerStatsDALIntegration(unittest.IsolatedAsyncioTestCase):
         try:
             with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
                 cur.execute(
-                    "DELETE FROM casino.__player WHERE membermoniker = 'stats_test_player'"
+                    "DELETE FROM casino.__player WHERE moniker = 'stats_test_player'"
                 )
         except Exception:
             pass
@@ -67,7 +67,7 @@ class TestPlayerStatsDALIntegration(unittest.IsolatedAsyncioTestCase):
             try:
                 with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
                     cur.execute(
-                        "DELETE FROM casino.__player WHERE membermoniker = 'stats_test_player'"
+                        "DELETE FROM casino.__player WHERE moniker = 'stats_test_player'"
                     )
             except Exception:
                 pass

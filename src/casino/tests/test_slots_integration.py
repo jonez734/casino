@@ -71,21 +71,22 @@ def _ensure_player(cur, moniker: str) -> None:
     """Make sure a casino player row exists for ``moniker`` (idempotent).
 
     Uses the project's get_or_create_player DAL, which already handles the
-    SELECT-then-INSERT race and the no-unique-constraint table shape.
+    SELECT-then-INSERT race. Legacy 1:1 shape: ``moniker = membermoniker``
+    so existing `WHERE moniker = <member>` queries still find the row.
     Resets stats so each test starts with a clean baseline.
     """
     cur.execute(
-        "SELECT 1 FROM casino.__player WHERE membermoniker = %s", (moniker,)
+        "SELECT 1 FROM casino.__player WHERE moniker = %s", (moniker,)
     )
     if cur.fetchone() is None:
         cur.execute(
-            "INSERT INTO casino.__player (membermoniker, location, attrs) "
-            "VALUES (%s, 'casino', '{}'::jsonb)",
-            (moniker,),
+            "INSERT INTO casino.__player (membermoniker, moniker, location, attrs) "
+            "VALUES (%s, %s, 'casino', '{}'::jsonb)",
+            (moniker, moniker),
         )
     # Clear any stats left over from a previous test run
     cur.execute(
-        "UPDATE casino.__player SET stats = '{}'::jsonb WHERE membermoniker = %s",
+        "UPDATE casino.__player SET stats = '{}'::jsonb WHERE moniker = %s",
         (moniker,),
     )
 
@@ -599,7 +600,7 @@ def _spin_row_count(cur, moniker: str) -> int:
 
 def _stats_for(cur, moniker: str) -> dict:
     cur.execute(
-        "SELECT stats FROM casino.__player WHERE membermoniker = %s", (moniker,)
+        "SELECT stats FROM casino.__player WHERE moniker = %s", (moniker,)
     )
     row = cur.fetchone()
     if not row or not row["stats"]:
@@ -632,7 +633,7 @@ def _cleanup(cur, table_moniker: str, players: list) -> None:
             "UPDATE bank.__account SET balance = 100000 WHERE moniker = %s", (p,)
         )
         cur.execute(
-            "UPDATE casino.__player SET stats = '{}'::jsonb WHERE membermoniker = %s",
+            "UPDATE casino.__player SET stats = '{}'::jsonb WHERE moniker = %s",
             (p,),
         )
 

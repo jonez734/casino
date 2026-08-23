@@ -287,7 +287,7 @@ class TestBlackjackTwoPlayersThreeGamesBed(unittest.IsolatedAsyncioTestCase):
                 (self.moniker_b,),
             )
             cur.execute(
-                "DELETE FROM casino.__player WHERE membermoniker = %s",
+                "DELETE FROM casino.__player WHERE moniker = %s",
                 (self.moniker_b,),
             )
             cur.execute(

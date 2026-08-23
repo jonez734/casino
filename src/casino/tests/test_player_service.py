@@ -73,7 +73,7 @@ def _ensure_simple_member(cur, moniker: str, *, credits: int = 100) -> None:
 
 
 def _delete_test_member(cur, moniker: str) -> None:
-    cur.execute("DELETE FROM casino.__player WHERE membermoniker = %s", (moniker,))
+    cur.execute("DELETE FROM casino.__player WHERE moniker = %s", (moniker,))
     cur.execute("DELETE FROM engine.__member WHERE moniker = %s", (moniker,))
 
 
@@ -201,11 +201,12 @@ class TestEnsureCasinoPlayer(unittest.TestCase):
 
         first = ensure_casino_player(self._args, ENSURE_MONIKER, audit=False)
         self.assertEqual(first["membermoniker"], ENSURE_MONIKER)
+        self.assertEqual(first["moniker"], ENSURE_MONIKER)
 
         with database.connect(self._args) as conn, database.cursor(conn) as cur:
             cur.execute(
                 "SELECT COUNT(*) AS n FROM casino.__player "
-                "WHERE membermoniker = %s",
+                "WHERE moniker = %s",
                 (ENSURE_MONIKER,),
             )
             row = cur.fetchone()

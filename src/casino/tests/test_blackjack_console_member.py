@@ -230,7 +230,7 @@ class TestBlackjackConsoleMember(unittest.IsolatedAsyncioTestCase):
                         (self.moniker,),
                     )
                     cur.execute(
-                        "DELETE FROM casino.__player WHERE membermoniker = %s",
+                        "DELETE FROM casino.__player WHERE moniker = %s",
                         (self.moniker,),
                     )
                     cur.execute(
