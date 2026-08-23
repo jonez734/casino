@@ -70,6 +70,44 @@ Verification:
   view exposes both `membermoniker` and `moniker` columns plus
   `lastplayedlocal`.
 
+### tests(casino): migrate 7 fixtures off raw `gen_salt('md5')` to `bbsengine6.member.setpassword`
+
+Seven casino test fixtures were writing raw `crypt('test',
+gen_salt('md5'))` hashes into `engine.__member.password` from their
+`asyncSetUp` blocks. Those `$1$` MD5-crypt hashes stomped whatever
+bcrypt hash `bbsengine6/scripts/setpassword.py` had previously
+written, so a successful setpassword run could still leave the
+column holding a `$1$` hash and `bbsengine6.member.checkpassword`
+would silently return False.
+
+Migrated to the canonical reference shape
+(`tests/test_member_create_and_casino_auth.py:294-319`): insert
+with the `password` column omitted (so it stays NULL, which the
+`chk_member_password_bcrypt` constraint installed at every
+`bbsengine6.startup` allows), then call
+`bbsengine6.member.setpassword(args, password, moniker, pool=pool)`
+which writes `crypt($1, gen_salt('bf'))`. Files:
+
+  - `tests/test_blackjack_flow.py`
+  - `tests/test_blackjack_three_hands.py` (jam + `__dealer__`)
+  - `tests/test_member_services.py` (with `attrs` jsonb)
+  - `tests/test_new_features_integration.py`
+  - `tests/test_player_observer.py` (jam + viewer)
+  - `tests/test_player_stats_integration.py`
+  - `tests/test_slots_integration.py` (both `_ensure_member` and
+    `_ensure_test_user` helpers; setpassword called at each call site)
+
+Also deleted the orphan `src/casino/sql/test_data.sql` (zero
+importers, grep empty). The fixtures now provision their own members
+via the canonical path.
+
+These two changes close the upstream write path that produced the
+`$1$` hashes in the 2026-08-22 `bed auth login` incident. The
+constraint + audit (`bbsengine6.backend.checkpasswordformat` +
+`bbsengine6.member.audit_password_column`, now wired into
+`bbsengine6.startup`) are belt-and-braces rather than the sole line
+of defense.
+
 ### fix(casino): wire --token-file through merged CLI + CasinoClient.run
 
 The bearer-token modules (`CasinoClient._bearer_token`,

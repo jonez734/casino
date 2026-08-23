@@ -609,6 +609,22 @@ a bed wiring change. When bed later wires the section explicitly
   on bed (last-write-wins registration on the same server). The
   shared credential primitives (`verifyMemberFound`, `has_password`,
   `checkpassword`) live in `bbsengine6.member`.
+
+  **Note (2026-08-22, password column hardening follow-up):**
+  Casino test fixtures MUST provision `engine.__member` rows via
+  `bbsengine6.member.setpassword(args, password, moniker, pool=pool)`,
+  never via a raw `INSERT ... crypt('test', gen_salt('md5'))` SQL
+  string. The `chk_member_password_bcrypt` CHECK constraint
+  installed at every `bbsengine6.startup` rejects any non-NULL,
+  non-bcrypt write — including the legacy `$1$` MD5-crypt hashes
+  the previous fixture shape produced. The canonical migration
+  shape is at
+  `casino/tests/test_member_create_and_casino_auth.py:294-319`:
+  insert with the `password` column omitted (so it stays NULL, which
+  the constraint allows), then call `setpassword` to write
+  `crypt($1, gen_salt('bf'))`. See `casino/TODO.md` "Test fixture
+  migration: `gen_salt('md5')` → `gen_salt('bf')` (@since 20260822)"
+  for the audit trail.
 - **Daemon lifecycle** — bed.
 - **Bank ledger storage** — casino wraps `bbsengine6.bank` for the
   `casino:house` treasury; the ledger itself lives in bbsengine6.

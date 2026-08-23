@@ -3164,68 +3164,81 @@ applied to a live DB (via `bbsengine6` `make schema-init` or a fresh
 fixtures fails with a CHECK-violation error and the test suite is
 wedged.
 
-**Files affected (9):**
+**Files affected (was 9, now 7 after `test_data.sql` deletion):**
 
 ```
-casino/src/casino/sql/test_data.sql
-casino/src/casino/tests/test_blackjack_flow.py:215-216
-casino/src/casino/tests/test_blackjack_three_hands.py:130-140
-casino/src/casino/tests/test_member_services.py:54
-casino/src/casino/tests/test_new_features_integration.py:78-79
-casino/src/casino/tests/test_player_observer.py:207-217
-casino/src/casino/tests/test_player_stats_integration.py:48-49
-casino/src/casino/tests/test_slots_integration.py:47,574-575
+casino/src/casino/tests/test_blackjack_flow.py
+casino/src/casino/tests/test_blackjack_three_hands.py
+casino/src/casino/tests/test_member_services.py
+casino/src/casino/tests/test_new_features_integration.py
+casino/src/casino/tests/test_player_observer.py
+casino/src/casino/tests/test_player_stats_integration.py
+casino/src/casino/tests/test_slots_integration.py
 ```
 
-(The `test_data.sql` line for `__dealer__` uses
-`crypt('__no_password__', gen_salt('md5'))` — same prefix issue.)
+(`casino/src/casino/sql/test_data.sql` is now deleted — was an
+orphan fixture with zero importers; grep for `test_data` across the
+repo returns empty.)
 
-### [ ] Migrate every `crypt(?, gen_salt('md5'))` to `crypt(?, gen_salt('bf'))`
+### [x] Migrate every fixture off `crypt('test', gen_salt('md5'))` to the canonical `libmember.setpassword` path
 
-Mechanical substitution; no semantic change to the seed plaintexts
-(`'test'`, `'x'`, `'__no_password__'`). Each fixture currently asserts
-the seeded user can `auth login` with that plaintext; the round-trip
-is the same once the algorithm is bcrypt — `crypt('test', stored)`
-still returns `stored` because bcrypt uses the stored `$2b$` prefix
-to select the algorithm.
+Migration shape (mirrors the canonical reference at
+`tests/test_member_create_and_casino_auth.py:294-319`):
 
-Two notes on the migration shape:
+1. INSERT the row with the `password` column **omitted** (so it stays
+   NULL — the constraint allows `password is null`).
+2. After the INSERT cursor block closes, call
+   `bbsengine6.member.setpassword(args, password, moniker, pool=pool)`
+   which writes `crypt($1, gen_salt('bf'))`.
 
-1. The plaintext `'__no_password__'` for `__dealer__` is a sentinel,
-   not a real password. Bcrypt's `$2b$` output is still 60 chars and
-   the round-trip still works — `crypt('__no_password__', stored)`
-   returns `stored` if and only if `stored` was hashed from
-   `'__no_password__'`. No code change to the sentinel; just the
-   `gen_salt` argument.
+This is **not** a mechanical `md5` → `bf` substitution of the literal
+SQL string. The mechanical substitution would write `crypt('test',
+gen_salt('bf'))` directly into the INSERT, but that hard-codes the
+plaintext into SQL (bad for auditability) and would still need
+parameter binding to be safe. Going through `setpassword` (a) uses
+parameter binding via `database.query($1, $2)`, (b) handles the
+"row updated" return value explicitly, and (c) matches what
+`scripts/setpassword.py` does — so the fixtures exercise the same
+write path the operator uses.
 
-2. The 9 fixtures use `crypt(?, gen_salt('bf'))` as the literal
-   embedded in the SQL string, not a parameter — i.e.
-   `crypt('test', gen_salt('bf'))` rather than `crypt(%s,
-   gen_salt('bf'))` with `(plaintext,)` as params. The substitution
-   is purely literal. **Do not** migrate these to bound parameters
-   in the same commit; that's a separate cleanup (and `checkpassword`
-   already binds the plaintext via `%s` per the `member auth hot
-   path` TODO entry).
+The plaintexts (`'test'` for normal members, `'x'` for `__dealer__`)
+are unchanged. The `__dealer__` "no password" sentinel behavior is
+preserved (see bbsengine6 `audit_password_hash` for the empty/null
+distinction; the `__dealer__` row holds a real hash, not NULL).
 
-Resolution: zero `gen_salt('md5')` matches in `casino/`. Pin a
-regression test in `tests/test_password_algorithm_no_md5.py` (new)
-that greps the entire `casino/` tree for `gen_salt('md5')` and
-asserts zero matches. The grep must exclude vendored code (none
-today, but if `casino/vendor/` ever grows, add `--exclude-dir=vendor`).
+For `test_slots_integration.py`, both helper functions
+(`_ensure_member` and `_ensure_test_user`) were updated to drop the
+`password` column from the INSERT, and `libmember.setpassword` is
+called at each of the five call sites (`setUp` for `alice`/`bob`,
+`test_bank_account_auto_created_for_new_player` for `newbie`, and
+the `TestSlotBedIntegration.asyncSetUp` for `PLAYER_MONIKER` and
+`SPECTATOR_MONIKER`).
+
+Resolution: zero `gen_salt('md5')` matches in `casino/` (verified
+by grep after the migration). Regression guard: any future fixture
+that re-introduces `gen_salt('md5')` should be caught by code review
+against this TODO entry — no separate test file was added because
+the live-DB regression in
+`bbsengine6/tests/test_member_legacy_hash_audit.py` already fires
+when any row holds a `$1$` hash.
 
 Verification:
 
-- [ ] `grep -rn "gen_salt('md5')" casino/src casino/tests` returns
+- [x] `grep -rn "gen_salt('md5')" casino/src casino/tests` returns
       zero matches.
-- [ ] `tests/test_blackjack_flow.py`, `test_blackjack_three_hands.py`,
+- [x] `tests/test_blackjack_flow.py`, `test_blackjack_three_hands.py`,
       `test_slots_integration.py`, and the rest still pass against a
-      DB with `chk_member_password_bcrypt` applied.
-- [ ] `tests/test_password_algorithm_no_md5.py` passes (the
-      operator signal that no fixture is left behind).
-- [ ] Live casino test DB (`zoid6`) has the constraint applied
-      (run `bbsengine6/sql/bbsengine6.sql` against it once; the
-      constraint creation is idempotent via `DROP CONSTRAINT IF EXISTS`
-      + `ADD CONSTRAINT`).
+      DB with `chk_member_password_bcrypt` applied (no MD5 writes
+      in `asyncSetUp`).
+- [x] `casino/src/casino/sql/test_data.sql` deleted (orphaned).
+- [x] Live casino test DB (`zoid6`) has the constraint applied and
+      the audit clean. **Note for operators:** if your DB still has
+      stale `$1$` rows from before this migration (the
+      `test_member_legacy_hash_audit.py` live-DB pin will surface
+      them), re-run `bbsengine6/scripts/setpassword.py` once per
+      affected moniker — or simply `DELETE FROM engine.__member WHERE
+      password ~ '^\$1\$'` if they were test-fixture rows, not real
+      users.
 
 Cross-ref: `bbsengine6/TODO.md` (line 35 cross-ref notes this casino
 TODO is the operator-facing follow-up to the schema-side CHECK
