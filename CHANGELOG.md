@@ -7,6 +7,69 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### feat(casino/sql): casino.__player — promote moniker citext to PK
+
+The casino player record (`casino.__player`) was previously keyed by
+a legacy `id bigserial` PK with `membermoniker citext` as a
+1:1-by-convention FK to `engine.__member(moniker)`. The new schema
+drops the `id` column (and the `_id_seq` grants) and promotes
+`moniker citext NOT NULL PRIMARY KEY` to the canonical key;
+`membermoniker` stays as a nullable FK to `engine.__member(moniker)`.
+The new shape permits many casino player rows per BBS member; the
+legacy 1:1 contract is preserved on the lazy-materialize path
+because `ensure_casino_player` INSERTs `moniker = membermoniker`,
+so existing `WHERE moniker = <membermoniker>` queries still find
+the single seeded row.
+
+Changes:
+
+- `sql/player.sql` — new schema; comment block documents the
+  many-players-per-member rationale and points at the migration
+  file. `__player_id_seq` grants removed (the sequence goes away
+  with the column).
+- `sql/player_migration.sql` (new) — idempotent migration: purges
+  existing rows only when the legacy `id` column is still present,
+  then drops `id CASCADE` (the cascade reaches `casino.player`,
+  which is recreated by `sql/player_view.sql`), and adds
+  `moniker citext` + `NOT NULL` + `pk_player_moniker PRIMARY KEY`.
+  Re-runnable on already-migrated DBs without data loss.
+- `sql/casino.sql` — `\i player_migration.sql` after `\i player.sql`
+  so the schema and migration land together on a fresh DB.
+- `sql/bootstrap_zoid6.sql` — replace the legacy stats-only migration
+  block with the new player migration (existence-guarded on
+  `id` present and `moniker` absent). Stats is included in the new
+  schema, so no separate migration is needed for it.
+- `sql/test_data.sql` — INSERT now writes both `membermoniker` and
+  `moniker` (`jam` / `jam`) with `ON CONFLICT (moniker) DO NOTHING`
+  so the seeded 1:1 shape survives re-runs.
+- `startup/main.py` — citext comment now mentions both
+  `casino.__player.moniker` and `casino.__player.membermoniker`.
+
+Companion changes (separate commits):
+
+- `refactor(casino)`: DAL + services query by `moniker` (the new
+  PK); INSERT adds the column; return dict carries both
+  `membermoniker` and `moniker`.
+- `test(casino)`: integration tests pin `WHERE moniker` predicates
+  and assert `row["moniker"] == <seed>` on freshly-materialized
+  rows so the 1:1 lazy-materialize contract is documented.
+- `docs(casino)`: `AUTH.md` "Member vs casino player" prose and
+  the responsibility table now describe the many-players-per-member
+  shape and note that the lazy-materialize preserves the legacy
+  1:1 contract.
+
+Verification:
+
+- `psql zoid6 -f casino/src/casino/sql/player_migration.sql` —
+  applies cleanly under table-owner perms (DELETE 1 → DROP COLUMN
+  id CASCADE → ADD COLUMN moniker citext → SET NOT NULL → ADD
+  CONSTRAINT pk_player_moniker). Re-runs are no-ops (row count 1 → 1).
+- `\d casino.__player` — confirms new schema (membermoniker citext,
+  moniker citext NOT NULL PK, no `id` column).
+- `\d casino.player` (after recreating from `player_view.sql`) —
+  view exposes both `membermoniker` and `moniker` columns plus
+  `lastplayedlocal`.
+
 ### fix(casino): wire --token-file through merged CLI + CasinoClient.run
 
 The bearer-token modules (`CasinoClient._bearer_token`,
