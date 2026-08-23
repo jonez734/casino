@@ -655,14 +655,14 @@ class TestSlotBedIntegration(unittest.IsolatedAsyncioTestCase):
     """End-to-end WebSocket tests for the slots service.
 
     Mirrors the test_blackjack_flow.py pattern: real WebSocketServer +
-    MessageRouter, real database. Test users: jam_1 (player), jam_2
+    MessageRouter, real database. Test users: oc_test_slots_1 (player), oc_test_slots_2
     (spectator). Skipped when CASINO_TEST_DB is unset.
     """
 
-    PLAYER_MONIKER = "jam_1"
-    SPECTATOR_MONIKER = "jam_2"
-    TABLE_MONIKER = "slots_jam_1"
-    BJ_TABLE_MONIKER = "blackjack_jam_1"
+    PLAYER_MONIKER = "oc_test_slots_1"
+    SPECTATOR_MONIKER = "oc_test_slots_2"
+    TABLE_MONIKER = "slots_oc_test_1"
+    BJ_TABLE_MONIKER = "blackjack_oc_test_1"
     PORT = 18765
 
     async def asyncSetUp(self) -> None:
@@ -924,7 +924,7 @@ class TestSlotBedIntegration(unittest.IsolatedAsyncioTestCase):
         await self._create_slots_table(p1, self.TABLE_MONIKER)
         await p1.send({"type": "join_table", "moniker": self.TABLE_MONIKER})
         await p1.receive_any(expected_type="joined_table", timeout=5.0)
-        # jam-2 cannot join (table_full) but can watch
+        # oc_test_slots_2 cannot join (table_full) but can watch
         await p2.send({"type": "join_table", "moniker": self.TABLE_MONIKER})
         await p2.receive_any(expected_type="error", timeout=5.0)
         await p2.send({"type": "watch_table", "moniker": self.TABLE_MONIKER})
@@ -985,7 +985,7 @@ class TestSlotBedIntegration(unittest.IsolatedAsyncioTestCase):
     async def test_slot_spin_insufficient_funds(self) -> None:
         from bbsengine6 import database
 
-        # Drain jam-2's balance to 1
+        # Drain oc_test_slots_2's balance to 1
         with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
             cur.execute(
                 "UPDATE bank.__account SET balance = 1 WHERE moniker = %s",
@@ -994,7 +994,7 @@ class TestSlotBedIntegration(unittest.IsolatedAsyncioTestCase):
 
         client = await self._connect_and_auth(self.SPECTATOR_MONIKER)
         self.clients.append(client)
-        # jam-2 creates and joins their own table
+        # oc_test_slots_2 creates and joins their own table
         table2 = f"slots-{self.SPECTATOR_MONIKER}"
         await self._create_slots_table(client, table2, min_bet=1, max_bet=1000)
         await client.send({"type": "join_table", "moniker": table2})
