@@ -31,12 +31,20 @@ two rows have distinct responsibilities:
 | BBS **member** | `engine.__member` | BBS-level credentials (moniker, password), global `credits`, flags (SYSOP / APPROVED), email |
 | **Casino player** | `casino.__player` | Casino-specific state: `lastplayed`, `attrs`, per-game `stats` counters |
 
-The casino player row has `membermoniker citext` with a FK to
-`engine.__member(moniker)` (`casino/src/casino/sql/player.sql`), so
-the relationship is **1:1 by membermoniker** — every casino player
-has exactly one BBS member, and every BBS member has at most one
-casino player. "Many players" means many BBS members playing casino
-concurrently, not multiple casino rows per member.
+The casino player row is keyed by `moniker citext NOT NULL PK`
+(globally unique) with `membermoniker citext` as a nullable FK to
+`engine.__member(moniker)` (`casino/src/casino/sql/player.sql`).
+The legacy 1:1 shape is preserved on the lazy-materialize path
+(`ensure_casino_player` INSERTs `moniker = membermoniker`), but the
+schema permits **many casino rows per BBS member** — a single account
+can hold distinct casino player identities, each with its own
+`moniker`, `stats`, and `attrs`. The PK on `moniker` is global (not
+per-member), so a given `moniker` value can only be claimed once
+across the entire casino. "Many players" therefore means both many
+BBS members playing concurrently **and** multiple casino rows per
+member (the latter is a follow-up; existing callers see no
+behavioural change because the lazy-materialize still seeds
+`moniker = membermoniker`).
 
 Members are created by a sysop via the `bbsengine6-console` flow
 (`console.member.add`); casino never creates members. The casino
