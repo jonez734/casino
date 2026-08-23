@@ -124,27 +124,14 @@ class TestBlackjackThreeHands(unittest.IsolatedAsyncioTestCase):
         self.args = parser.parse_args(_dbname.dbname_args())
         self.pool = database.getpool(self.args)
 
+        from casino.tests._ensure_test_member import ensure_test_member
+        ensure_test_member(self.args, "jam", "test", pool=self.pool)
+        ensure_test_member(self.args, "__dealer__", "x", pool=self.pool, email="dealer@casino.local", credits=0)
         with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
-            cur.execute(
-                "INSERT INTO engine.__member (moniker, loginid, email, credits) "
-                "VALUES ('jam', 'jam', 'jam@test.local', 100000) "
-                "ON CONFLICT (moniker) DO UPDATE SET "
-                "loginid = EXCLUDED.loginid, "
-                "email = EXCLUDED.email, "
-                "credits = EXCLUDED.credits"
-            )
             cur.execute(
                 "INSERT INTO bank.__account (moniker, balance) VALUES ('jam', 100000) "
                 "ON CONFLICT (moniker) DO UPDATE SET balance = 100000"
             )
-            cur.execute(
-                "INSERT INTO engine.__member (moniker, loginid, email, credits) "
-                "VALUES ('__dealer__', '__dealer__', 'dealer@casino.local', 0) "
-                "ON CONFLICT (moniker) DO NOTHING"
-            )
-        from bbsengine6.member import lib as libmember
-        libmember.setpassword(self.args, "test", "jam", pool=self.pool)
-        libmember.setpassword(self.args, "x", "__dealer__", pool=self.pool)
 
         self.server = WebSocketServer(host="127.0.0.1", port=TEST_PORT)
         self.router = MessageRouter(self.args)

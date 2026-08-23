@@ -72,17 +72,8 @@ class BaseIntegrationTest(unittest.IsolatedAsyncioTestCase):
             pass  # Ignore cleanup errors
 
         try:
-            with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
-                cur.execute(
-                    "INSERT INTO engine.__member (moniker, loginid, email, credits) "
-                    "VALUES ('jam', 'jam', 'jam@test.local', 100000) "
-                    "ON CONFLICT (moniker) DO UPDATE SET "
-                    "loginid = EXCLUDED.loginid, "
-                    "email = EXCLUDED.email, "
-                    "credits = EXCLUDED.credits"
-                )
-            from bbsengine6.member import lib as libmember
-            libmember.setpassword(self.args, "test", "jam", pool=self.pool)
+            from casino.tests._ensure_test_member import ensure_test_member
+            ensure_test_member(self.args, "jam", "test", pool=self.pool)
         except Exception as e:
             print(f"Warning: Could not set up member: {e}")
 

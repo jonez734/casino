@@ -51,8 +51,8 @@ class TestPlayerStatsDALIntegration(unittest.IsolatedAsyncioTestCase):
                         "email = EXCLUDED.email, "
                         "credits = EXCLUDED.credits"
                     )
-            from bbsengine6.member import lib as libmember
-            libmember.setpassword(self.args, "test", "stats_test_player", pool=self.pool)
+            from casino.tests._ensure_test_member import ensure_test_member
+            ensure_test_member(self.args, "stats_test_player", "test", pool=self.pool, email="stats@test.local", credits=100000)
         except Exception:
             pass
 

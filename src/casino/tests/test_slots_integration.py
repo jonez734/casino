@@ -132,10 +132,10 @@ class TestSlotIntegration(unittest.TestCase):
             _set_balance(cur, "bob", 100)
             _ensure_player(cur, "alice")
             _ensure_player(cur, "bob")
-        from bbsengine6.member import lib as libmember
+        from casino.tests._ensure_test_member import ensure_test_member
         _pool = database.getpool(self._args)
-        libmember.setpassword(self._args, "test", "alice", pool=_pool)
-        libmember.setpassword(self._args, "test", "bob", pool=_pool)
+        ensure_test_member(self._args, "alice", "test", pool=_pool)
+        ensure_test_member(self._args, "bob", "test", pool=_pool)
         self._baseline_alice = 10000
         self._baseline_bob = 100
 
@@ -359,8 +359,8 @@ class TestSlotIntegration(unittest.TestCase):
             cur.execute(
                 "DELETE FROM bank.__account WHERE moniker = %s", ("newbie",)
             )
-        from bbsengine6.member import lib as libmember
-        libmember.setpassword(self._args, "test", "newbie", pool=database.getpool(self._args))
+        from casino.tests._ensure_test_member import ensure_test_member
+        ensure_test_member(self._args, "newbie", "test", pool=database.getpool(self._args))
 
         self._create_slots_table(min_bet=1, max_bet=1000)
         r = handle_spin(self._args, "integ-slots", "newbie", 5)
@@ -682,9 +682,9 @@ class TestSlotBedIntegration(unittest.IsolatedAsyncioTestCase):
         with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
             _ensure_test_user(cur, self.PLAYER_MONIKER)
             _ensure_test_user(cur, self.SPECTATOR_MONIKER)
-        from bbsengine6.member import lib as libmember
-        libmember.setpassword(self.args, "test", self.PLAYER_MONIKER, pool=self.pool)
-        libmember.setpassword(self.args, "test", self.SPECTATOR_MONIKER, pool=self.pool)
+        from casino.tests._ensure_test_member import ensure_test_member
+        ensure_test_member(self.args, self.PLAYER_MONIKER, "test", pool=self.pool)
+        ensure_test_member(self.args, self.SPECTATOR_MONIKER, "test", pool=self.pool)
 
         # Start the WebSocket server + router
         self.server = WebSocketServer(host="127.0.0.1", port=self.PORT)

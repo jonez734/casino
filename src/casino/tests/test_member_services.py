@@ -58,8 +58,8 @@ class TestMemberServicesDAL(unittest.IsolatedAsyncioTestCase):
                         "credits = EXCLUDED.credits, "
                         "attrs = EXCLUDED.attrs"
                     )
-            from bbsengine6.member import lib as libmember
-            libmember.setpassword(self.args, "test", "member_service_test", pool=self.pool)
+            from casino.tests._ensure_test_member import ensure_test_member
+            ensure_test_member(self.args, "member_service_test", "test", pool=self.pool, email="membertest@test.local", credits=1000)
         except Exception:
             pass
 
