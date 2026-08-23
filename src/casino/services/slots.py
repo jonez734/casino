@@ -369,7 +369,7 @@ def handle_spin(
                                'slots.wins', COALESCE((stats->>'slots.wins')::int, 0) + :is_win,
                                'slots.net',  COALESCE((stats->>'slots.net')::int, 0) + :net_delta
                            )
-                           WHERE membermoniker = :moniker""",
+                           WHERE moniker = :moniker""",
                         is_win=1 if result.payout > 0 else 0,
                         net_delta=net,
                         moniker=player_moniker,
@@ -383,7 +383,7 @@ def handle_spin(
                                    'slots.biggest_win',
                                    GREATEST(COALESCE((stats->>'slots.biggest_win')::int, 0), :payout)
                                )
-                               WHERE membermoniker = :moniker""",
+                               WHERE moniker = :moniker""",
                             payout=result.payout,
                             moniker=player_moniker,
                         )

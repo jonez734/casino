@@ -2,10 +2,14 @@
 # Player service - authentication and profile management
 #
 # Casino has its own auth on top of the BBS member layer (``bbsengine6.member``)
-# so many concurrent members can play casino at once, each with their own
-# 1:1 casino player record. The casino player record (``casino.__player``)
-# holds casino-specific state (``lastplayed``, ``attrs``, ``stats``) keyed
-# by ``membermoniker`` with a FK to ``engine.__member(moniker)``.
+# so many concurrent members can play casino at once. Each BBS member can
+# own many casino player records (``casino.__player``); the player record
+# holds casino-specific state (``lastplayed``, ``attrs``, ``stats``)
+# keyed by ``moniker citext NOT NULL PK`` with ``membermoniker`` as a
+# nullable FK to ``engine.__member(moniker)``. The legacy 1:1 shape
+# (``moniker = membermoniker``) is preserved on the lazy-materialize
+# path so existing callers see no behavioural change; multi-player-per-
+# member is a follow-up that adds distinct ``moniker`` values.
 #
 # Lifecycle:
 #
@@ -41,8 +45,13 @@ def ensure_casino_player(
 ) -> dict[str, Any]:
     """Idempotently ensure a ``casino.__player`` row exists for ``moniker``.
 
-    Returns the row (existing or newly created). The returned dict has
-    keys: ``membermoniker``, ``location``, ``lastplayed``, ``attrs``.
+    On the legacy 1:1 lazy-materialize path, ``moniker`` is also the
+    membermoniker (``ensure_casino_player(args, 'jam')` INSERTs
+    ``moniker='jam', membermoniker='jam'``); callers that want a
+    distinct player moniker per member pass it explicitly. Returns the
+    row (existing or newly created). The returned dict has keys:
+    ``membermoniker``, ``moniker``, ``location``, ``lastplayed``,
+    ``attrs``.
 
     When ``audit`` is True and the row was newly created, emits one
     ``io.echo(..., level="debug")`` so a sysop running with debug

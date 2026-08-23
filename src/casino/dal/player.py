@@ -13,18 +13,26 @@ def get_or_create_player(
     """
     Get existing player or create new one for BBS member.
 
+    Looks up the player row by player ``moniker`` (the casino.__player
+    PK). On miss, INSERTs a fresh row with ``moniker = membermoniker``
+    so the legacy 1:1 shape recovers (``jam`` member → ``jam`` player).
+    Multi-player-per-member callers (future) will pass a distinct
+    ``moniker`` for each player they create.
+
     Args:
         args: Application args (for database connection)
-        moniker: BBS member moniker
+        moniker: Player moniker. On the lazy-materialize path this is
+            also the membermoniker; callers wanting a distinct player
+            moniker pass it explicitly.
 
     Returns:
-        Player dict with moniker, balance, etc.
+        Player dict with membermoniker, moniker, location, lastplayed, attrs.
     """
 
     def _work(cur):
         cur.execute(
             database.query(
-                "SELECT membermoniker, location, lastplayed, attrs FROM $casino.player WHERE membermoniker = :moniker",
+                "SELECT membermoniker, moniker, location, lastplayed, attrs FROM $casino.player WHERE moniker = :moniker",
                 moniker=moniker
             )
         )
@@ -32,6 +40,7 @@ def get_or_create_player(
         if row:
             return {
                 "membermoniker": row["membermoniker"],
+                "moniker": row["moniker"],
                 "location": row["location"],
                 "lastplayed": row["lastplayed"],
                 "attrs": row["attrs"] or {},
@@ -40,13 +49,14 @@ def get_or_create_player(
         io.echo("casino.dal.player.100: about to insert into __player", level="debug")
         cur.execute(
             database.query(
-                "INSERT INTO $casino.__player (membermoniker, location, attrs) VALUES (:moniker, :location, :attrs) RETURNING membermoniker",
-                moniker=moniker, location="casino", attrs=Jsonb({})
+                "INSERT INTO $casino.__player (membermoniker, moniker, location, attrs) VALUES (:membermoniker, :moniker, :location, :attrs) RETURNING membermoniker, moniker",
+                membermoniker=moniker, moniker=moniker, location="casino", attrs=Jsonb({})
             )
         )
         row = cur.fetchone()
         return {
             "membermoniker": row["membermoniker"],
+            "moniker": row["moniker"],
             "location": "casino",
             "lastplayed": None,
             "attrs": {},
@@ -57,11 +67,11 @@ def get_or_create_player(
 
 
 def get_player_by_moniker(args: Any, moniker: str) -> Optional[dict[str, Any]]:
-    """Get player by moniker."""
+    """Get player by player moniker (the casino.__player PK)."""
     with database.connect(args) as conn, database.cursor(conn) as cur:
         cur.execute(
             database.query(
-                "SELECT membermoniker, location, lastplayed, attrs FROM $casino.player WHERE membermoniker = :moniker",
+                "SELECT membermoniker, moniker, location, lastplayed, attrs FROM $casino.player WHERE moniker = :moniker",
                 moniker=moniker
             )
         )
@@ -69,6 +79,7 @@ def get_player_by_moniker(args: Any, moniker: str) -> Optional[dict[str, Any]]:
         if row:
             return {
                 "membermoniker": row["membermoniker"],
+                "moniker": row["moniker"],
                 "location": row["location"],
                 "lastplayed": row["lastplayed"],
                 "attrs": row["attrs"] or {},
@@ -92,11 +103,11 @@ def get_player_balance(args: Any, moniker: str) -> int:
 
 
 def update_player_lastplayed(args: Any, moniker: str) -> None:
-    """Update player's last played timestamp."""
+    """Update player's last played timestamp by player moniker (PK)."""
     with database.connect(args) as conn, database.cursor(conn) as cur:
         cur.execute(
             database.query(
-                "UPDATE $casino.__player SET lastplayed = NOW() WHERE membermoniker = :moniker",
+                "UPDATE $casino.__player SET lastplayed = NOW() WHERE moniker = :moniker",
                 moniker=moniker
             )
         )
@@ -152,7 +163,7 @@ def get_player_stats(args: Any, moniker: str) -> dict[str, Any]:
 
     Args:
         args: Application args (for database connection)
-        moniker: BBS member moniker
+        moniker: Player moniker (the casino.__player PK)
 
     Returns:
         Dict of stat_name -> value (e.g. {"wins": 10, "losses": 5, "net": 500})
@@ -160,7 +171,7 @@ def get_player_stats(args: Any, moniker: str) -> dict[str, Any]:
     with database.connect(args) as conn, database.cursor(conn) as cur:
         cur.execute(
             database.query(
-                "SELECT stats FROM $casino.__player WHERE membermoniker = :moniker",
+                "SELECT stats FROM $casino.__player WHERE moniker = :moniker",
                 moniker=moniker
             )
         )
@@ -175,7 +186,7 @@ def update_player_stats(args: Any, moniker: str, stats: dict[str, Any]) -> None:
 
     Args:
         args: Application args (for database connection)
-        moniker: BBS member moniker
+        moniker: Player moniker (the casino.__player PK)
         stats: Dict of stat_name -> value to set
     """
     invalid_stats = set(stats.keys()) - ALLOWED_STATS
@@ -185,7 +196,7 @@ def update_player_stats(args: Any, moniker: str, stats: dict[str, Any]) -> None:
     with database.connect(args) as conn, database.cursor(conn) as cur:
         cur.execute(
             database.query(
-                "UPDATE $casino.__player SET stats = :stats WHERE membermoniker = :moniker",
+                "UPDATE $casino.__player SET stats = :stats WHERE moniker = :moniker",
                 moniker=moniker, stats=Jsonb(stats)
             )
         )
@@ -196,7 +207,7 @@ def increment_stat(args: Any, moniker: str, stat_name: str, amount: int = 1) -> 
 
     Args:
         args: Application args (for database connection)
-        moniker: BBS member moniker
+        moniker: Player moniker (the casino.__player PK)
         stat_name: Name of stat to increment (must be in ALLOWED_STATS)
         amount: Positive integer to add (default 1)
 
@@ -220,7 +231,7 @@ def increment_stat(args: Any, moniker: str, stat_name: str, amount: int = 1) -> 
                 database.query(
                     """UPDATE $casino.__player
                        SET stats = stats || jsonb_build_object(:stat_name, COALESCE((stats->>:stat_name)::int, 0) + :amount)
-                       WHERE membermoniker = :moniker""",
+                       WHERE moniker = :moniker""",
                     moniker=moniker, stat_name=stat_name, amount=amount
                 )
             )
@@ -234,7 +245,7 @@ def set_max_stat(args: Any, moniker: str, stat_name: str, value: int) -> None:
 
     Args:
         args: Application args
-        moniker: BBS member moniker
+        moniker: Player moniker (the casino.__player PK)
         stat_name: Name of stat (must be in ALLOWED_STATS)
         value: Candidate value (must be a non-negative integer)
     """
@@ -253,7 +264,7 @@ def set_max_stat(args: Any, moniker: str, stat_name: str, value: int) -> None:
                            :stat_name,
                            GREATEST(COALESCE((stats->>:stat_name)::int, 0), :value)
                        )
-                       WHERE membermoniker = :moniker""",
+                       WHERE moniker = :moniker""",
                 moniker=moniker, stat_name=stat_name, value=value
             )
         )
