@@ -44,10 +44,15 @@ class TestPlayerStatsDALIntegration(unittest.IsolatedAsyncioTestCase):
         try:
             with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
                     cur.execute(
-                        "INSERT INTO engine.__member (moniker, loginid, password, email, credits) "
-                        "VALUES ('stats_test_player', 'stats_test_player', crypt('test', gen_salt('md5')), 'stats@test.local', 100000) "
-                        "ON CONFLICT (moniker) DO UPDATE SET password = crypt('test', gen_salt('md5'))"
+                        "INSERT INTO engine.__member (moniker, loginid, email, credits) "
+                        "VALUES ('stats_test_player', 'stats_test_player', 'stats@test.local', 100000) "
+                        "ON CONFLICT (moniker) DO UPDATE SET "
+                        "loginid = EXCLUDED.loginid, "
+                        "email = EXCLUDED.email, "
+                        "credits = EXCLUDED.credits"
                     )
+            from bbsengine6.member import lib as libmember
+            libmember.setpassword(self.args, "test", "stats_test_player", pool=self.pool)
         except Exception:
             pass
 

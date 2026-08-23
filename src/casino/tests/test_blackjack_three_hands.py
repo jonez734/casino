@@ -126,21 +126,25 @@ class TestBlackjackThreeHands(unittest.IsolatedAsyncioTestCase):
 
         with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
             cur.execute(
-                "INSERT INTO engine.__member (moniker, loginid, password, email, credits) "
-                "VALUES ('jam', 'jam', crypt('test', gen_salt('md5')), 'jam@test.local', 100000) "
+                "INSERT INTO engine.__member (moniker, loginid, email, credits) "
+                "VALUES ('jam', 'jam', 'jam@test.local', 100000) "
                 "ON CONFLICT (moniker) DO UPDATE SET "
-                "password = crypt('test', gen_salt('md5')), credits = 100000"
+                "loginid = EXCLUDED.loginid, "
+                "email = EXCLUDED.email, "
+                "credits = EXCLUDED.credits"
             )
             cur.execute(
                 "INSERT INTO bank.__account (moniker, balance) VALUES ('jam', 100000) "
                 "ON CONFLICT (moniker) DO UPDATE SET balance = 100000"
             )
             cur.execute(
-                "INSERT INTO engine.__member (moniker, loginid, password, email, credits) "
-                "VALUES ('__dealer__', '__dealer__', crypt('x', gen_salt('md5')), "
-                "'dealer@casino.local', 0) "
+                "INSERT INTO engine.__member (moniker, loginid, email, credits) "
+                "VALUES ('__dealer__', '__dealer__', 'dealer@casino.local', 0) "
                 "ON CONFLICT (moniker) DO NOTHING"
             )
+        from bbsengine6.member import lib as libmember
+        libmember.setpassword(self.args, "test", "jam", pool=self.pool)
+        libmember.setpassword(self.args, "x", "__dealer__", pool=self.pool)
 
         self.server = WebSocketServer(host="127.0.0.1", port=TEST_PORT)
         self.router = MessageRouter(self.args)

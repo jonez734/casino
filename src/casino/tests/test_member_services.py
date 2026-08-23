@@ -50,10 +50,16 @@ class TestMemberServicesDAL(unittest.IsolatedAsyncioTestCase):
         try:
             with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
                     cur.execute(
-                        "INSERT INTO engine.__member (moniker, loginid, password, email, credits, attrs) "
-                        "VALUES ('member_service_test', 'member_service_test', crypt('test', gen_salt('md5')), 'membertest@test.local', 1000, '{\"tier\": \"bronze\"}'::jsonb) "
-                        "ON CONFLICT (moniker) DO UPDATE SET attrs = '{\"tier\": \"bronze\"}'::jsonb"
+                        "INSERT INTO engine.__member (moniker, loginid, email, credits, attrs) "
+                        "VALUES ('member_service_test', 'member_service_test', 'membertest@test.local', 1000, '{\"tier\": \"bronze\"}'::jsonb) "
+                        "ON CONFLICT (moniker) DO UPDATE SET "
+                        "loginid = EXCLUDED.loginid, "
+                        "email = EXCLUDED.email, "
+                        "credits = EXCLUDED.credits, "
+                        "attrs = EXCLUDED.attrs"
                     )
+            from bbsengine6.member import lib as libmember
+            libmember.setpassword(self.args, "test", "member_service_test", pool=self.pool)
         except Exception:
             pass
 

@@ -41,10 +41,12 @@ def _make_args():
 
 
 def _ensure_member(cur, moniker: str) -> None:
-    """Make sure a test member exists; idempotent."""
+    """Make sure a test member exists; idempotent. Password is set to NULL;
+    callers must follow up with ``bbsengine6.member.setpassword`` so the
+    chk_member_password_bcrypt constraint accepts the row."""
     cur.execute(
-        "INSERT INTO engine.__member (moniker, loginid, password, email, credits) "
-        "VALUES (%s, %s, crypt('test', gen_salt('md5')), %s, 100000) "
+        "INSERT INTO engine.__member (moniker, loginid, email, credits) "
+        "VALUES (%s, %s, %s, 100000) "
         "ON CONFLICT (moniker) DO NOTHING",
         (moniker, moniker, f"{moniker}@test.local"),
     )
@@ -130,6 +132,10 @@ class TestSlotIntegration(unittest.TestCase):
             _set_balance(cur, "bob", 100)
             _ensure_player(cur, "alice")
             _ensure_player(cur, "bob")
+        from bbsengine6.member import lib as libmember
+        _pool = database.getpool(self._args)
+        libmember.setpassword(self._args, "test", "alice", pool=_pool)
+        libmember.setpassword(self._args, "test", "bob", pool=_pool)
         self._baseline_alice = 10000
         self._baseline_bob = 100
 
@@ -353,6 +359,8 @@ class TestSlotIntegration(unittest.TestCase):
             cur.execute(
                 "DELETE FROM bank.__account WHERE moniker = %s", ("newbie",)
             )
+        from bbsengine6.member import lib as libmember
+        libmember.setpassword(self._args, "test", "newbie", pool=database.getpool(self._args))
 
         self._create_slots_table(min_bet=1, max_bet=1000)
         r = handle_spin(self._args, "integ-slots", "newbie", 5)
@@ -571,9 +579,12 @@ class _BedWebSocketTestClient:
 
 def _ensure_test_user(cur, moniker: str) -> None:
     cur.execute(
-        "INSERT INTO engine.__member (moniker, loginid, password, email, credits) "
-        "VALUES (%s, %s, crypt('test', gen_salt('md5')), %s, 100000) "
-        "ON CONFLICT (moniker) DO UPDATE SET password = crypt('test', gen_salt('md5')), credits = 100000",
+        "INSERT INTO engine.__member (moniker, loginid, email, credits) "
+        "VALUES (%s, %s, %s, 100000) "
+        "ON CONFLICT (moniker) DO UPDATE SET "
+        "loginid = EXCLUDED.loginid, "
+        "email = EXCLUDED.email, "
+        "credits = EXCLUDED.credits",
         (moniker, moniker, f"{moniker}@test.local"),
     )
     cur.execute(
@@ -671,6 +682,9 @@ class TestSlotBedIntegration(unittest.IsolatedAsyncioTestCase):
         with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
             _ensure_test_user(cur, self.PLAYER_MONIKER)
             _ensure_test_user(cur, self.SPECTATOR_MONIKER)
+        from bbsengine6.member import lib as libmember
+        libmember.setpassword(self.args, "test", self.PLAYER_MONIKER, pool=self.pool)
+        libmember.setpassword(self.args, "test", self.SPECTATOR_MONIKER, pool=self.pool)
 
         # Start the WebSocket server + router
         self.server = WebSocketServer(host="127.0.0.1", port=self.PORT)

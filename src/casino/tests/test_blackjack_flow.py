@@ -211,15 +211,20 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
         # Also ensure user has a bank account with funds and casino credits
         with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
             cur.execute(
-                "INSERT INTO engine.__member (moniker, loginid, password, email, credits) "
-                "VALUES ('jam', 'jam', crypt('test', gen_salt('md5')), 'jam@test.local', 100000) "
-                "ON CONFLICT (moniker) DO UPDATE SET password = crypt('test', gen_salt('md5')), credits = 100000"
+                "INSERT INTO engine.__member (moniker, loginid, email, credits) "
+                "VALUES ('jam', 'jam', 'jam@test.local', 100000) "
+                "ON CONFLICT (moniker) DO UPDATE SET "
+                "loginid = EXCLUDED.loginid, "
+                "email = EXCLUDED.email, "
+                "credits = EXCLUDED.credits"
             )
             # Ensure user has a bank account with funds
             cur.execute(
                 "INSERT INTO bank.__account (moniker, balance) VALUES ('jam', 100000) "
                 "ON CONFLICT (moniker) DO UPDATE SET balance = 100000"
             )
+        from bbsengine6.member import lib as libmember
+        libmember.setpassword(self.args, "test", "jam", pool=self.pool)
 
         # Create server
         self.server = WebSocketServer(host="127.0.0.1", port=8766)

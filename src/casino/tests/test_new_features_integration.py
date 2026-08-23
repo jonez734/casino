@@ -74,10 +74,15 @@ class BaseIntegrationTest(unittest.IsolatedAsyncioTestCase):
         try:
             with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
                 cur.execute(
-                    "INSERT INTO engine.__member (moniker, loginid, password, email, credits) "
-                    "VALUES ('jam', 'jam', crypt('test', gen_salt('md5')), 'jam@test.local', 100000) "
-                    "ON CONFLICT (moniker) DO UPDATE SET password = crypt('test', gen_salt('md5')), credits = 100000"
+                    "INSERT INTO engine.__member (moniker, loginid, email, credits) "
+                    "VALUES ('jam', 'jam', 'jam@test.local', 100000) "
+                    "ON CONFLICT (moniker) DO UPDATE SET "
+                    "loginid = EXCLUDED.loginid, "
+                    "email = EXCLUDED.email, "
+                    "credits = EXCLUDED.credits"
                 )
+            from bbsengine6.member import lib as libmember
+            libmember.setpassword(self.args, "test", "jam", pool=self.pool)
         except Exception as e:
             print(f"Warning: Could not set up member: {e}")
 
