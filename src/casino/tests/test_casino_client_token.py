@@ -241,3 +241,52 @@ def test_handle_message_does_not_capture_token_on_failed_auth():
         )
     assert client._bearer_token is None
     assert client.authenticated is False
+
+
+def test_disconnect_awaits_wait_closed():
+    """``disconnect`` calls ``ws.close()`` AND ``ws.wait_closed()``.
+
+    Without ``wait_closed()``, the websockets keepalive task is left
+    pending after ``close()`` returns. The asyncio loop close path
+    then prints "Task was destroyed but it is pending!" at interpreter
+    shutdown. ``wait_closed()`` is the websockets-supported wait for
+    ``connection_lost`` -- which is what actually cancels the keepalive
+    task -- so the loop can be closed cleanly.
+    """
+    from unittest.mock import patch
+
+    client = _make_client(_make_args())
+    ws = MagicMock()
+    ws.close = AsyncMock()
+    ws.wait_closed = AsyncMock()
+    client.ws = ws
+    client._receive_task = None
+
+    with patch("casino.client.casino_client.io.echo"):
+        _run(client.disconnect())
+
+    ws.close.assert_awaited_once()
+    ws.wait_closed.assert_awaited_once()
+    assert client.connected is False
+
+
+def test_disconnect_swallows_wait_closed_errors():
+    """If ``wait_closed()`` raises (e.g. the socket is already half-
+    closed), the disconnect path still completes so the caller can
+    close the loop.
+    """
+    from unittest.mock import patch
+
+    client = _make_client(_make_args())
+    ws = MagicMock()
+    ws.close = AsyncMock()
+    ws.wait_closed = AsyncMock(side_effect=RuntimeError("already closed"))
+    client.ws = ws
+    client._receive_task = None
+
+    with patch("casino.client.casino_client.io.echo"):
+        _run(client.disconnect())
+
+    ws.close.assert_awaited_once()
+    ws.wait_closed.assert_awaited_once()
+    assert client.connected is False

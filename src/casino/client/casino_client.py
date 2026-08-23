@@ -77,6 +77,8 @@ class CasinoClient:
 
         if self.ws:
             await self.ws.close()
+            with contextlib.suppress(Exception):
+                await self.ws.wait_closed()
         self.connected = False
         io.echo("Disconnected")
 
