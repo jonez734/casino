@@ -290,3 +290,176 @@ def test_disconnect_swallows_wait_closed_errors():
     ws.close.assert_awaited_once()
     ws.wait_closed.assert_awaited_once()
     assert client.connected is False
+
+
+# ---------------------------------------------------------------------
+# ``casino.auth._close_loop_for`` graceful drain
+#
+# ``_close_loop_for`` mirrors ``asyncio.run()``'s shutdown sequence
+# (cancel pending tasks -> await -> shutdown_asyncgens ->
+# shutdown_default_executor -> close). Without the drain,
+# websockets' internal ``Connection.keepalive`` task is left pending
+# when ``loop.close()`` runs, and Python prints
+# ``RuntimeWarning: Task was destroyed but it is pending!`` at
+# interpreter shutdown. The tests below pin every branch of the
+# helper.
+
+
+def _make_loop_with_pending_task():
+    """Build a real loop with one pending task that hangs forever.
+
+    Returns ``(loop, task)``. The task waits on an ``asyncio.Event``
+    that the test never sets, so the only way it ever finishes is via
+    the cancel-and-await drain in ``_close_loop_for``.
+    """
+    loop = asyncio.new_event_loop()
+    pending_event = asyncio.Event()
+
+    async def _hang():
+        await pending_event.wait()
+
+    task = loop.create_task(_hang())
+    # Yield once so the task transitions from ``scheduled`` to
+    # actually running (and is observed by ``asyncio.all_tasks``).
+    loop.run_until_complete(asyncio.sleep(0))
+    return loop, task
+
+
+def test_close_loop_for_drains_pending_task():
+    """A pending task is cancelled and awaited to completion before
+    the loop is closed. Without the drain, ``loop.close()`` would
+    leave the task pending and Python would warn at GC time.
+    """
+    from casino.auth import _close_loop_for
+
+    loop, task = _make_loop_with_pending_task()
+    assert not task.done()
+
+    _close_loop_for(None, loop=loop)
+
+    assert task.done()
+    assert task.cancelled()
+    assert loop.is_closed()
+
+
+def test_close_loop_for_handles_empty_loop():
+    """A loop with no pending tasks still closes cleanly."""
+    from casino.auth import _close_loop_for
+
+    loop = asyncio.new_event_loop()
+    _close_loop_for(None, loop=loop)
+    assert loop.is_closed()
+
+
+def test_close_loop_for_closes_even_if_drain_raises():
+    """If a task's cancel handler raises, ``loop.close()`` still runs
+    (the ``finally`` block guards it).
+    """
+    from casino.auth import _close_loop_for
+
+    loop = asyncio.new_event_loop()
+
+    async def _angry():
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            raise RuntimeError("cancel handler angry")
+
+    task = loop.create_task(_angry())
+    loop.run_until_complete(asyncio.sleep(0))
+    assert not task.done()
+
+    _close_loop_for(None, loop=loop)
+
+    assert loop.is_closed()
+
+
+def test_close_loop_for_swallows_cancelled_errors():
+    """The ``CancelledError`` raised by the drained tasks does not
+    propagate out of ``_close_loop_for`` (we use
+    ``gather(return_exceptions=True)`` so the drain is itself safe).
+    """
+    from casino.auth import _close_loop_for
+
+    loop, task = _make_loop_with_pending_task()
+    # Should not raise.
+    _close_loop_for(None, loop=loop)
+    assert task.done()
+    assert task.cancelled()
+
+
+def test_close_loop_for_accepts_client_attribute():
+    """When ``loop`` is ``None``, the helper falls back to
+    ``client._loop``. This is the production call-site shape used
+    everywhere in ``casino.auth`` and ``casino.client``.
+    """
+    from casino.auth import _close_loop_for
+
+    loop, task = _make_loop_with_pending_task()
+
+    class _StubClient:
+        pass
+
+    client = _StubClient()
+    client._loop = loop  # type: ignore[attr-defined]
+
+    _close_loop_for(client)
+
+    assert task.done()
+    assert task.cancelled()
+    assert loop.is_closed()
+
+
+def test_close_loop_for_no_op_without_loop():
+    """When neither ``client._loop`` nor ``loop`` resolves, the helper
+    is a silent no-op so call sites don't have to guard against a
+    missing loop.
+    """
+    from casino.auth import _close_loop_for
+
+    class _StubClient:
+        pass
+
+    # Should not raise.
+    _close_loop_for(_StubClient())
+    _close_loop_for(None)
+    _close_loop_for(None, loop=None)
+
+
+def test_close_loop_for_shuts_down_asyncgens():
+    """An async generator scheduled before close is finalized through
+    ``shutdown_asyncgens`` before the loop is closed.
+
+    The agen must run inside an async function on the loop for the
+    ``_asyncgen_firstiter_hook`` to register it (driving ``__anext__``
+    via ``run_until_complete`` from outside any coroutine does not
+    trigger the hook, so the agen never lands in ``loop._asyncgens``
+    and ``shutdown_asyncgens`` would skip it).
+    """
+    from casino.auth import _close_loop_for
+
+    loop = asyncio.new_event_loop()
+    finalized = []
+    started = []
+
+    async def _agen():
+        started.append("started")
+        try:
+            yield 1
+            yield 2
+        finally:
+            finalized.append("done")
+
+    async def _drive():
+        agen = _agen()
+        await agen.__anext__()  # suspended at ``yield 2``
+        return agen
+
+    agen = loop.run_until_complete(_drive())
+    assert started == ["started"]
+    assert finalized == []
+
+    _close_loop_for(None, loop=loop)
+
+    assert finalized == ["done"]
+    assert loop.is_closed()
