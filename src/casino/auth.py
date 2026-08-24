@@ -34,6 +34,25 @@ if TYPE_CHECKING:
     from .client.casino_client import CasinoClient
 
 
+# ---- Operator-side source-resolution trace ---------------------------
+#
+# Emit the resolved file path of THIS module on import, so when an
+# operator runs ``casino`` they immediately see WHICH tree of the
+# source they are actually executing. This came up when a parallel
+# /srv/work/casino checkout diverged from the dev tree and silently
+# picked up the unfixed auth.py -- the operator saw
+# ``token_revoked`` on the second casino call, and our diagnostics
+# were running in the wrong source tree.
+#
+# Always-on (no --debug gate) -- bbsengine6's io.echo defaults are
+# loud enough that this surfaces in the operator's normal log stream.
+from bbsengine6 import io as _bbs_io  # noqa: E402
+
+_bbs_io.echo(
+    f"casino.auth loaded from: {__file__}"
+)
+
+
 # ---- Auth prompt: the single override point --------------------------
 
 async def auth_prompt(args: argparse.Namespace, client: CasinoClient) -> bool:
