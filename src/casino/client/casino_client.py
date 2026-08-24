@@ -258,6 +258,19 @@ class CasinoClient:
                 self.current_table_moniker = None
                 self.current_table_game_type = None
 
+        elif msg_type == "joined_table":
+            moniker = msg.get("moniker", "")
+            message = msg.get("message", "")
+            if moniker:
+                self.current_table_moniker = moniker
+            util.heading(f"Joined table: {moniker}")
+            if message:
+                io.echo(f"{{var:labelcolor}}status:  {{var:valuecolor}}{message}")
+            io.echo(
+                "{{var:labelcolor}}note:    "
+                "{{var:valuecolor}}use [L]eave to get up, or place a bet to play"
+            )
+
         elif msg_type == "game_state":
             await self.display_game_state(msg)
 
