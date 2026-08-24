@@ -291,6 +291,31 @@ def _connect_with_token(
                 f"({code}: {message}); run 'bed auth login' again",
                 level="error",
             )
+            # Diagnostic: when an operator hits the ``token_revoked``
+            # wall right after ``bed auth login``, this line confirms
+            # the token file under the operator's nose is the file
+            # that was just read (token prefix + mtime) so we can
+            # tell "stale file" from "right file, server lost it"
+            # without asking the operator for the raw token. Bed
+            # tags its AuthService logs with the same 8-char prefix
+            # via :func:`bed.api.auth._token_hash` so a single
+            # ``grep tok=<prefix>`` correlates client and server
+            # frames. Off by default; gated on ``--debug``.
+            if getattr(args, "debug", False):
+                try:
+                    import hashlib as _hl
+                    import os as _os
+                    import time as _time
+                    st = _os.stat(token_path)
+                    io.echo(
+                        f"casino_reject.debug: token_file={token_path} "
+                        f"mtime={_time.strftime('%Y-%m-%dT%H:%M:%S', _time.gmtime(st.st_mtime))}Z "
+                        f"size={st.st_size} "
+                        f"token_sha256_prefix={_hl.sha256(token.encode('utf-8')).hexdigest()[:8]}",
+                        level="debug",
+                    )
+                except OSError as e:
+                    io.echo(f"casino_reject.debug: stat failed: {e}", level="debug")
         else:
             io.echo(f"{code}: {message}".rstrip(), level="error")
         client._loop.run_until_complete(client.disconnect())
