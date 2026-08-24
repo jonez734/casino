@@ -62,7 +62,9 @@ class CasinoClient:
         uri = f"ws://{host}:{port}{path}"
         try:
             self.ws = await _net_connect(
-                host, port, path=path, prog="casino"
+                host, port, path=path, prog="casino",
+                ping_interval=60,
+                ping_timeout=600,
             )
             self.connected = True
             io.echo(f"Connected to {uri}")
