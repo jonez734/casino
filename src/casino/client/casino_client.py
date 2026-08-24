@@ -193,8 +193,8 @@ class CasinoClient:
                 f"{{var:labelcolor}}status:      {{var:valuecolor}}{message}"
             )
             io.echo(
-                "{{var:labelcolor}}note:        "
-                "{{var:valuecolor}}use [J]oin with this moniker to sit down"
+                f"{{var:labelcolor}}note:        "
+                f"use {{var:optioncolor}}[J]{{var:labelcolor}} Join with this moniker to sit down"
             )
 
         elif msg_type == "table_exists":
