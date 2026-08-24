@@ -907,7 +907,7 @@ class CasinoClient:
                 io.echo("Tables")
                 self.cmd_list_tables()
             elif cmd == "C":
-                io.echo("Create")
+                io.echo("Create Table")
                 self.cmd_create_table()
             elif cmd == "U":
                 io.echo("Update")
@@ -937,13 +937,13 @@ class CasinoClient:
                 io.echo("Bank")
                 self.cmd_bank_menu()
             elif cmd == "X":
-                io.echo("TicTac")
+                io.echo("Tic Tac Toe")
                 self.cmd_tictactoe_quick_play()
             elif cmd == "V":
                 io.echo("Move")
                 self.cmd_tictactoe_move()
             elif cmd == "N":
-                io.echo("JoinT")
+                io.echo("Join TicTacToe Table")
                 self.cmd_tictactoe_join()
             elif cmd == "G":
                 io.echo("Resign")
