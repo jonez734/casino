@@ -524,7 +524,7 @@ class CasinoClient:
         )
 
     @staticmethod
-    def _verify_game_type(raw: str) -> bool:
+    def _verify_game_type(raw: str, **kwargs) -> bool:
         """verify= callback for cmd_create_table's inputstring prompt.
 
         Accepts the input only if its lowercase, stripped form is one
@@ -532,6 +532,12 @@ class CasinoClient:
         False, so an invalid value cannot escape to the wire. The
         same set will be wired into a tab-completion Completer later
         without changing the prompt shape.
+
+        ``**kwargs`` swallows internal kwargs that ``io.inputstring``
+        forwards to verify callables (e.g. ``_history``,
+        ``_history_enabled``, ``_insert_mode``,
+        ``_function_key_callbacks``, ``f1_help``, ``pagesize``,
+        ``beep_on_error``).
         """
         return raw.strip().lower() in CasinoClient._VALID_GAME_TYPES
 
