@@ -23,6 +23,9 @@ class CasinoClient:
     """Terminal client for casino system."""
 
     auth_prompt: Callable | None = None
+    _VALID_GAME_TYPES: frozenset[str] = frozenset(
+        {"blackjack", "poker", "slots", "yahtzee", "tictactoe"}
+    )
 
     def __init__(self, args: argparse.Namespace):
         self.args = args
@@ -520,13 +523,34 @@ class CasinoClient:
             )
         )
 
+    @staticmethod
+    def _verify_game_type(raw: str) -> bool:
+        """verify= callback for cmd_create_table's inputstring prompt.
+
+        Accepts the input only if its lowercase, stripped form is one
+        of :attr:`_VALID_GAME_TYPES`. ``inputstring`` re-prompts on
+        False, so an invalid value cannot escape to the wire. The
+        same set will be wired into a tab-completion Completer later
+        without changing the prompt shape.
+        """
+        return raw.strip().lower() in CasinoClient._VALID_GAME_TYPES
+
     def cmd_create_table(self) -> None:
-        """Handle create_table command."""
-        game_type = io.inputchoice(
-            "{var:promptcolor}Game type: {var:optioncolor}[blackjack,poker,slots,yahtzee,tictactoe]{var:promptcolor}: {var:inputcolor}",
-            "blackjack,poker,slots,yahtzee,tictactoe",
-            default="blackjack",
-        )
+        """Handle create_table command.
+
+        Uses ``io.inputstring`` (not ``inputchoice``) because the
+        game type is a multi-character word, not a single key. A
+        ``verify=`` callback enforces membership in
+        :attr:`_VALID_GAME_TYPES` so the wire call cannot carry an
+        unsupported value. A ``Completer`` will be attached here
+        later for tab completion without changing the prompt shape.
+        """
+        game_type = io.inputstring(
+            "{var:promptcolor}Game type: "
+            "{var:optioncolor}[blackjack|poker|slots|yahtzee|tictactoe]"
+            "{var:promptcolor}: {var:inputcolor}",
+            verify=self._verify_game_type,
+        ).strip().lower()
         min_bet = io.inputinteger("{var:promptcolor}Min bet: {var:inputcolor}", default=10)
         max_bet = io.inputinteger("{var:promptcolor}Max bet: {var:inputcolor}", default=1000)
 
