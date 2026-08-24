@@ -30,7 +30,7 @@ _OPTIONS_SPEC = (
     MenuOption("s", "Stand   (hold your hand)",        requires_seated=True, allowed_game_types=frozenset({"blackjack"})),
     MenuOption("m", "Message (send chat)",             requires_seated=False),
     MenuOption("k", "Bank    (open the bank submenu)", requires_seated=False),
-    MenuOption("x", "TicTac (quick-play tictactoe)",  requires_seated=False),
+    MenuOption("x", "Tic Tac Toe (quick-play tictactoe)", requires_seated=False),
     MenuOption("v", "Move   (tictactoe cell 0-8)",    requires_seated=True, allowed_game_types=frozenset({"tictactoe"})),
     MenuOption("n", "Join   (join tictactoe as 'O')",    requires_seated=True, allowed_game_types=frozenset({"tictactoe"})),
     MenuOption("g", "Resign (forfeit tictactoe)",     requires_seated=True, allowed_game_types=frozenset({"tictactoe"})),
