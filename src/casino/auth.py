@@ -328,8 +328,48 @@ def _connect_with_token(
     if not hasattr(client, "is_sysop"):
         with contextlib.suppress(AttributeError, TypeError):
             client.is_sysop = is_sysop
-    client._bearer_token = reply.get("token") or token
+    rotated = reply.get("token") or token
+    client._bearer_token = rotated
     client._receive_task = client._loop.create_task(client.receive_loop())
+    # Persist the rotated token back to ``token_path`` so the next
+    # ``casino`` invocation (or ``bed tools bank``, which reads the
+    # same file) does not re-send the token the server just revoked.
+    # The server rotates on every successful reconnect
+    # (``bed.api.auth._handle_reconnect`` line 411); without this
+    # writeback the file is permanently one rotation behind and the
+    # next call hits the ``branch=REVOKED`` wall. The function used
+    # here is the same ``bed.tools.auth._write_token_file`` (mode
+    # 0600, atomic via ``O_TRUNC``) so behavior matches a manual
+    # ``bed auth login`` run.
+    if token_path and rotated and rotated != token:
+        try:
+            from bed.tools.auth import _write_token_file
+
+            _write_token_file(token_path, rotated)
+        except (OSError, PermissionError) as e:
+            io.echo(
+                f"could not write rotated token to {token_path}: {e}",
+                level="error",
+            )
+        else:
+            # Diagnostic line: same shape as the auth_login.debug
+            # line emitted by bed.tools.auth so a single grep on
+            # ``tok=<prefix>`` correlates the rotated writeback with
+            # the server's ``AuthService.debug: op=reconnect
+            # branch=OK tok=<prefix> old_tok=<prefix>`` frame.
+            try:
+                import hashlib as _hl
+                import os as _os
+                import time as _time
+                st = _os.stat(token_path)
+                io.echo(
+                    f"casino_reconnect.debug: token_file={token_path} "
+                    f"mtime={_time.strftime('%Y-%m-%dT%H:%M:%S', _time.gmtime(st.st_mtime))}Z "
+                    f"size={st.st_size} "
+                    f"rotated_token_sha256_prefix={_hl.sha256(rotated.encode('utf-8')).hexdigest()[:8]}",
+                )
+            except OSError as e:
+                io.echo(f"casino_reconnect.debug: stat failed: {e}")
     return client
 
 
