@@ -23,7 +23,7 @@ _OPTIONS_SPEC = (
     MenuOption("t", "ables  (list open tables)",     requires_seated=False),
     MenuOption("c", "reate  (create a new table)",   requires_seated=False),
     MenuOption("u", "pdate  (modify an existing table)", requires_seated=False),
-    MenuOption("j", "oin    (join a table)",          requires_seated=False),
+    MenuOption("j", "Join Table",                     requires_seated=False),
     MenuOption("l", "eave   (leave current table)",  requires_seated=True),
     MenuOption("b", "et     (place a wager)",         requires_seated=True, allowed_game_types=frozenset({"blackjack", "poker"})),
     MenuOption("h", "it     (take another card)",     requires_seated=True, allowed_game_types=frozenset({"blackjack"})),
@@ -32,7 +32,7 @@ _OPTIONS_SPEC = (
     MenuOption("k", "ank    (open the bank submenu)", requires_seated=False),
     MenuOption("x", "TicTac (quick-play tictactoe)",  requires_seated=False),
     MenuOption("v", "Move   (tictactoe cell 0-8)",    requires_seated=True, allowed_game_types=frozenset({"tictactoe"})),
-    MenuOption("n", "JoinT  (join tictactoe as O)",    requires_seated=True, allowed_game_types=frozenset({"tictactoe"})),
+    MenuOption("n", "Join   (join tictactoe as 'O')",    requires_seated=True, allowed_game_types=frozenset({"tictactoe"})),
     MenuOption("g", "Resign (forfeit tictactoe)",     requires_seated=True, allowed_game_types=frozenset({"tictactoe"})),
     MenuOption("q", "uit",                            requires_seated=False),
 )
@@ -65,7 +65,7 @@ def _render_help(client: "CasinoClient | None" = None, **kwargs) -> None:
         # f-string ``{{`` collapses to literal ``{`` so ``io.echo``
         # sees ``{var:optioncolor}`` / ``{var:labelcolor}`` markup.
         io.echo(
-            f"{{var:optioncolor}}[{letter.upper()}]{{var:labelcolor}}{label}"
+            f"{{var:optioncolor}}[{letter.upper()}]{{var:labelcolor}} {label}"
         )
 
 
@@ -109,7 +109,7 @@ def menu(client: "CasinoClient | None" = None, **kwargs) -> str | None:
         # ``{f6}`` between options puts each entry on its own line so
         # the long option list is readable instead of one horizontal
         # wall of ``[T]ables,[C]reate,...``.
-        f"{{var:optioncolor}}[{letter.upper()}]{{var:labelcolor}}{label}"
+        f"{{var:optioncolor}}[{letter.upper()}]{{var:labelcolor}} {label}"
         for letter, label in visible
     )
     prompt = status + inline + "{f6}{var:promptcolor}casino_client: {var:inputcolor}"
