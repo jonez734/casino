@@ -34,7 +34,7 @@ _OPTIONS_SPEC = (
     MenuOption("v", "Move   (tictactoe cell 0-8)",    requires_seated=True, allowed_game_types=frozenset({"tictactoe"})),
     MenuOption("n", "Join   (join tictactoe as 'O')",    requires_seated=True, allowed_game_types=frozenset({"tictactoe"})),
     MenuOption("g", "Resign (forfeit tictactoe)",     requires_seated=True, allowed_game_types=frozenset({"tictactoe"})),
-    MenuOption("q", "uit",                            requires_seated=False),
+    MenuOption("q", "Quit",                           requires_seated=False),
 )
 _DEFAULT = "q"
 
