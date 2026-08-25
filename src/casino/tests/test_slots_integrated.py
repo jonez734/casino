@@ -291,7 +291,12 @@ class TestSpinResultRender(unittest.TestCase):
         )
         out = render_ascii(result)
         # 3 rows + 2 borders + 2 internal separators = 7 lines.
-        self.assertEqual(len(out.split("\n")), 7)
+        # render_ascii joins them with the {f6} marker so the io.echo
+        # pipeline can advance one row at a time; split on that
+        # marker for the line-count assertion (strip the trailing
+        # {/all} which reset ACS and SGR after the grid).
+        out_no_reset = out.removesuffix("{/all}")
+        self.assertEqual(len(out_no_reset.split("{f6}")), 7)
         # Top border, middle separator, bottom border.
         # Box-drawing characters are emitted as bbsengine6 echo
         # ACS commands so the grid is drawn with native VT100 ACS

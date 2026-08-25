@@ -495,7 +495,9 @@ class TestRenderAscii(unittest.TestCase):
         )
         r = dealer.play(bet=1)
         text = lib.render_ascii(r)
-        first_row = text.splitlines()[1]
+        # Lines are joined with {f6}; index 1 is the first content
+        # row (top border at 0, row 0 at 1, mid border at 2, ...).
+        first_row = text.removesuffix("{/all}").split("{f6}")[1]
         # The default reel strip is dense in colored symbols; with
         # seed 0 the first row is guaranteed to contain colored cells.
         # Either a real color tag is present OR the literal bug text
@@ -526,9 +528,11 @@ class TestRenderAscii(unittest.TestCase):
         out = lib.render_ascii(dealer.play(bet=1))
         # render_ascii appends a trailing {/all} so the terminal is
         # back in the default character set after the grid; strip it
-        # for the shape assertions below.
+        # for the shape assertions below. Lines are joined with {f6}
+        # (form-feed) so the io.echo pipeline can advance one row at a
+        # time; split on that marker for shape assertions.
         out = out.removesuffix("{/all}")
-        lines = out.splitlines()
+        lines = out.split("{f6}")
         self.assertEqual(len(lines), 7)
         self.assertTrue(
             lines[0].startswith("{ulcorner}") and lines[0].endswith("{urcorner}"),
@@ -574,7 +578,9 @@ class TestRenderAscii(unittest.TestCase):
             wins=[], bet=1, payout=0, net=-1,
         )
         out = lib.render_ascii(result)
-        center_line = out.splitlines()[3]
+        # Lines are joined with {f6}; index 3 is the center row
+        # (top, row0, mid, row1, mid, row2, bot).
+        center_line = out.removesuffix("{/all}").split("{f6}")[3]
         self.assertIn("XYZ", center_line)
         # CHERRY cell in center row: 1-char glyph padded to cell_w=3,
         # so we expect exactly 2 trailing spaces inside the cell before
