@@ -7,6 +7,80 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### refactor(casino/auth): prompt UX is identical to `bed auth login`
+
+The default `casino.auth.auth_prompt` flow used to print its own
+`Moniker: ` / `Password: ` prompts (with bbsengine6 markup on the
+moniker prompt only) and send `{type: "auth", moniker, password}`
+on the casino WebSocket. `bed auth login` printed a different pair
+(`moniker: ` / `password: ` with markup on both) and minted a bearer
+token to the default token file. Two paths, same action, two UIs.
+
+This change makes casino reach for the same prompt code bed uses
+so the operator sees identical prompts in both flows:
+
+- `casino.auth.auth_prompt` now delegates the `moniker:` /
+  `password:` prompts to the new
+  `bed.tools.auth._collect_credentials` helper. The prompt strings
+  are byte-identical to `bed auth login`.
+- The actual credential round-trip goes through a one-shot
+  `bed.client.BedConnection` + `BedAuthServiceClient.login`, so
+  casino never has to maintain its own login transport. The
+  one-shot connection is `force_close()`-d in a `finally` block.
+- The freshly-minted bearer token is persisted via the new
+  `bed.tools.auth._persist_token` helper to the default token file
+  (the same file `bed auth login` writes), so the next `casino`
+  invocation finds the token and short-circuits through
+  `casino.auth._connect_with_token` instead of re-prompting.
+- Casino's already-open WebSocket sees a `{type: "reconnect",
+  token: ...}` envelope (not a fresh `auth` envelope) -- the same
+  shape `_connect_with_token` uses -- so the server binds the new
+  token to the open socket via the existing `auth reconnect`
+  handler. The server's `_handle_auth` only accepts
+  moniker+password credentials and would reject a token envelope
+  there, so this is the right envelope to send.
+- `CasinoClient.handle_message` now also recognises
+  `reconnect_result` (the server's reply to `reconnect`) and
+  populates the same client state (`authenticated`, `moniker`,
+  `balance`, `_bearer_token`) that the legacy `auth_result`
+  branch used to handle. The rotated-token capture is
+  unconditional so the rotating-token path on the prompt flow
+  matches the one on the token-file path.
+
+Override contract preserved: `casino.auth.auth_prompt` (module
+level) and `CasinoClient.auth_prompt` (class level) still resolve
+to the same D-shape callable, and the existing override tests in
+`casino/tests/test_auth_prompt.py` still pass. The default-prompt
+tests in that file were updated to match the new return shape
+(token-only, no credentials on the casino WS).
+
+New regression suite: `casino/tests/test_auth_uses_bed.py` pins:
+
+- `casino.auth.auth_prompt` calls `_collect_credentials` exactly
+  once with a bed-shaped namespace (so the prompt UX lives in
+  bed, not in casino).
+- `casino.auth.auth_prompt` does not re-prompt directly via
+  `bbsengine6.io.inputstring` / `bbsengine6.util.inputpassword`.
+  Belt-and-braces guard against a future refactor that drifts the
+  prompt strings apart again.
+- `casino.auth.auth_prompt` persists the freshly-minted token via
+  `_persist_token` with the reply bed returned (not a fabricated
+  value), so the token file the next `casino` invocation reads
+  matches the server's view.
+- `handle_message` treats `reconnect_result` the same way as
+  `auth_result` -- including the unconditional rotation capture
+  and the failure-doesn't-clear-token invariant.
+- The casino WS sees `{type: "reconnect", token: ...}` from the
+  prompt path, not `{type: "auth", ...}`.
+
+`bed/src/bed/tools/auth.py` is also touched: the credential prompt
++ write block in `auth_login` is split into two reusable helpers,
+`_collect_credentials` and `_persist_token`, so casino can borrow
+either piece without going through `auth_login`'s full WS round-
+trip. The CLI behaviour of `bed auth login` is unchanged; the
+existing `bed/tests/test_auth_prompt_markup.py` suite still passes
+and gains two new test cases that pin the seam surface.
+
 ### casino: drop orphaned get_postoffice_config() helper
 
 Follow-up to the earlier commit that deleted `casino/tests/test_postoffice_*.py`

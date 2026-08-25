@@ -84,16 +84,79 @@ the token on every op and is the only authorization layer the
 
 ## Login flow
 
+Casino has two paths into the server, both ending at the same
+captured `_bearer_token`:
+
+### A. Bearer-token path (the no-prompt path)
+
+When `args.token_file` points at a non-empty file (the operator ran
+`bed auth login` ahead of time, or a previous `casino` invocation
+wrote it), `casino.auth._connect_with_token` reads the token,
+opens the WebSocket, and binds the token to the socket via
+`auth reconnect`:
+
 ```json
-C→S {"type":"auth","moniker":"alice","password":"…"}
-S→C {"type":"auth_result","success":true,"moniker":"alice",
+C→S {"type":"reconnect","token":"…"}
+S→C {"type":"reconnect_result","success":true,"moniker":"alice",
      "is_sysop":false,"session_id":"…","token":"…",
-     "expires_at":"…","balance":42}
+     "expires_at":"…","balance":42,"replayed":null}
 ```
 
+The server rotates the token on every successful reconnect
+(`bed.api.auth._handle_reconnect` mints a fresh record and
+deletes the old one), so the `reconnect_result.token` field
+captured below is the only valid token from this point on. The
+rotated token is also written back to the token file by
+`_connect_with_token` (mode 0600) so the next `casino` invocation
+does not retry a now-revoked token.
+
+### B. Prompt-driven path (the `bed auth`-delegated path)
+
+When no token file is present, `casino.auth.auth_prompt` drives
+the login:
+
+1. The `moniker:` / `password:` prompts come from
+   `bed.tools.auth._collect_credentials` -- the same helper
+   `bed auth login` uses -- so the prompt UX is byte-identical
+   to `bed auth login` (`{var:promptcolor}moniker: {var:inputcolor}`
+   and `{var:promptcolor}password: {var:inputcolor}` with
+   `{var:inputcolor}` ending each prompt).
+2. The actual login round-trip happens on a one-shot
+   `bed.client.BedConnection` via `BedAuthServiceClient.login`.
+   The casino WebSocket is NOT used for this round-trip, so
+   the `moniker` / `password` strings never appear on the
+   operator's primary session socket.
+3. The freshly-minted bearer token is persisted to the default
+   token file via `bed.tools.auth._persist_token` (the same
+   helper `bed auth login` uses), so the next `casino`
+   invocation finds it and short-circuits via path A.
+4. The token is then bound to the casino WebSocket via the
+   same `auth reconnect` envelope path A uses:
+
+```json
+C→S {"type":"reconnect","token":"…"}
+S→C {"type":"reconnect_result","success":true,"moniker":"alice",
+     "is_sysop":false,"session_id":"…","token":"…",
+     "expires_at":"…","balance":42,"replayed":null}
+```
+
+The server replies to `reconnect` with `reconnect_result` (not
+`auth_result`); `CasinoClient.handle_message` handles both
+envelopes identically. See "Bearer token capture" below.
+
+The legacy `{"type":"auth","moniker":..,"password":..}` envelope
+is no longer sent from casino. The server's
+`bed.api.auth._handle_auth` accepts only moniker+password
+credentials and would reject a token envelope there, so the
+prompt path sends `reconnect` (which is the same envelope
+`_connect_with_token` has always sent). The prompt UX is
+unified; the wire shape is unified with the existing token-file
+flow.
+
 `CasinoClient.handle_message` extracts the `token` field on a
-successful `auth_result` and stashes it on `self._bearer_token`
-(see `casino/client/casino_client.py:113-130`). The existing
+successful `reconnect_result` (or `auth_result`) and stashes it
+on `self._bearer_token` (see
+`casino/client/casino_client.py:113-130`). The existing
 `CasinoClient.send` (`casino_client.py:68-86`) already auto-injects
 that token on every wire call — the fix was just to make sure
 `handle_message` populates it from the auth reply.
@@ -103,7 +166,7 @@ that token on every wire call — the fix was just to make sure
 The capture path is one block in `handle_message`:
 
 ```python
-if msg_type == "auth_result":
+if msg_type in ("auth_result", "reconnect_result"):
     if msg.get("success"):
         # …mark authenticated…
         token = (msg.get("token") or "").strip()
@@ -111,17 +174,25 @@ if msg_type == "auth_result":
             self._bearer_token = token
 ```
 
-Three invariants:
+Four invariants:
 
-1. **Successful auth only.** A failed `auth_result` does not touch
-   `_bearer_token`. A client that already has a token from a prior
-   login keeps it; a fresh client stays at `None`.
+1. **Successful reply only.** A failed `auth_result` /
+   `reconnect_result` does not touch `_bearer_token`. A client
+   that already has a token from a prior login keeps it; a fresh
+   client stays at `None`.
 2. **Whitespace stripped.** A trailing newline from a token file
    (or a noisy log re-emit) does not leak onto the wire.
 3. **Empty / missing token is a no-op.** The legacy standalone /
    door-mode AuthService envelope has no `token` field. `_bearer_token`
    stays at `None` and `send` falls back to session-only payloads so
    the legacy shape is preserved.
+4. **`reconnect_result` rotation unconditionally captures.** The
+   server rotates the token on every successful `reconnect`, so
+   the freshly-returned token is the only valid one from this
+   point on -- the previous token is gone from the token store.
+   Capture is unconditional (not gated on the prior value being
+   empty) so a rotation cannot leave the client riding a
+   now-revoked token into the next op.
 
 ## Per-op re-injection
 
