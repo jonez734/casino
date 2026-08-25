@@ -137,9 +137,15 @@ install:
 
 # --- test targets (pre-existing) ---------------------------------------------
 
-# Run unit tests only (fast, no external dependencies)
+# Run unit tests only (fast, no external dependencies).
+# CASINO_TEST_DB is set so the DB-gated unit tests in
+# ``test_player_service.py`` and ``test_door_casino_player.py``
+# (which mock the DAL but still call ``database.connect(...)`` to
+# build their args Namespace) run instead of being skipped. The
+# env var falls back to ``zoid6`` when no override is given.
+CASINO_TEST_DB ?= zoid6
 test-unit:
-	cd src && python -m pytest casino/tests/ -v -m "not integration" --tb=short
+	cd src && CASINO_TEST_DB=$(CASINO_TEST_DB) python -m pytest casino/tests/ -v -m "not integration" --tb=short
 
 # Run integration tests (requires BED server running)
 test-integration:
