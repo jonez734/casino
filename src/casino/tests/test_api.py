@@ -123,7 +123,14 @@ class TestMessageTypes(unittest.TestCase):
     """Test message type definitions."""
 
     def test_message_types_exist(self):
-        """Verify all message types are defined."""
+        """Verify all casino message types are defined.
+
+        ``PING`` / ``PONG`` are not in this list: casino no longer
+        speaks the ping/pong protocol (bed's
+        :class:`bed.api.ping.PingService` owns the canonical reply
+        path and is registered LAST so it always wins over any
+        earlier handler). See ``casino.api.handler.MessageRouter.register_all``.
+        """
         from casino.api.messages import MessageType
 
         required = [
@@ -143,8 +150,6 @@ class TestMessageTypes(unittest.TestCase):
             "CHAT_GLOBAL",
             "EMOTE",
             "CHAT_MESSAGE",
-            "PING",
-            "PONG",
             "ERROR",
         ]
 

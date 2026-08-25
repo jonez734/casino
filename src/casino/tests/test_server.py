@@ -104,20 +104,6 @@ class TestServerMocked(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(len(response["tables"]), 1)
             self.assertEqual(response["tables"][0]["id"], 1)
 
-    async def test_ping_pong(self):
-        """Test ping/pong."""
-        uri = "ws://127.0.0.1:18770/"
-
-        async with websockets.connect(uri) as ws:
-            # Send ping
-            await ws.send(json.dumps({"type": "ping"}))
-
-            # Receive pong
-            response = json.loads(await ws.recv())
-
-            self.assertEqual(response["type"], "pong")
-            self.assertIn("timestamp", response)
-
     async def test_invalid_message(self):
         """Test handling invalid message."""
         uri = "ws://127.0.0.1:18770/"
@@ -235,15 +221,6 @@ class TestMessageParsing(unittest.TestCase):
         self.assertEqual(msg["type"], "error")
         self.assertEqual(msg["code"], "not_authenticated")
         self.assertEqual(msg["message"], "Please log in")
-
-    def test_pong_message(self):
-        """Test pong message."""
-        from casino.api.messages import pong_message
-
-        msg = pong_message()
-        self.assertEqual(msg["type"], "pong")
-        self.assertIn("timestamp", msg)
-
 
 def run_tests():
     """Run all tests."""
