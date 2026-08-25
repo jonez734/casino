@@ -142,6 +142,15 @@ class TestSlotSpinUsesClient(unittest.TestCase):
         client.cmd_slot_paytable = MagicMock()
         client.cmd_slot_history = MagicMock()
         client._loop = MagicMock()
+
+        def _run_until_complete(coro):
+            try:
+                coro.close()
+            except Exception:
+                pass
+            return None
+
+        client._loop.run_until_complete = MagicMock(side_effect=_run_until_complete)
         return client
 
     def test_slot_spin_requires_a_connected_client(self):
@@ -248,6 +257,15 @@ class TestSlotPaytableUsesClient(unittest.TestCase):
         client.current_table_moniker = "t1"
         client.cmd_slot_paytable = MagicMock()
         client._loop = MagicMock()
+
+        def _run_until_complete(coro):
+            try:
+                coro.close()
+            except Exception:
+                pass
+            return None
+
+        client._loop.run_until_complete = MagicMock(side_effect=_run_until_complete)
         return client
 
     def test_slot_paytable_requires_a_connected_client(self):
@@ -295,6 +313,15 @@ class TestSlotHistoryUsesClient(unittest.TestCase):
         client.current_table_moniker = "t1"
         client.cmd_slot_history = MagicMock()
         client._loop = MagicMock()
+
+        def _run_until_complete(coro):
+            try:
+                coro.close()
+            except Exception:
+                pass
+            return None
+
+        client._loop.run_until_complete = MagicMock(side_effect=_run_until_complete)
         return client
 
     def test_slot_history_requires_a_connected_client(self):

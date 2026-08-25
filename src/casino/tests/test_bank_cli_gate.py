@@ -47,7 +47,20 @@ def _make_client(moniker: str = "alice", is_sysop: bool = False) -> MagicMock:
     c.is_sysop = is_sysop
     c.balance = 0
     c._loop = MagicMock()
-    c._loop.run_until_complete = MagicMock(return_value=None)
+
+    def _run_until_complete(coro):
+        # The bank handlers pass ``asyncio.sleep(0.1)`` to the loop
+        # to give the wire send a chance to flush; under a mock loop we
+        # must drive the coroutine ourselves so it isn't garbage-
+        # collected unawaited (which would surface as a pytest
+        # ``PytestUnraisableExceptionWarning`` and fail the test).
+        try:
+            coro.close()
+        except Exception:
+            pass
+        return None
+
+    c._loop.run_until_complete = MagicMock(side_effect=_run_until_complete)
     c.cmd_bank_balance = MagicMock()
     c.cmd_bank_add = MagicMock()
     c.cmd_bank_remove = MagicMock()

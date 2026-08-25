@@ -223,6 +223,21 @@ def _scenario_slot_cli() -> list:
         _ws = None
         _loop = MagicMock()
 
+        def _run_until_complete(coro):
+            # The casino slot handlers pass ``asyncio.sleep(0.1)`` to
+            # the loop to give the wire send a chance to flush; under
+            # a mock loop we must drive the coroutine ourselves so it
+            # isn't garbage-collected unawaited (which would surface
+            # as a pytest ``PytestUnraisableExceptionWarning`` and
+            # fail the suite).
+            try:
+                coro.close()
+            except Exception:
+                pass
+            return None
+
+        _loop.run_until_complete = MagicMock(side_effect=_run_until_complete)
+
         def __init__(self):
             self.sent = []
 

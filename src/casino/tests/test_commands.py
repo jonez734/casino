@@ -150,7 +150,21 @@ class TestCommandFunctions(unittest.TestCase):
         mock_client = MagicMock()
         mock_client.cmd_list_tables = MagicMock()
         mock_client._loop = MagicMock()
-        mock_client._loop.run_until_complete = MagicMock()
+
+        def _run_until_complete(coro):
+            # The table handlers pass ``asyncio.sleep(0.1)`` to the
+            # loop to give the wire send a chance to flush; under a
+            # mock loop we must drive the coroutine ourselves so it
+            # isn't garbage-collected unawaited (which would surface
+            # as a pytest ``PytestUnraisableExceptionWarning`` and
+            # fail the suite).
+            try:
+                coro.close()
+            except Exception:
+                pass
+            return None
+
+        mock_client._loop.run_until_complete = MagicMock(side_effect=_run_until_complete)
 
         with patch("casino.commands.table.lib.get_client", return_value=mock_client):
             from casino.commands.table.lib import list_tables

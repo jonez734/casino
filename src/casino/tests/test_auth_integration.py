@@ -143,10 +143,45 @@ def _make_mock_casino_client(moniker: str = "alice") -> MagicMock:
             return asyncio.ensure_future(coro)
         return real_loop.run_until_complete(coro)
 
+    def _create_task(coro):
+        # ``receive_loop`` returns an ``AsyncMock`` coroutine that
+        # would otherwise sit pending on ``real_loop`` after the test
+        # returns (the source code schedules it via
+        # ``client._loop.create_task(...)`` and never awaits it; only
+        # the eventual ``_close_loop_for`` would drain it, but the
+        # happy-path tests don't call that helper). Drive the coroutine
+        # to completion immediately so no pending task leaks into the
+        # next test, where it surfaces as a pytest
+        # ``PytestUnraisableExceptionWarning`` and fails the suite.
+        real_loop.run_until_complete(coro)
+        return MagicMock(name="consumed_task")
+
     loop_mock = MagicMock()
     loop_mock.run_until_complete = MagicMock(side_effect=_run)
-    loop_mock.create_task = MagicMock(side_effect=real_loop.create_task)
+    loop_mock.create_task = MagicMock(side_effect=_create_task)
     loop_mock.close = MagicMock(side_effect=real_loop.close)
+
+    # Close the underlying ``real_loop`` when the MagicMock client is
+    # garbage-collected. Without this the loop and any async-mock
+    # sockets it owns survive until interpreter shutdown, surfacing
+    # as ``ResourceWarning: unclosed <socket.socket ...>`` and
+    # ``unclosed event loop`` -- which pytest 9 promotes to
+    # ``PytestUnraisableExceptionWarning`` and fails the suite.
+    import weakref
+
+    def _close_real_loop(_ref=None):
+        try:
+            if not real_loop.is_closed():
+                real_loop.close()
+        except Exception:
+            pass
+
+    weakref.finalize(client, _close_real_loop)
+    # ``_close_loop_for`` queries ``asyncio.all_tasks(loop)`` to drain
+    # pending tasks before closing. Expose the real loop's task set
+    # so the AsyncMock'd ``receive_loop`` task we scheduled via
+    # ``create_task`` is visible and can be cancelled/drained.
+    loop_mock.all_tasks = MagicMock(side_effect=lambda: asyncio.all_tasks(real_loop))
     # ``_close_loop_for`` calls ``loop.shutdown_asyncgens()`` and
     # ``loop.shutdown_default_executor()`` and drives them through
     # ``run_until_complete``. Mocking those methods as ``AsyncMock``
@@ -181,12 +216,30 @@ def _patch_bed_modules(fake_bed_conn, fake_auth_cls):
     ``sys.modules`` so the in-function imports in
     :func:`casino.auth._connect_with_token` resolve to the supplied
     fakes. The original modules are restored on context exit.
+
+    We also stub the rest of ``bed.client.*`` plus
+    ``bed.tools._routing``: when ``_connect_with_token`` rotates the
+    token it imports ``bed.tools.auth`` (which in turn imports
+    ``bed.client.exceptions`` and via ``bed.tools._routing``
+    ``bed.client.probe``); with ``bed.client`` swapped to a MagicMock,
+    those submodules become inaccessible and the import chain
+    breaks. The rotated-token writeback is unreachable from these
+    tests, so MagicMocks are sufficient.
     """
     fake_bed_client = MagicMock(get_bed_connection=MagicMock(return_value=fake_bed_conn))
     fake_authservice = MagicMock(BedAuthServiceClient=fake_auth_cls)
+    fake_exceptions = MagicMock(BedUnavailable=Exception)
+    fake_probe = MagicMock(probe_bed=MagicMock(return_value=True))
+    fake_routing = MagicMock(
+        build_client_args=MagicMock(),
+        select_backend=MagicMock(),
+    )
     return patch.dict(sys.modules, {
         "bed.client": fake_bed_client,
         "bed.client.authservice": fake_authservice,
+        "bed.client.exceptions": fake_exceptions,
+        "bed.client.probe": fake_probe,
+        "bed.tools._routing": fake_routing,
     })
 
 
