@@ -543,7 +543,6 @@ Helpers in `src/casino/config.py`:
 | Function                       | Purpose                                                                                  |
 |--------------------------------|------------------------------------------------------------------------------------------|
 | `load_config()`                | Read JSON / merge env (canonical casino config loader; unchanged)                        |
-| `get_postoffice_config()`      | Existing postoffice block helper                                                          |
 | `get_casino_config(args)`      | Return the casino-level block: prefers `args._casino_config` (wired by bed), falls back to `args._casino_config_file`, then `{}`. |
 | `get_surrender_multiplier(args)` | Read `casino.blackjack.surrender_multiplier`, defaulting to `0.5`. Honors `surrender_allowed` (`False` / `"none"` → `0.0`); clamps out-of-range and garbage values to the `0.5` default. |
 

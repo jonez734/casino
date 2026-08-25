@@ -89,13 +89,6 @@ def _load_from_env(prefix: str) -> dict[str, Any]:
     return config
 
 
-def get_postoffice_config(config: Optional[dict[str, Any]] = None) -> dict[str, Any]:
-    """Get postoffice configuration, loading defaults if not provided."""
-    if config is None:
-        config = load_config()
-    return config.get("postoffice", {})
-
-
 def get_casino_config(args: Any) -> dict[str, Any]:
     """Return the casino config block, sourced from bed.json when wired.
 

@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### casino: drop orphaned get_postoffice_config() helper
+
+Follow-up to the earlier commit that deleted `casino/tests/test_postoffice_*.py`
+(now living in `mistermcfeely/tests/`). The companion helper
+`casino.config.get_postoffice_config` had zero callers outside the
+removed tests; drop it. Also prune the matching `SPEC.md` config-helpers
+table row and the obsolete "Phase 1G: Postoffice Service (IMAP Polling)"
+section from `TODO.md`, which described the defunct casino-side
+implementation. Postoffice is loaded by `bed/zoid6` via
+`zoid6.json:postoffice.modulepath = "postoffice.api.handler"`; the
+canonical implementation lives in `mistermcfeely/src/postoffice/`.
+
 ### feat(client/casino): width-aware, locale-aware table rendering for the WS client
 
 Every tabular screen in `CasinoClient.handle_message`
