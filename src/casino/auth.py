@@ -16,8 +16,19 @@
 # bind an existing token to the freshly-opened WebSocket. This is
 # the same flow ``bed tools bank`` uses and is the supported path
 # for headless / scripted casino clients (CI, bots, automation).
-# The legacy prompt-based path stays in place for interactive
-# sessions.
+#
+# Prompt-driven auth: :func:`auth_prompt` delegates the credential
+# prompts to :func:`bed.tools.auth._collect_credentials` so the
+# ``moniker:`` / ``password:`` strings are byte-identical to what
+# ``bed auth login`` shows. The prompt then opens a one-shot
+# :class:`bed.client.BedConnection`, logs in via
+# :class:`bed.client.authservice.BedAuthServiceClient.login`, and
+# sends a ``reconnect`` envelope on the casino's already-open
+# WebSocket so the server binds the freshly-minted bearer token
+# to this socket. The token is also persisted via
+# :func:`bed.tools.auth._persist_token` so subsequent
+# ``casino`` invocations skip prompting (and pick up the
+# ``_connect_with_token`` path).
 
 from __future__ import annotations
 
@@ -55,26 +66,112 @@ _bbs_io.echo(
 
 # ---- Auth prompt: the single override point --------------------------
 
+def _bed_auth_args(args: argparse.Namespace) -> argparse.Namespace:
+    """Build a ``bed auth login``-shaped namespace from casino's args.
+
+    :func:`bed.tools.auth._collect_credentials` reads
+    ``args.moniker``, ``args.password``, and ``args.token_file`` (and
+    through :func:`bed.tools._token.ensure_token_file_arg` derives
+    the default path). Casino's args already carry these via
+    :func:`buildargs` (which registers ``--token-file`` and forwards
+    ``--moniker`` / ``--password`` when the user supplied them), so
+    the projection is mostly identity. We only backfill the
+    ``--bed-*`` routing fields (``bed_host``, ``bed_port``,
+    ``bed_path``, ...) because the one-shot
+    :class:`bed.client.BedConnection` opened below uses them to
+    reach the daemon.
+
+    Returns a fresh :class:`argparse.Namespace` so mutating
+    ``args.token_file`` inside ``_collect_credentials`` does not
+    leak back into casino's args.
+    """
+    bed_args = argparse.Namespace()
+    bed_args.subcommand = "login"
+    bed_args.moniker = getattr(args, "moniker", None)
+    bed_args.password = getattr(args, "password", None)
+    bed_args.token = None
+    bed_args.token_file = getattr(args, "token_file", None)
+    bed_args.direct = False
+    bed_args.bed_host = getattr(args, "bed_host", "127.0.0.1")
+    bed_args.bed_port = int(getattr(args, "bed_port", 8765))
+    bed_args.bed_path = getattr(args, "bed_path", "/")
+    bed_args.bed_call_timeout = float(getattr(args, "bed_call_timeout", 5.0))
+    bed_args.bed_probe_timeout = float(getattr(args, "bed_probe_timeout", 0.25))
+    bed_args.debug = bool(getattr(args, "debug", False))
+    return bed_args
+
+
 async def auth_prompt(args: argparse.Namespace, client: CasinoClient) -> bool:
     """Default BED auth prompt.
 
-    Prompts for moniker and (if the member has one) a password, then sends
-    the auth message through `client`. Override this — or assign a new
-    callable to `auth.auth_prompt`, or set `CasinoClient.auth_prompt` on a
-    subclass — to customize the credential flow.
+    Delegates the ``moniker:`` / ``password:`` prompts to
+    :func:`bed.tools.auth._collect_credentials` so the prompt UX
+    matches ``bed auth login`` byte-for-byte. The actual login is
+    driven through a one-shot :class:`bed.client.BedConnection` (a
+    parallel :class:`BedAuthServiceClient.login` round-trip) and
+    the resulting bearer token is then bound to casino's
+    already-open WebSocket via a ``reconnect`` envelope -- the same
+    wire shape :func:`_connect_with_token` uses when the operator
+    ran ``bed auth login`` ahead of time. The token is also
+    persisted via :func:`bed.tools.auth._persist_token` so the next
+    ``casino`` invocation can short-circuit through
+    :func:`_connect_with_token` instead of re-prompting.
+
+    Override this -- or assign a new callable to
+    `auth.auth_prompt`, or set `CasinoClient.auth_prompt` on a
+    subclass -- to customize the credential flow.
 
     Returns:
-        True if the prompt completed (whether or not the server accepted),
-        False to abort the connect flow.
+        True if the prompt completed and the reconnect envelope
+        was sent (whether or not the server accepted), False to
+        abort the connect flow.
     """
-    moniker = io.inputstring("{var:promptcolor}Moniker: {var:inputcolor}", None, None)
-    if not moniker:
+    import bed.tools.auth as _bed_auth_tool
+    from bed.client.authservice import BedAuthServiceClient
+    from bed.client.connection import BedConnection
+    from bed.client.singleton import reset_bed_connection
+
+    bed_args = _bed_auth_args(args)
+
+    try:
+        moniker, password = _bed_auth_tool._collect_credentials(bed_args)
+    except RuntimeError:
         return False
-    # The remote client does not have a local database, so it cannot know
-    # whether a member requires a password. Always prompt and let the server
-    # decide. (member.has_password needs DB args the client does not carry.)
-    password = util.inputpassword("Password: ")
-    await client.send({"type": "auth", "moniker": moniker, "password": password})
+
+    one_shot_conn = BedConnection(bed_args)
+    try:
+        auth_svc = BedAuthServiceClient(one_shot_conn)
+        reply = await auth_svc.login(moniker, password)
+    finally:
+        # Drop the singleton-cached connection (if any) so the next
+        # bed-tools call in this process gets a fresh handle; the
+        # one-shot conn we just opened is module-local and won't
+        # collide with casino's own ``client.ws``.
+        with contextlib.suppress(Exception):
+            reset_bed_connection(bed_args)
+        with contextlib.suppress(Exception):
+            one_shot_conn.force_close()
+
+    if not reply.get("ok"):
+        _bed_auth_tool._render_soft_failure(reply)
+        return False
+
+    token = (reply.get("token") or "").strip()
+    if not token:
+        io.echo(
+            "server returned a malformed auth_result (missing token); "
+            "aborting",
+            level="error",
+        )
+        return False
+
+    _bed_auth_tool._persist_token(reply, bed_args)
+
+    client.moniker = reply.get("moniker", moniker) or moniker
+    client.balance = int(reply.get("balance", 0) or 0)
+    client._bearer_token = token
+    client.authenticated = True
+    await client.send({"type": "reconnect", "token": token})
     return True
 
 
