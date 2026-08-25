@@ -929,6 +929,13 @@ class TestHandlerFullMessageFlow(unittest.TestCase):
         self.handler = YahtzeeServiceHandler(
             self.args, self.sessions, service=self.service,
         )
+        # Door-mode fixture: drive the handler without a real
+        # ``secret`` / ``token_store`` / ``instance_id`` so the
+        # token gate becomes a no-op and the session lookup is the
+        # authoritative authorization source. The same flag is set
+        # by ``test_slots_flow.py`` and ``test_slots_integrated.py``
+        # for the parallel slots-fixture seam.
+        self.handler.allow_legacy_session_only = True
         self.ws = _StubWS()
         self.sessions.register_session(id(self.ws), "alice", is_sysop=False)
         self.sessions.set_table_moniker(id(self.ws), "yahtzee-alice")
