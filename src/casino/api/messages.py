@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+
 from enum import Enum
 from typing import Any
 
@@ -62,8 +62,6 @@ class MessageType(str, Enum):
     CHAT_MESSAGE = "chat_message"
 
     # System
-    PING = "ping"
-    PONG = "pong"
     ERROR = "error"
 
 
@@ -213,11 +211,6 @@ class EmoteMessage:
     message: str = ""
 
 
-@dataclass
-class PingMessage:
-    type: str = MessageType.PING
-
-
 # =============================================================================
 # Server -> Client Messages
 # =============================================================================
@@ -299,12 +292,6 @@ class ChatMessageMessage:
 
 
 @dataclass
-class PongMessage:
-    type: str = MessageType.PONG
-    timestamp: str = ""
-
-
-@dataclass
 class ErrorMessage:
     type: str = MessageType.ERROR
     code: str = ErrorCode.GAME_ERROR
@@ -342,9 +329,3 @@ def error_message(code: ErrorCode, message: str) -> dict[str, Any]:
         "message": message,
     }
 
-
-def pong_message() -> dict[str, Any]:
-    return {
-        "type": MessageType.PONG.value,
-        "timestamp": datetime.utcnow().isoformat(),
-    }

@@ -2,7 +2,7 @@
 # WebSocket message handler - routes messages to services using bbsengine6.net service registry
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 from bbsengine6 import database, io, member
@@ -172,8 +172,6 @@ class AuthService(BaseService):
 
         if msg_type == "auth":
             return await self._handle_auth(websocket, message)
-        elif msg_type == "ping":
-            return {"type": "pong", "timestamp": datetime.utcnow().isoformat()}
 
         return None
 
@@ -1089,7 +1087,7 @@ class ChatServiceHandler(BaseService):
                 "message": chat_msg,
                 "scope": "table",
                 "moniker": table_moniker,
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             }
 
         elif msg_type == "chat_global":
@@ -1098,7 +1096,7 @@ class ChatServiceHandler(BaseService):
                 "from_moniker": moniker,
                 "message": chat_msg,
                 "scope": "global",
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             }
 
         elif msg_type == "emote":
@@ -1108,7 +1106,7 @@ class ChatServiceHandler(BaseService):
                 "message": chat_msg,
                 "scope": "table" if table_moniker else "global",
                 "moniker": table_moniker,
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             }
 
         return None
@@ -1501,7 +1499,13 @@ class MessageRouter:
         them continues to work.
         """
         if server.get_service("auth") is None:
-            server.register_service(self.auth_service, ["auth", "ping"])
+            # Casino owns only the ``auth`` reply path. ``ping`` is
+            # served by bed's ``PingService`` (registered LAST so it
+            # wins over any earlier handler); when the router is
+            # loaded standalone with no bed in front of it, the
+            # bare WebSocketServer's built-in pong fallback handles
+            # the probe.
+            server.register_service(self.auth_service, ["auth"])
 
         # Wire the router's channel_state into the server so
         # server.publish(...) sees the same subscriptions that
@@ -1592,8 +1596,11 @@ class MessageHandler(MessageRouter):
         msg_type = message.get("type")
         session_id = id(websocket)
 
-        # Check authentication for protected commands
-        auth_required = msg_type not in ("auth", "ping", "list_tables")
+        # Check authentication for protected commands. ``ping`` is
+        # handled by bed's PingService and never reaches this path;
+        # the casino router only intercepts ``auth`` + ``list_tables``
+        # for unauthenticated callers.
+        auth_required = msg_type not in ("auth", "list_tables")
         if auth_required and not self.sessions.get_moniker(session_id):
             return {"type": "error", "code": "not_authenticated", "message": "Not authenticated"}
 
