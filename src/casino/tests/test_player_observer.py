@@ -8,6 +8,8 @@ import sys
 import unittest
 from typing import Optional
 
+import pytest
+
 sys.path.insert(0, "/home/opencode/data/work/casino/src")
 
 import contextlib
@@ -18,6 +20,8 @@ from websockets.exceptions import ConnectionClosed
 from casino import lib
 from casino.api.handler import MessageRouter
 from casino.tests import _dbname
+
+pytestmark = pytest.mark.integration
 
 DEFAULT_TIMEOUT = 10.0
 PING_INTERVAL = 30.0
@@ -199,6 +203,21 @@ class TestPlayerAndObserver(unittest.IsolatedAsyncioTestCase):
         parser = lib.buildargs()
         self.args = parser.parse_args(_dbname.dbname_args())
 
+        # Probe the database up front; this is an end-to-end
+        # integration test that drives a real WebSocket server
+        # against real Postgres. Without a live DB the fixture
+        # ``ensure_test_member`` hangs on a pool connect and the
+        # auth flow bails with "verify failed". Skip cleanly when
+        # the database isn't reachable so the test isn't a false
+        # failure under ``make test-unit``.
+        try:
+            probe_pool = database.getpool(self.args)
+            with database.connect(self.args, pool=probe_pool) as conn, database.cursor(conn) as cur:
+                cur.execute("SELECT 1")
+                cur.fetchone()
+        except Exception as exc:
+            self.skipTest(f"player/observer integration requires a live DB: {exc}")
+
         self.pool = database.getpool(self.args)
 
         from casino.tests._ensure_test_member import ensure_test_member
@@ -216,6 +235,22 @@ class TestPlayerAndObserver(unittest.IsolatedAsyncioTestCase):
 
         self.server = WebSocketServer(host="127.0.0.1", port=8765)
         self.router = MessageRouter(self.args)
+        # Door-mode fixture: drive the handlers without a real
+        # ``secret`` / ``token_store`` / ``instance_id`` so the
+        # token gate becomes a no-op and the session lookup is the
+        # authoritative authorization source. The same flag is set
+        # by ``test_slots_flow.py`` and ``test_yahtzee_integrated.py``
+        # for the parallel gameplay-fixture seams.
+        for svc in (
+            self.router.table_service,
+            self.router.game_service,
+            self.router.bet_service,
+            self.router.chat_service,
+            self.router.slot_service,
+            self.router.yahtzee_service_handler,
+            self.router.tictactoe_service_handler,
+        ):
+            svc.allow_legacy_session_only = True
         self.router.register_all(self.server)
         await self.server.start()
         self._server_started = True
