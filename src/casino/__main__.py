@@ -38,6 +38,7 @@ import time
 from argparse import Namespace
 
 from bbsengine6 import database, io, screen, session
+from bbsengine6.io import screen as io_screen
 from bed.tools._routing import BedNotReachable
 
 from . import _routing, lib
@@ -96,7 +97,7 @@ def _run_blackjack(args: Namespace, remaining_argv: list) -> int:
 
     session.start(bj_args)
 
-    screen.init()
+    io_screen.init()
 
     locale.setlocale(locale.LC_ALL, "")
     time.tzset()
