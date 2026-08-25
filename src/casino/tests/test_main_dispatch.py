@@ -181,7 +181,18 @@ class TestMainDispatchBlackjackSubcommand(unittest.TestCase):
     """
 
     def test_blackjack_subcommand_skips_bed_probe(self):
-        from casino.__main__ import main
+        # See the comment on ``test_blackjack_subcommand_passes_remaining_argv``
+        # for why we import ``session`` and ``io_screen`` from
+        # ``casino.__main__`` rather than ``bbsengine6`` directly:
+        # pytest 9's import system creates a distinct module object for
+        # ``bbsengine6.session`` / ``bbsengine6.screen`` inside the test
+        # run's ``casino.__main__`` scope, so patching the bare
+        # ``bbsengine6.session.start`` / ``bbsengine6.io.screen.init``
+        # attributes lands on the wrong module and the patches don't
+        # stick. ``patch.object`` on the specific module reference
+        # that ``casino.__main__`` actually imported is the fix.
+        from casino.__main__ import main, session as _cm_session
+        from casino.__main__ import io_screen as _cm_io_screen
 
         args = _make_args()
 
@@ -189,8 +200,8 @@ class TestMainDispatchBlackjackSubcommand(unittest.TestCase):
              patch("casino._routing.select_backend") as sel, \
              patch("casino._routing.build_client_args"), \
              patch("casino.lib.buildargs", return_value=_StubParser(args, leftover=["blackjack"])), \
-             patch("bbsengine6.session.start") as session_start, \
-             patch("bbsengine6.screen.init"), \
+             patch.object(_cm_session, "start") as session_start, \
+             patch.object(_cm_io_screen, "init"), \
              patch("bbsengine6.module.run") as module_run, \
              patch("bbsengine6.io.echo"), \
              patch("bbsengine6.io.terminal") as terminal, \
@@ -209,7 +220,12 @@ class TestMainDispatchBlackjackSubcommand(unittest.TestCase):
 
     def test_blackjack_subcommand_passes_remaining_argv(self):
         """Args after ``blackjack`` flow into casino.blackjack.lib.buildargs()."""
-        from casino.__main__ import main
+        # See ``test_blackjack_subcommand_skips_bed_probe`` for why
+        # we patch ``casino.__main__.session`` and
+        # ``casino.__main__.io_screen`` instead of
+        # ``bbsengine6.session.start`` / ``bbsengine6.io.screen.init``.
+        from casino.__main__ import main, session as _cm_session
+        from casino.__main__ import io_screen as _cm_io_screen
 
         args = _make_args()
 
@@ -217,8 +233,8 @@ class TestMainDispatchBlackjackSubcommand(unittest.TestCase):
              patch("casino._routing.select_backend") as sel, \
              patch("casino._routing.build_client_args"), \
              patch("casino.lib.buildargs", return_value=_StubParser(args, leftover=["blackjack", "--databasename", "bjdb"])), \
-             patch("bbsengine6.session.start") as session_start, \
-             patch("bbsengine6.screen.init"), \
+             patch.object(_cm_session, "start") as session_start, \
+             patch.object(_cm_io_screen, "init"), \
              patch("bbsengine6.module.run") as module_run, \
              patch("bbsengine6.io.echo"), \
              patch("bbsengine6.io.terminal") as terminal, \
