@@ -72,7 +72,17 @@ def _run_direct(args: Namespace, remaining_argv: list) -> int:
 
 
 def _run_bed(args: Namespace) -> int:
-    """Default branch: talk to the bed daemon through CasinoClient."""
+    """Default branch: talk to the bed daemon through CasinoClient.
+
+    Initializes the user's locale before constructing the client so that
+    locale-formatted numeric cells (e.g. ``f"{n:n}"`` for thousands
+    separators) render with the expected group character. The direct and
+    blackjack branches already do this; the WS-client branch was the
+    odd one out.
+    """
+    locale.setlocale(locale.LC_ALL, "")
+    time.tzset()
+
     client = CasinoClient(args)
     client.run()
     return 0 if getattr(client, "authenticated", False) else 1

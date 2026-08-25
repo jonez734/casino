@@ -7,6 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### feat(client/casino): width-aware, locale-aware table rendering for the WS client
+
+Every tabular screen in `CasinoClient.handle_message`
+(`table_list`, `bank_pending`, `bank_history`, `bank_list_all`,
+`slot_paytable`, `slot_history`, `slot_table_history`) previously
+hardcoded column widths (e.g. `f"{'Moniker':<20} {'Game':<12} …"`)
+and ignored `io.terminal.width()`. Numeric cells rendered as raw
+ints (`1234567`) with no thousands separator. Two changes:
+
+1. **New helper: `src/casino/client/table_render.py`** exposing
+   `_safe_int_str(n)` and `_signed_str(n)` plus `render_table(
+   headers, rows, *, alignments, …)`. The renderer allocates per-
+   column widths from `io.terminal.width() - 2` (matches the
+   `HR_WIDTH_OFFSET` used by `bbsengine6.util.hr`), supports
+   right-alignment for numeric columns, and truncates the last
+   variable-width column with a trailing `…`. Numeric cells use
+   `f"{n:n}"` for locale-aware thousands separators and fall back
+   to `str(int(n))` when the locale's separator is non-ASCII
+   (e.g. NBSP in `fr_FR`) so column alignment never breaks.
+
+2. **`handle_message` integration** in
+   `src/casino/client/casino_client.py`: every tabular branch
+   routes through `render_table` and drops the manual
+   `util.hr()` call. The slot-history `net` column keeps its
+   `+` / `-` sign via the new `_signed_str` helper.
+
+3. **Locale init on the WS-client path** (`src/casino/__main__.py`
+   `_run_bed`): mirrors the existing `locale.setlocale(LC_ALL, "")`
+   in `_run_direct` / `_run_blackjack` so the formatting picks up
+   the operator's `LANG` / `LC_NUMERIC` at startup. `setlocale`
+   with `""` is a no-op when already set, so door/direct callers
+   are unaffected.
+
+Tests in `src/casino/tests/test_client_table_render.py` pin:
+
+- `_safe_int_str` produces `"1,234,567"` under `en_US` and the
+  plain `"1234567"` under `C`.
+- `_safe_int_str` falls back to un-grouped form under `fr_FR`
+  (NBSP separator).
+- `render_table` produces uniform-width rows whose visible width
+  matches the rule's width, and truncates long cells with `…`.
+- `handle_message({"type": "table_list", ...})` emits uniform-
+  width lines that include the locale-formatted `min_bet` /
+  `max_bet` values.
+- Empty `table_list` payload still prints the legacy "No tables
+  available." message.
+
 ### tests(casino): audit-gate setpassword + rename fixtures off `'jam'`
 
 The `0d84cf7` migration fixed the bcrypt-format problem (raw MD5

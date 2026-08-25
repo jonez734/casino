@@ -14,6 +14,7 @@ from bbsengine6 import io, util
 from bbsengine6.net.ping import PingUnavailable, connect as _net_connect
 
 from .menu import menu as _client_menu
+from .table_render import _safe_int_str, _signed_str, render_table
 
 if TYPE_CHECKING:
     from bbsengine6 import WebSocketClientProtocol
@@ -170,16 +171,22 @@ class CasinoClient:
             if not tables:
                 io.echo("No tables available.")
             else:
-                io.echo(
-                    f"{'Moniker':<20} {'Game':<12} {'Min':<6} {'Max':<6} {'Players':<20}"
-                )
-                util.hr(end="")
-                for t in tables:
-                    players = ", ".join(t.get("players", [])) or "(empty)"
-                    io.echo(
-                        f"{t['moniker']:<20} {t['game_type']:<12} "
-                        f"{t['min_bet']:<6} {t['max_bet']:<6} {players:<20}"
-                    )
+                rows = [
+                    [
+                        t["moniker"],
+                        t["game_type"],
+                        _safe_int_str(t["min_bet"]),
+                        _safe_int_str(t["max_bet"]),
+                        ", ".join(t.get("players", [])) or "(empty)",
+                    ]
+                    for t in tables
+                ]
+                for line in render_table(
+                    ["Moniker", "Game", "Min", "Max", "Players"],
+                    rows,
+                    alignments=["l", "l", "r", "r", "l"],
+                ):
+                    io.echo(line)
 
         elif msg_type == "table_created":
             moniker = msg.get("moniker", "")
@@ -321,38 +328,64 @@ class CasinoClient:
             if not transfers:
                 io.echo("No pending transfers.")
             else:
-                io.echo(
-                    f"{'ID':<4} {'From':<20} {'To':<20} {'Amount':<10} {'By':<15}\n"
-                )
-                util.hr(end="")
-                for t in transfers:
-                    io.echo(
-                        f"{t['id']:<4} {t['from_table']:<20} {t['to_table']:<20} {t['amount']:<10} {t['requested_by']:<15}\n"
-                    )
+                rows = [
+                    [
+                        t["id"],
+                        t["from_table"],
+                        t["to_table"],
+                        _safe_int_str(t["amount"]),
+                        t["requested_by"],
+                    ]
+                    for t in transfers
+                ]
+                for line in render_table(
+                    ["ID", "From", "To", "Amount", "By"],
+                    rows,
+                    alignments=["r", "l", "l", "r", "l"],
+                ):
+                    io.echo(line)
 
         elif msg_type == "bank_history":
             transactions = msg.get("transactions", [])
             moniker = msg.get("moniker")
             io.echo(f"{{f6}}Transaction history for {moniker}:{{f6}}")
-            io.echo(f"{'Date':<24} {'Type':<12} {'Amount':<10} {'Description'}{{f6}}")
-            util.hr()
+            rows = []
             for t in transactions:
                 date = t.get("dateposted", "")[:19] if t.get("dateposted") else ""
-                amount = t.get("amount", 0)
-                ttype = t.get("type", "")
-                desc = t.get("description", "")
-                io.echo(f"{date:<24} {ttype:<12} {amount:<10} {desc}{{f6}}")
+                rows.append(
+                    [
+                        date,
+                        t.get("type", ""),
+                        _safe_int_str(t.get("amount", 0)),
+                        t.get("description", ""),
+                    ]
+                )
+            for line in render_table(
+                ["Date", "Type", "Amount", "Description"],
+                rows,
+                alignments=["l", "l", "r", "l"],
+            ):
+                io.echo(line + "{f6}")
 
         elif msg_type == "bank_list_all":
             tables = msg.get("tables", [])
-            io.echo(
-                f"\n{'Moniker':<20} {'Owner':<15} {'Bank':<10} {'Max Transfer':<12} {'Type':<10}\n"
-            )
-            util.hr()
-            for t in tables:
-                io.echo(
-                    f"{t['moniker']:<20} {t['owner']:<15} {t['bank']:<10} {t['max_transfer']:<12} {t['type']:<10}\n"
-                )
+            io.echo("")
+            rows = [
+                [
+                    t["moniker"],
+                    t["owner"],
+                    _safe_int_str(t["bank"]),
+                    _safe_int_str(t["max_transfer"]),
+                    t["type"],
+                ]
+                for t in tables
+            ]
+            for line in render_table(
+                ["Moniker", "Owner", "Bank", "Max Transfer", "Type"],
+                rows,
+                alignments=["l", "l", "r", "r", "l"],
+            ):
+                io.echo(line)
 
         elif msg_type == "slot_result":
             spin = msg.get("spin") or {}
@@ -385,16 +418,19 @@ class CasinoClient:
             if not payouts:
                 io.echo("{var:labelcolor}(no payouts defined)")
             else:
-                io.echo(
-                    f"{{var:labelcolor}}{'symbols':<30} {{var:valuecolor}}{'multiplier'}"
-                )
-                util.hr(end="")
-                for p in payouts:
-                    syms = " ".join(p.get("symbols") or [])
-                    mult = p.get("multiplier", 0)
-                    io.echo(
-                        f"{syms:<30} {mult}"
-                    )
+                rows = [
+                    [
+                        " ".join(p.get("symbols") or []),
+                        _safe_int_str(p.get("multiplier", 0)),
+                    ]
+                    for p in payouts
+                ]
+                for line in render_table(
+                    ["symbols", "multiplier"],
+                    rows,
+                    alignments=["l", "r"],
+                ):
+                    io.echo(line)
 
         elif msg_type == "slot_history":
             spins = msg.get("spins", []) or []
@@ -402,15 +438,22 @@ class CasinoClient:
             if not spins:
                 io.echo("{var:labelcolor}(no spins recorded)")
             else:
-                io.echo(
-                    f"{{var:labelcolor}}{'when':<20} {{var:valuecolor}}{'bet':>6} {'payout':>7} {'net':>7} {{var:labelcolor}}{'table'}"
-                )
-                util.hr(end="")
-                for s in spins:
-                    when = (s.get("spun_at") or "")[:19]
-                    io.echo(
-                        f"{when:<20} {s.get('bet', 0):>6} {s.get('payout', 0):>7} {s.get('net', 0):>+7} {s.get('table_moniker', '')}"
-                    )
+                rows = [
+                    [
+                        (s.get("spun_at") or "")[:19],
+                        _safe_int_str(s.get("bet", 0)),
+                        _safe_int_str(s.get("payout", 0)),
+                        _signed_str(s.get("net", 0)),
+                        s.get("table_moniker", ""),
+                    ]
+                    for s in spins
+                ]
+                for line in render_table(
+                    ["when", "bet", "payout", "net", "table"],
+                    rows,
+                    alignments=["l", "r", "r", "r", "l"],
+                ):
+                    io.echo(line)
 
         elif msg_type == "slot_table_history":
             table_moniker = msg.get("table_moniker", "")
@@ -419,15 +462,22 @@ class CasinoClient:
             if not spins:
                 io.echo("{var:labelcolor}(no spins recorded)")
             else:
-                io.echo(
-                    f"{{var:labelcolor}}{'when':<20} {{var:valuecolor}}{'bet':>6} {'payout':>7} {'net':>7} {{var:labelcolor}}{'player'}"
-                )
-                util.hr(end="")
-                for s in spins:
-                    when = (s.get("spun_at") or "")[:19]
-                    io.echo(
-                        f"{when:<20} {s.get('bet', 0):>6} {s.get('payout', 0):>7} {s.get('net', 0):>+7} {s.get('player_moniker', '')}"
-                    )
+                rows = [
+                    [
+                        (s.get("spun_at") or "")[:19],
+                        _safe_int_str(s.get("bet", 0)),
+                        _safe_int_str(s.get("payout", 0)),
+                        _signed_str(s.get("net", 0)),
+                        s.get("player_moniker", ""),
+                    ]
+                    for s in spins
+                ]
+                for line in render_table(
+                    ["when", "bet", "payout", "net", "player"],
+                    rows,
+                    alignments=["l", "r", "r", "r", "l"],
+                ):
+                    io.echo(line)
 
         else:
             io.echo(f"Unknown message type: {msg_type}: {msg}", level="debug")

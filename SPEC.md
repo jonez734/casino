@@ -290,6 +290,40 @@ own line. The inline-prompt case is the one that needs an explicit
 `{f6}` because the option list is concatenated before being handed
 to `io.inputchoice`.
 
+### 6.2 Tabular screen rendering contract (width + locale)
+
+Every tabular screen in `CasinoClient.handle_message`
+(`table_list`, `bank_pending`, `bank_history`, `bank_list_all`,
+`slot_paytable`, `slot_history`, `slot_table_history`) routes
+through `casino.client.table_render.render_table`. The contract:
+
+- The block uses the available terminal width, computed as
+  `io.terminal.width() - 2` (mirrors `bbsengine6.util.hr`'s
+  `HR_WIDTH_OFFSET`). Column widths are allocated from that
+  budget, with per-column floors of 4 characters. Variable-
+  width columns share leftover space pro-rata and are truncated
+  with a trailing `…` when content overflows the allocated slot.
+- Numeric columns are right-aligned and rendered through
+  `_safe_int_str` / `_signed_str`, which call `f"{n:n}"` for
+  locale-aware thousands separators (`1,234,567` under
+  `en_US`, `1234567` under `C`). If the active locale's
+  separator is non-ASCII (NBSP under `fr_FR`), the helper
+  falls back to `str(int(n))` so column alignment never
+  drifts.
+- The header and each row are returned as separate strings
+  carrying `{var:labelcolor}` / `{var:valuecolor}` /
+  `{boxcolor}` bbsengine6 tags; the caller iterates and emits
+  one `io.echo(line)` per string so the echo pipeline appends
+  `ECHO_END` per line (see AGENTS.md, "f-string markup" note).
+- Locale is initialized once on the WS-client path via
+  `locale.setlocale(LC_ALL, "")` in `_run_bed`
+  (`casino/__main__.py`), matching the `_run_direct` and
+  `_run_blackjack` branches. The empty-string form is a no-op
+  when locale is already set.
+
+Tests pin these contracts in
+`casino/tests/test_client_table_render.py`.
+
 ## 7. Poker variant plugin system
 
 Poker variants are registered via setuptools entry points under the

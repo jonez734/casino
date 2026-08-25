@@ -3321,3 +3321,25 @@ Cross-ref: `bbsengine6/TODO.md` (line 35 cross-ref), `bbsengine6/
 py/src/bbsengine6/member/lib.py:879` (`audit_password_hash`),
 `bbsengine6/sql/manage_password_format.sql` (`chk_member_password_bcrypt`).
 
+## Client table rendering — width + locale (DONE)
+
+Every tabular screen in `CasinoClient.handle_message`
+(`table_list`, `bank_pending`, `bank_history`, `bank_list_all`,
+`slot_paytable`, `slot_history`, `slot_table_history`) now flows
+through `casino.client.table_render.render_table`, which:
+
+- Allocates column widths from `io.terminal.width() - 2` so the
+  block uses the full terminal width (was: hardcoded `:<20` /
+  `:<12` / `:<6` percentages regardless of terminal size).
+- Right-aligns numeric columns and emits the locale-aware
+  thousands separator via `f"{n:n}"`. `_safe_int_str` falls
+  back to the plain integer when the locale's separator is
+  non-ASCII (NBSP in `fr_FR`) so column alignment never breaks.
+- Truncates the last variable-width column with a trailing `…`
+  when content overflows the available width.
+
+Locale init is now in `_run_bed` (`casino/__main__.py`), mirroring
+`_run_direct` / `_run_blackjack` so the BED-client path also
+respects `LC_NUMERIC`. Tests live in
+`casino/tests/test_client_table_render.py`.
+
