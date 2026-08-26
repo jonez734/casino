@@ -367,32 +367,7 @@ the f-string shim, forward `package=` through to
       — they exercise the wire protocol, not the client wrapper. Add
       `casino/tests/test_client_transport.py` separately.
 
-## BED `Sink` integration with `bbsengine6.io` (cross-project)
-
-- [ ] See `bbsengine6/TODO.md` "`bbsengine6.io` sink infrastructure
-  for thin-client BED conversion" (Phases 0–5) — the
-  `bbsengine6.io.sink.Sink` protocol, `set_io_sink` /
-  `reset_io_sink` contextvar API, `bbsengine6.io.echo_render` and
-  `mci.parse` / `mci.render` public functions, and the
-  `MessageRouter` / `MessageRouterMixin` in
-  `bbsengine6/net/router.py`.
-- [ ] See `bed/TODO.md` "BED `Sink` integration with
-  `bbsengine6.io`" — the `BEDSink` (per-connection adapter in
-  `bed/sinks/bed_sink.py`) and the `on_connect_hook` installation
-  point on the `WebSocketServer`.
-- [ ] **No code change required for the casino `MessageRouter` in
-  v1.** The casino can opt into `MessageRouterMixin` later (a
-  one-line change to its class declaration:
-  `class MessageRouter(MessageRouterMixin):`) to gain the session
-  API. v1 ships without the mixin; the BED sink infrastructure
-  works against the bare `casino.api.handler.MessageRouter` (the
-  pending-request futures and session dict are managed by the
-  `BEDSink` and the `IOServiceHandler`, not by the router itself).
-- [ ] **Backward compat**: door mode (no `BEDSink` installed) uses
-  the default `DefaultSink` behavior, which is the current
-  `bbsengine6.io` behavior byte-for-byte. The
-  `bbsengine6/tests/test_io_backward_compat.py` suite passes for
-  the casino door-mode pytest corpus.
+## Bottombar wire push — see `bbsengine6/TODO-BOTTOMBAR.md`
 
 ## BED `menu` message type (casino is the primary driver)
 

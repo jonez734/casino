@@ -134,23 +134,10 @@ def access(args, op: str, **kwargs) -> bool: return True
 def buildargs(args, **kwargs): return None
 
 
-def _casino_table_fragment(**kwargs) -> str:
-    from .client import get_client
-    c = get_client()
-    if c is None or c.current_table_moniker is None:
-        return ""
-    return f"{c.current_table_moniker} ({c.current_table_game_type}) players: {c.current_table_players}"
-
-
-def init_remote_client_screen() -> None:
-    from bbsengine6 import io as bbsio, screen as bbs_screen
-    bbsio.screen.init()
-    bbs_screen.register_bottombar_fragment(_casino_table_fragment)
-
-
-def cleanup_remote_client_screen() -> None:
-    from bbsengine6 import screen
-    screen.unregister_bottombar_fragment(_casino_table_fragment)
+# Bottombar fragments — see `bbsengine6/TODO-BOTTOMBAR.md` §"casino" —
+# migrate `_casino_table_fragment` to
+# `bottombar.registry_for("casino").register(_casino_table_fragment)`
+# (and `unregister_bottombar_fragment` → `registry_for("casino").unregister`).
 
 
 def connect(args, **kwargs) -> "CasinoClient | None":
