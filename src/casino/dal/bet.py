@@ -1,9 +1,27 @@
 # casino/dal/bet.py
 # Bet data access layer
+#
+# All public functions in this module accept an optional ``pool`` keyword
+# argument (CONN_POOL_PATTERN). When supplied, the function threads it into
+# ``database.connect(args, pool=pool)`` so the caller owns the pool. When
+# absent, the legacy ``database.connect(args)`` shape is used as a
+# backward-compat fallback.
 
 from typing import Any, Optional
 
 from bbsengine6 import database
+
+
+def _connect_ctx(args: Any, pool: Any):
+    """Return a context manager for a database connection.
+
+    CONN_POOL_PATTERN helper: when ``pool`` is supplied the connection is
+    borrowed from the caller's pool; otherwise the legacy
+    ``database.connect(args)`` fallback is used.
+    """
+    if pool is None:
+        return database.connect(args)
+    return database.connect(args, pool=pool)
 
 
 def place_bet(
@@ -14,6 +32,8 @@ def place_bet(
     amount: int,
     notes: Optional[str] = None,
     currenthand: Optional[str] = None,
+    *,
+    pool: Any = None,
 ) -> dict[str, Any]:
     """
     Place a bet and deduct from player's balance.
@@ -26,11 +46,12 @@ def place_bet(
         amount: Bet amount
         notes: Optional notes about the bet (for humans)
         currenthand: Optional current hand cards (for machines)
+        pool: Optional connection pool (CONN_POOL_PATTERN)
 
     Returns:
         Bet dict with id, amount, etc.
     """
-    with database.connect(args) as conn, database.cursor(conn) as cur:
+    with _connect_ctx(args, pool) as conn, database.cursor(conn) as cur:
             cur.execute(
                 database.query(
                     "SELECT credits FROM $engine.__member WHERE moniker = :player_moniker",
@@ -109,6 +130,8 @@ def settle_bet(
     bet_id: int,
     won: bool,
     payout: int,
+    *,
+    pool: Any = None,
 ) -> None:
     """
     Settle a bet (win or loss).
@@ -117,8 +140,9 @@ def settle_bet(
         bet_id: Bet ID
         won: Whether player won
         payout: Amount to pay out (including original bet for wins)
+        pool: Optional connection pool (CONN_POOL_PATTERN)
     """
-    with database.connect(args) as conn, database.cursor(conn) as cur:
+    with _connect_ctx(args, pool) as conn, database.cursor(conn) as cur:
         cur.execute(
             database.query(
                 "SELECT playermoniker, amount FROM $casino.__betlog WHERE id = :bet_id",
@@ -148,9 +172,13 @@ def settle_bet(
             )
 
 
-def set_insurance(args: Any, bet_id: int, amount: int) -> None:
-    """Set insurance bet amount for a bet."""
-    with database.connect(args) as conn, database.cursor(conn) as cur:
+def set_insurance(args: Any, bet_id: int, amount: int, *, pool: Any = None) -> None:
+    """Set insurance bet amount for a bet.
+
+    Args:
+        pool: Optional connection pool (CONN_POOL_PATTERN)
+    """
+    with _connect_ctx(args, pool) as conn, database.cursor(conn) as cur:
             cur.execute(
                 database.query(
                     "UPDATE $casino.__betlog SET attrs = jsonb_set(coalesce(attrs, '{}'::jsonb), '{insurance}', to_jsonb(:amount)) WHERE id = :bet_id",
@@ -159,9 +187,13 @@ def set_insurance(args: Any, bet_id: int, amount: int) -> None:
             )
 
 
-def get_insurance(args: Any, bet_id: int) -> int:
-    """Get insurance bet amount for a bet."""
-    with database.connect(args) as conn, database.cursor(conn) as cur:
+def get_insurance(args: Any, bet_id: int, *, pool: Any = None) -> int:
+    """Get insurance bet amount for a bet.
+
+    Args:
+        pool: Optional connection pool (CONN_POOL_PATTERN)
+    """
+    with _connect_ctx(args, pool) as conn, database.cursor(conn) as cur:
         cur.execute(
             database.query(
                 "SELECT attrs->'insurance' as insurance FROM $casino.__betlog WHERE id = :bet_id",
@@ -174,12 +206,16 @@ def get_insurance(args: Any, bet_id: int) -> int:
         return 0
 
 
-def settle_insurance(args: Any, bet_id: int, won: bool, payout: int) -> None:
-    """Settle insurance bet - add payout to player balance."""
+def settle_insurance(args: Any, bet_id: int, won: bool, payout: int, *, pool: Any = None) -> None:
+    """Settle insurance bet - add payout to player balance.
+
+    Args:
+        pool: Optional connection pool (CONN_POOL_PATTERN)
+    """
     if not won or payout <= 0:
         return
 
-    with database.connect(args) as conn, database.cursor(conn) as cur:
+    with _connect_ctx(args, pool) as conn, database.cursor(conn) as cur:
         cur.execute(
             database.query(
                 "SELECT playermoniker FROM $casino.__betlog WHERE id = :bet_id",
@@ -196,9 +232,13 @@ def settle_insurance(args: Any, bet_id: int, won: bool, payout: int) -> None:
             )
 
 
-def update_bet_notes(args: Any, bet_id: int, notes: str) -> None:
-    """Update the notes for a bet."""
-    with database.connect(args) as conn, database.cursor(conn) as cur:
+def update_bet_notes(args: Any, bet_id: int, notes: str, *, pool: Any = None) -> None:
+    """Update the notes for a bet.
+
+    Args:
+        pool: Optional connection pool (CONN_POOL_PATTERN)
+    """
+    with _connect_ctx(args, pool) as conn, database.cursor(conn) as cur:
         cur.execute(
             database.query(
                 "UPDATE $casino.__betlog SET notes = :notes WHERE id = :bet_id",
@@ -207,9 +247,13 @@ def update_bet_notes(args: Any, bet_id: int, notes: str) -> None:
         )
 
 
-def update_bet_currenthand(args: Any, bet_id: int, currenthand: str) -> None:
-    """Update the currenthand for a bet."""
-    with database.connect(args) as conn, database.cursor(conn) as cur:
+def update_bet_currenthand(args: Any, bet_id: int, currenthand: str, *, pool: Any = None) -> None:
+    """Update the currenthand for a bet.
+
+    Args:
+        pool: Optional connection pool (CONN_POOL_PATTERN)
+    """
+    with _connect_ctx(args, pool) as conn, database.cursor(conn) as cur:
         # Check if currenthand column exists
         cur.execute(
             "SELECT 1 FROM information_schema.columns WHERE table_name = '__betlog' AND column_name = 'currenthand'"
@@ -223,9 +267,13 @@ def update_bet_currenthand(args: Any, bet_id: int, currenthand: str) -> None:
             )
 
 
-def get_player_bet_for_game(args: Any, game_id: int, player_moniker: str) -> Optional[dict[str, Any]]:
-    """Get a player's bet for a specific game."""
-    with database.connect(args) as conn, database.cursor(conn) as cur:
+def get_player_bet_for_game(args: Any, game_id: int, player_moniker: str, *, pool: Any = None) -> Optional[dict[str, Any]]:
+    """Get a player's bet for a specific game.
+
+    Args:
+        pool: Optional connection pool (CONN_POOL_PATTERN)
+    """
+    with _connect_ctx(args, pool) as conn, database.cursor(conn) as cur:
             cur.execute(
                 database.query(
                     "SELECT id, membermoniker, cardtablemoniker, gameid, playermoniker, amount, status, dateposted FROM $casino.__betlog WHERE gameid = :game_id AND playermoniker = :player_moniker AND status = 'pending' ORDER BY dateposted DESC LIMIT 1",
@@ -247,9 +295,13 @@ def get_player_bet_for_game(args: Any, game_id: int, player_moniker: str) -> Opt
             }
 
 
-def get_player_bets(args: Any, player_moniker: str, limit: int = 10) -> list[dict[str, Any]]:
-    """Get player's recent bets."""
-    with database.connect(args) as conn, database.cursor(conn) as cur:
+def get_player_bets(args: Any, player_moniker: str, limit: int = 10, *, pool: Any = None) -> list[dict[str, Any]]:
+    """Get player's recent bets.
+
+    Args:
+        pool: Optional connection pool (CONN_POOL_PATTERN)
+    """
+    with _connect_ctx(args, pool) as conn, database.cursor(conn) as cur:
             cur.execute(
                 database.query(
                     "SELECT id, membermoniker, cardtablemoniker, gameid, playermoniker, amount, status, dateposted, notes, currenthand FROM $casino.__betlog WHERE playermoniker = :player_moniker ORDER BY dateposted DESC LIMIT :limit",
@@ -273,9 +325,13 @@ def get_player_bets(args: Any, player_moniker: str, limit: int = 10) -> list[dic
             return bets
 
 
-def get_table_bets(args: Any, game_id: int) -> list[dict[str, Any]]:
-    """Get all bets for a game."""
-    with database.connect(args) as conn, database.cursor(conn) as cur:
+def get_table_bets(args: Any, game_id: int, *, pool: Any = None) -> list[dict[str, Any]]:
+    """Get all bets for a game.
+
+    Args:
+        pool: Optional connection pool (CONN_POOL_PATTERN)
+    """
+    with _connect_ctx(args, pool) as conn, database.cursor(conn) as cur:
             cur.execute(
                 database.query(
                     "SELECT id, membermoniker, cardtablemoniker, gameid, playermoniker, amount, status, dateposted, notes, currenthand FROM $casino.__betlog WHERE gameid = :game_id ORDER BY dateposted",
@@ -306,9 +362,15 @@ def place_split_bet(
     game_id: int,
     amount: int,
     hand_id: Optional[int] = None,
+    *,
+    pool: Any = None,
 ) -> dict[str, Any]:
-    """Place a bet for a split hand."""
-    with database.connect(args) as conn, database.cursor(conn) as cur:
+    """Place a bet for a split hand.
+
+    Args:
+        pool: Optional connection pool (CONN_POOL_PATTERN)
+    """
+    with _connect_ctx(args, pool) as conn, database.cursor(conn) as cur:
             cols = ["membermoniker", "cardtablemoniker", "gameid", "playermoniker", "amount", "status", "dateposted"]
             vals = [":player_moniker", ":table_moniker", ":game_id", ":player_moniker2", ":amount", "'pending'", "NOW()"]
             params = {"player_moniker": player_moniker, "table_moniker": table_moniker, "game_id": game_id, "player_moniker2": player_moniker + "_split_2", "amount": amount}
@@ -342,9 +404,13 @@ def place_split_bet(
             }
 
 
-def double_bet(args: Any, bet_id: int, new_amount: int) -> None:
-    """Update bet amount after doubling down."""
-    with database.connect(args) as conn, database.cursor(conn) as cur:
+def double_bet(args: Any, bet_id: int, new_amount: int, *, pool: Any = None) -> None:
+    """Update bet amount after doubling down.
+
+    Args:
+        pool: Optional connection pool (CONN_POOL_PATTERN)
+    """
+    with _connect_ctx(args, pool) as conn, database.cursor(conn) as cur:
         cur.execute(
             database.query(
                 "UPDATE $casino.__betlog SET amount = :new_amount WHERE id = :bet_id",
@@ -353,9 +419,13 @@ def double_bet(args: Any, bet_id: int, new_amount: int) -> None:
         )
 
 
-def update_bet_hand_id(args: Any, bet_id: int, hand_id: int) -> None:
-    """Link a bet to a specific hand."""
-    with database.connect(args) as conn, database.cursor(conn) as cur:
+def update_bet_hand_id(args: Any, bet_id: int, hand_id: int, *, pool: Any = None) -> None:
+    """Link a bet to a specific hand.
+
+    Args:
+        pool: Optional connection pool (CONN_POOL_PATTERN)
+    """
+    with _connect_ctx(args, pool) as conn, database.cursor(conn) as cur:
         cur.execute(
             database.query(
                 "UPDATE $casino.__betlog SET hand_id = :hand_id WHERE id = :bet_id",
@@ -364,9 +434,13 @@ def update_bet_hand_id(args: Any, bet_id: int, hand_id: int) -> None:
         )
 
 
-def get_bet_for_hand(args: Any, hand_id: int) -> Optional[dict[str, Any]]:
-    """Get the bet associated with a specific hand."""
-    with database.connect(args) as conn, database.cursor(conn) as cur:
+def get_bet_for_hand(args: Any, hand_id: int, *, pool: Any = None) -> Optional[dict[str, Any]]:
+    """Get the bet associated with a specific hand.
+
+    Args:
+        pool: Optional connection pool (CONN_POOL_PATTERN)
+    """
+    with _connect_ctx(args, pool) as conn, database.cursor(conn) as cur:
             cur.execute(
                 database.query(
                     "SELECT id, membermoniker, cardtablemoniker, gameid, playermoniker, amount, status, dateposted, hand_id FROM $casino.__betlog WHERE hand_id = :hand_id AND status = 'pending'",
@@ -389,9 +463,13 @@ def get_bet_for_hand(args: Any, hand_id: int) -> Optional[dict[str, Any]]:
             }
 
 
-def get_hand_bets(args: Any, game_id: int) -> list[dict[str, Any]]:
-    """Get all bets for a game with hand_id included."""
-    with database.connect(args) as conn, database.cursor(conn) as cur:
+def get_hand_bets(args: Any, game_id: int, *, pool: Any = None) -> list[dict[str, Any]]:
+    """Get all bets for a game with hand_id included.
+
+    Args:
+        pool: Optional connection pool (CONN_POOL_PATTERN)
+    """
+    with _connect_ctx(args, pool) as conn, database.cursor(conn) as cur:
             cur.execute(
                 database.query(
                     "SELECT id, membermoniker, cardtablemoniker, gameid, playermoniker, amount, status, dateposted, notes, currenthand, hand_id FROM $casino.__betlog WHERE gameid = :game_id ORDER BY dateposted",

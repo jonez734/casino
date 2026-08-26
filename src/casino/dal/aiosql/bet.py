@@ -14,12 +14,19 @@ async def place_bet(
     amount: int,
     notes: Optional[str] = None,
     currenthand: Optional[str] = None,
+    *,
+    pool: Any = None,
 ) -> dict[str, Any]:
-    """Place a bet."""
+    """Place a bet.
+
+    Args:
+        pool: Optional async pool (CONN_POOL_PATTERN)
+    """
     # Check which columns exist
     rows = await database.async_query(
         args,
-        "SELECT column_name FROM information_schema.columns WHERE table_name = '__betlog'"
+        "SELECT column_name FROM information_schema.columns WHERE table_name = '__betlog'",
+        pool=pool,
     )
     existing_cols = {r["column_name"] for r in rows}
 
@@ -49,6 +56,7 @@ async def place_bet(
     rows = await database.async_query(
         args,
         f"INSERT INTO $casino.__betlog ({col_str}) VALUES ({val_str}) RETURNING {', '.join(returning_cols)}",
+        pool=pool,
         **params
     )
     row = rows[0]
@@ -71,8 +79,14 @@ async def settle_bet(
     bet_id: int,
     won: bool,
     payout: int,
+    *,
+    pool: Any = None,
 ) -> dict[str, Any]:
-    """Settle a bet."""
+    """Settle a bet.
+
+    Args:
+        pool: Optional async pool (CONN_POOL_PATTERN)
+    """
     status = "won" if won else "lost"
     rows = await database.async_query(
         args,
@@ -80,6 +94,7 @@ async def settle_bet(
            SET status = :status
            WHERE id = :bet_id
            RETURNING id, membermoniker, cardtablemoniker, gameid, playermoniker, amount, status, dateposted, notes, currenthand""",
+        pool=pool,
         bet_id=bet_id, status=status
     )
     if rows:
@@ -99,38 +114,54 @@ async def settle_bet(
     return {}
 
 
-async def update_bet_notes(args: Any, bet_id: int, notes: str) -> None:
-    """Update the notes for a bet."""
+async def update_bet_notes(args: Any, bet_id: int, notes: str, *, pool: Any = None) -> None:
+    """Update the notes for a bet.
+
+    Args:
+        pool: Optional async pool (CONN_POOL_PATTERN)
+    """
     await database.async_query(
         args,
         """UPDATE $casino.__betlog SET notes = :notes WHERE id = :bet_id""",
+        pool=pool,
         notes=notes, bet_id=bet_id
     )
 
 
-async def update_bet_currenthand(args: Any, bet_id: int, currenthand: str) -> None:
-    """Update the currenthand for a bet."""
+async def update_bet_currenthand(args: Any, bet_id: int, currenthand: str, *, pool: Any = None) -> None:
+    """Update the currenthand for a bet.
+
+    Args:
+        pool: Optional async pool (CONN_POOL_PATTERN)
+    """
     # Check if currenthand column exists
     rows = await database.async_query(
         args,
-        "SELECT 1 FROM information_schema.columns WHERE table_name = '__betlog' AND column_name = 'currenthand'"
+        "SELECT 1 FROM information_schema.columns WHERE table_name = '__betlog' AND column_name = 'currenthand'",
+        pool=pool,
     )
     if rows:
         await database.async_query(
             args,
             """UPDATE $casino.__betlog SET currenthand = :currenthand WHERE id = :bet_id""",
+            pool=pool,
             currenthand=currenthand, bet_id=bet_id
         )
 
 
-async def get_player_bets(args: Any, player_moniker: str, limit: int = 10) -> list[dict[str, Any]]:
-    """Get a player's bet history."""
+async def get_player_bets(args: Any, player_moniker: str, limit: int = 10, *, pool: Any = None) -> list[dict[str, Any]]:
+    """Get a player's bet history.
+
+    Args:
+        pool: Optional async pool (CONN_POOL_PATTERN)
+    """
     rows = await database.async_query(
         args,
         """SELECT id, membermoniker, cardtablemoniker, gameid, playermoniker, amount, status, dateposted, notes, currenthand
            FROM $casino.__betlog
            WHERE playermoniker = :player_moniker
            ORDER BY dateposted DESC LIMIT :limit""",
+        pool=pool,
         player_moniker=player_moniker, limit=limit
     )
     return [
@@ -150,14 +181,19 @@ async def get_player_bets(args: Any, player_moniker: str, limit: int = 10) -> li
     ]
 
 
-async def get_table_bets(args: Any, game_id: int) -> list[dict[str, Any]]:
-    """Get all bets for a game."""
+async def get_table_bets(args: Any, game_id: int, *, pool: Any = None) -> list[dict[str, Any]]:
+    """Get all bets for a game.
+
+    Args:
+        pool: Optional async pool (CONN_POOL_PATTERN)
+    """
     rows = await database.async_query(
         args,
         """SELECT id, membermoniker, cardtablemoniker, gameid, playermoniker, amount, status, dateposted, notes, currenthand, hand_id
            FROM $casino.__betlog
            WHERE gameid = :game_id
            ORDER BY dateposted""",
+        pool=pool,
         game_id=game_id
     )
     return [
@@ -178,22 +214,32 @@ async def get_table_bets(args: Any, game_id: int) -> list[dict[str, Any]]:
     ]
 
 
-async def update_bet_hand_id(args: Any, bet_id: int, hand_id: int) -> None:
-    """Link a bet to a specific hand."""
+async def update_bet_hand_id(args: Any, bet_id: int, hand_id: int, *, pool: Any = None) -> None:
+    """Link a bet to a specific hand.
+
+    Args:
+        pool: Optional async pool (CONN_POOL_PATTERN)
+    """
     await database.async_execute(
         args,
         "UPDATE $casino.__betlog SET hand_id = :hand_id WHERE id = :bet_id",
+        pool=pool,
         hand_id=hand_id, bet_id=bet_id
     )
 
 
-async def get_bet_for_hand(args: Any, hand_id: int) -> Optional[dict[str, Any]]:
-    """Get the bet associated with a specific hand."""
+async def get_bet_for_hand(args: Any, hand_id: int, *, pool: Any = None) -> Optional[dict[str, Any]]:
+    """Get the bet associated with a specific hand.
+
+    Args:
+        pool: Optional async pool (CONN_POOL_PATTERN)
+    """
     rows = await database.async_query(
         args,
         """SELECT id, membermoniker, cardtablemoniker, gameid, playermoniker, amount, status, dateposted, hand_id
            FROM $casino.__betlog
            WHERE hand_id = :hand_id AND status = 'pending'""",
+        pool=pool,
         hand_id=hand_id
     )
     if not rows:

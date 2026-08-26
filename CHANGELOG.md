@@ -7,7 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### casino: standardize `__main__.py` exception reporting on `io.echo_traceback`
+### fix: casino DAL accepts `pool=` for CONN_POOL_PATTERN compliance
+
+Every public function in `casino/dal/{bet,game,table}.py` (sync)
+and `casino/dal/aiosql/{bet,game,table}.py` (async) now accepts an
+optional keyword-only `pool` argument. When supplied, the function
+threads it into `database.connect(args, pool=pool)` /
+`database.async_query(args, sql, pool=pool, ...)`. When absent, the
+legacy `database.connect(args)` / `async_query(args, sql, ...)`
+shape is preserved so callers we don't reach in this commit still
+work.
+
+This is the foundational step of the CONN_POOL_PATTERN threading
+series: the slot still hits its DAL call unchanged in this commit.
+A follow-up commit wires `services/{table,game,bank,slots}` and the
+yahtzee/tictactoe services to pass `self._pool` into every DAL
+call; another wires `YahtzeeServiceHandler`, `TictactoeServiceHandler`,
+and the BED `MessageRouter` to resolve a single pool at startup
+(reusing `args.pool` when set, falling back to
+`database.getpool(args)`).
+
+
 
 Every door-mode entry point
 (`casino/{yahtzee,tictactoe,blackjack}/__main__.py`,
