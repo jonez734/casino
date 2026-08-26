@@ -166,6 +166,17 @@ def buildargs(args=None, **kw):
     parser = argparse.ArgumentParser("yahtzee")
     parser.add_argument("--verbose", action="store_true", dest="verbose")
     parser.add_argument("--debug", action="store_true", dest="debug")
+    parser.add_argument(
+        "--mode",
+        choices=("human", "auto"),
+        default="human",
+        help=(
+            "human = interactive door-mode play loop (default); "
+            "auto = zero-player, the house plays a full 13-round game "
+            "with greedy scoring and echoes every roll + category to "
+            "the terminal. Useful for stress-testing the score engine."
+        ),
+    )
 
     defaults = {
         "databasename": "zoid6",
@@ -177,3 +188,79 @@ def buildargs(args=None, **kw):
     database.buildargdatabasegroup(parser, defaults)
 
     return parser
+
+
+def greedy_best_category(
+    dice: Sequence[int],
+    scorecard: dict[str, int | None],
+) -> str:
+    """Pick the open category that scores the most on ``dice``.
+
+    Greedy, no lookahead: ignores upper-section bonus, yahtzee
+    bonus, and future-round planning. Used by the ``--mode auto``
+    zero-player driver in ``play.auto_main`` so the house can play
+    a full 13-round game without prompts. Ties broken by the order
+    of ``CATEGORIES`` (upper first).
+
+    Raises ``ValueError`` if every category is already scored or
+    ``dice`` is malformed; callers should validate beforehand.
+    """
+    if len(dice) != NUM_DICE:
+        raise ValueError(f"dice must have length {NUM_DICE}, got {len(dice)}")
+    open_cats = [c for c in CATEGORIES if scorecard.get(c) is None]
+    if not open_cats:
+        raise ValueError("scorecard is full; no open category")
+    return max(open_cats, key=lambda c: score(dice, c))
+
+
+def greedy_locks(dice: Sequence[int]) -> list[bool]:
+    """Suggest a lock mask that maximizes the immediate greedy score.
+
+    Called once per round (after the first roll, before the second and
+    final reroll) by ``play.auto_main``. Strategy per best-scoring
+    category:
+
+    - Upper section (ones..sixes): lock all dice showing that face.
+    - Three/four of a kind, chance: lock the most-common face.
+    - Yahtzee: lock all if yahtzee; otherwise lock the most-common
+      face (chance of building toward yahtzee) -- if no face has a
+      count >= 2, lock nothing.
+    - Full house, small/large straight: if not yet achieved, lock
+      nothing (try to build it); otherwise lock all.
+
+    Returns a 5-bool list aligned with ``dice``. Pure function.
+    """
+    if len(dice) != NUM_DICE:
+        raise ValueError(f"dice must have length {NUM_DICE}, got {len(dice)}")
+
+    cat_scores = suggest(dice)
+    best_cat = max(cat_scores, key=lambda c: cat_scores[c])
+
+    if best_cat in UPPER_CATEGORIES:
+        face = CATEGORIES.index(best_cat) + 1
+        return [d == face for d in dice]
+
+    if best_cat in ("three_of_a_kind", "four_of_a_kind", "chance", "yahtzee"):
+        from collections import Counter
+        counts = Counter(dice)
+        most_common_face = max(counts, key=lambda f: (counts[f], f))
+        if counts[most_common_face] >= 2 or best_cat == "chance":
+            return [d == most_common_face for d in dice]
+        return [False] * 5
+
+    if best_cat == "full_house":
+        if _is_full_house(dice):
+            return [True, True, True, True, True]
+        return [False] * 5
+
+    if best_cat == "large_straight":
+        if _large_straight(dice):
+            return [True, True, True, True, True]
+        return [False] * 5
+
+    if best_cat == "small_straight":
+        if _small_straight_high(dice) > 0:
+            return [True, True, True, True, True]
+        return [False] * 5
+
+    return [True] * 5
