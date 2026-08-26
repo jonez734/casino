@@ -34,3 +34,17 @@
 - [x] Add member services tests (`tests/test_member_services.py`)
 - [x] Add postoffice channel tests (`tests/test_postoffice_channel.py`)
 - [x] Fix async handler tests in postoffice channel
+
+## Yahtzee
+
+- [ ] Multi-player yahtzee - Extend `YahtzeeGame` (yahtzee/service.py:69) to track a list of `players` (each with own scorecard, dice, locks, rolls_left) and a `current_player_index`; refactor `roll/reroll/score` to operate on the active seat. Add a `yahtzee_join` message (api_handler.py:50) analogous to tictactoe_join, a turn-rotation prompt in play.py, and per-player bet settlement (or single combined bet). Tests: extend test_yahtzee_service.py with a 2-player turn-rotation case.
+- [ ] Yahtzee observers - Add a `yahtzee_observe` / `yahtzee_unobserve` message pair (api_handler.py:50) that subscribes the websocket to the `casino:table:<moniker>` broadcast channel without taking a seat. Track observers per table in `YahtzeeService` so they receive state/result broadcasts but cannot roll/reroll/score. Verify `_require_game` rejects observer monikers. Tests: test_yahtzee_handler.py receives broadcast without being in `players`.
+
+## Tictactoe
+
+- [ ] Tictactoe observers (spectators) - Add a `tictactoe_observe` / `tictactoe_unobserve` message pair (api_handler.py:40) that subscribes a websocket to `casino:table:<moniker>` without occupying an X/O seat. Track observers per game in `TictactoeService` so the existing `_broadcast` path (api_handler.py:153) delivers state to them. Reject `tictactoe_move`/`tictactoe_resign` from observer monikers (service.py:300, 349). Tests: extend test_tictactoe_handler.py with an observer websocket case.
+- [ ] Tictactoe door-mode command module - Create `casino/src/casino/commands/tictactoe/lib.py` (parallels commands/yahtzee/lib.py:50) so the tictactoe game is reachable from the casino_client menu; wire into the submenu dispatch.
+
+## Cross-cutting
+
+- [ ] Shared observer/subscribe plumbing - Factor the observe/unobserve websocket subscription logic out of the per-game handlers (yahtzee/api_handler.py:169, tictactoe/api_handler.py:153) into a helper in `casino/api/` so future games (slots, poker) can opt in without duplicating the channel-bind code.
