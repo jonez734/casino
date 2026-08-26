@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### casino: standardize `__main__.py` exception reporting on `io.echo_traceback`
+
+Every door-mode entry point
+(`casino/{yahtzee,tictactoe,blackjack}/__main__.py`,
+`casino/__main__.py`, and
+`casino.client.casino_client.connect`) now reports an unhandled
+`PingUnavailable` or `BedNotReachable` via
+`io.echo_traceback(<module-header>)` instead of
+`io.echo(str(exc), level="error")`. The header is the module's
+dotted path so sysops can tell which entrypoint the failure
+came from. `casino/__main__.py`'s old `"yahtzee"` header
+(misleading because `main` dispatches every game) is corrected
+to `"casino"`. The `finally` stanza's `{reset}` token in
+`casino/tictactoe/__main__.py` is moved before `{decrc}` to
+match the project-wide convention established by `a362e96`
+(`io.terminal.height()` finally-block ordering).
+
 ### refactor(casino/auth): prompt UX is identical to `bed auth login`
 
 The default `casino.auth.auth_prompt` flow used to print its own

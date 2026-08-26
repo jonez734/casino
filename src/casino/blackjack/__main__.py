@@ -25,8 +25,8 @@ except KeyboardInterrupt:
     io.echo("{/all}{bold}INTR{/bold}")
 except EOFError:
     io.echo("{/all}{bold}EOF{/bold}")
-except PingUnavailable as exc:
-    io.echo(str(exc), level="error")
+except PingUnavailable:
+    io.echo_traceback("casino.blackjack")
     sys.exit(1)
 finally:
     io.echo(f"{{decsc}}{{curpos:{io.terminal.height()},0}}{{el}}{{decrc}}{{reset}}{{/all}}")

@@ -12,9 +12,11 @@ import time
 from bbsengine6 import io, module, screen, session
 from bbsengine6.net.ping import PingUnavailable
 
+from . import lib
 
 def main(argv: list[str] | None = None) -> int:
-    args = None
+    parser = lib.buildargs()
+    args = parser.parse_args() if parser is not None else None
 
     session.start(args)
 
@@ -30,11 +32,11 @@ def main(argv: list[str] | None = None) -> int:
     except EOFError:
         io.echo("{/all}{bold}EOF{/bold}")
     except PingUnavailable as exc:
-        io.echo(str(exc), level="error")
+        io.echo_traceback("casino.yahtzee")
         return 1
     finally:
         io.echo(
-            f"{{decsc}}{{curpos:{io.terminal.height()},0}}{{el}}{{decrc}}{{reset}}{{/all}}"
+            f"{{decsc}}{{curpos:{io.terminal.height()},0}}{{el}}{{reset}}{{decrc}}{{/all}}"
         )
     return 0
 

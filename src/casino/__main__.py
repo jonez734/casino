@@ -166,6 +166,6 @@ def blackjack_main(argv: list[str] | None = None) -> int:
 if __name__ == "__main__":
     try:
         raise SystemExit(main())
-    except BedNotReachable as exc:
-        io.echo(str(exc), level="error")
+    except BedNotReachable:
+        io.echo_traceback("casino")
         raise SystemExit(1) from None

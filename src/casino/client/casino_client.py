@@ -70,8 +70,8 @@ class CasinoClient:
             self.connected = True
             io.echo(f"Connected to {uri}")
             return True
-        except PingUnavailable as exc:
-            io.echo(str(exc), level="error")
+        except PingUnavailable:
+            io.echo_traceback("casino.client.casino_client")
             return False
 
     async def disconnect(self) -> None:

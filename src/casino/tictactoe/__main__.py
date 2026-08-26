@@ -35,12 +35,12 @@ def main(argv: list[str] | None = None) -> int:
         io.echo("{/all}{bold}INTR{/bold}")
     except EOFError:
         io.echo("{/all}{bold}EOF{/bold}")
-    except PingUnavailable as exc:
-        io.echo(str(exc), level="error")
+    except PingUnavailable:
+        io.echo_traceback("casino.tictactoe")
         return 1
     finally:
         io.echo(
-            f"{{decsc}}{{curpos:{io.terminal.height()},0}}{{el}}{{decrc}}{{reset}}{{/all}}"
+            f"{{decsc}}{{curpos:{io.terminal.height()},0}}{{el}}{{reset}}{{decrc}}{{/all}}"
         )
     return 0
 
