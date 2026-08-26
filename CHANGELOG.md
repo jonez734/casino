@@ -7,7 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### fix: casino services + handlers thread connection pool (CONN_POOL_PATTERN)
+### test(casino): regression guards for CONN_POOL_PATTERN threading
+
+New test files pin the pool-threading contract end-to-end:
+
+- ``tests/test_dal_conn_pool.py`` — every public function in
+  ``casino.dal.{bet,game,table}.py`` accepts an optional
+  keyword-only ``pool`` argument; ``pool=`` is forwarded into
+  ``database.connect(args, pool=pool)`` when supplied, and the
+  legacy ``database.connect(args)`` fallback remains when
+  ``pool=None``. Same shape for the ``_stats_from_*`` internal
+  helpers that nest inside ``get_table_stats``.
+- ``tests/test_dal_aiosql_conn_pool.py`` — every public async
+  function in ``casino.dal.aiosql.{bet,game,table}.py`` accepts
+  the same ``pool=`` and threads it into ``database.async_query``
+  via the ``pool=`` keyword the helper already supports.
+- ``tests/test_services_conn_pool.py`` — ``TableService``,
+  ``GameService``, ``BankService``, ``YahtzeeService``, and
+  ``TictactoeService`` accept ``pool=`` on their constructors,
+  store it on ``self._pool``, and forward it into every
+  ``dal_*`` call. Covers both the "pool= present" and the
+  "pool=None fallback" paths. Also pins the
+  ``_default_find_table(args, player_moniker, *, pool=None)``
+  signature on both yahtzee and tictactoe.
+- ``tests/test_message_router_wires_pool.py`` — every
+  ``*ServiceHandler`` (Table / Game / Bet / Chat /
+  YahtzeeService / TictactoeService) constructor accepts
+  ``pool=``. The ``MessageRouter`` resolves a pool once via
+  ``_resolve_pool(args)`` and threads it into every handler.
+
+Mechanical test updates: existing ``assert_called_once_with``
+assertions against DAL functions now include ``pool=None`` so
+the new optional kwarg doesn't break signature equivalence.
+
+
 
 `casino.services.{table,game,bank}` and the
 yahtzee/tictactoe services (`casino.yahtzee.service.YahtzeeService`,

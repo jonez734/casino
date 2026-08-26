@@ -264,7 +264,7 @@ class TestQuickPlay:
              patch("casino.tictactoe.service.dal_game", dg), \
              patch("casino.tictactoe.service.database", dbconn), pytest.raises(ValueError):
             s.quick_play("alice", mode=1)
-        dg.update_game_status.assert_called_once_with(s.args, 42, "cancelled")
+        dg.update_game_status.assert_called_once_with(s.args, 42, "cancelled", pool=None)
         assert s.get_game("ttt-alice") is None
 
 

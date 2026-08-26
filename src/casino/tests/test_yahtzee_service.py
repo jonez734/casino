@@ -174,7 +174,7 @@ class TestQuickPlay:
              patch("casino.yahtzee.service.dal_game", dg), \
              patch("casino.yahtzee.service.database", dbconn), pytest.raises(ValueError):
             s.quick_play("alice")
-        dg.update_game_status.assert_called_once_with(s.args, 42, "cancelled")
+        dg.update_game_status.assert_called_once_with(s.args, 42, "cancelled", pool=None)
         assert s.get_game("yahtzee-alice") is None
 
 
@@ -356,9 +356,9 @@ class TestDisconnectCleanup:
                 result = s.finalize_on_disconnect("yahtzee-alice")
                 assert result is True
                 db.settle_bet.assert_called_once_with(
-                    s.args, bet_id=7, won=False, payout=0,
+                    s.args, bet_id=7, won=False, payout=0, pool=None,
                 )
-                dg.update_game_status.assert_called_once_with(s.args, 42, "cancelled")
+                dg.update_game_status.assert_called_once_with(s.args, 42, "cancelled", pool=None)
                 assert s.get_game("yahtzee-alice") is None
         finally:
             _stop_patches(s)

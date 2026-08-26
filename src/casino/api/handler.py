@@ -1061,6 +1061,7 @@ class ChatServiceHandler(BaseService):
         token_store: Any = None,
         instance_id: Optional[str] = None,
         clock: Any = None,
+        pool: Any = None,
     ) -> None:
         super().__init__(
             args,
@@ -1153,6 +1154,7 @@ class SlotServiceHandler(BaseService):
         token_store: Any = None,
         instance_id: Optional[str] = None,
         clock: Any = None,
+        pool: Any = None,
     ) -> None:
         super().__init__(
             args,

@@ -246,7 +246,7 @@ class TestFullGameScenario(unittest.TestCase):
             self.assertIsNone(s.get_game("yahtzee-alice"))
             # Game status moved to "closed"
             dg.update_game_status.assert_called_once_with(
-                s.args, 42, "closed"
+                s.args, 42, "closed", pool=None
             )
 
             # Final scorecard: every category filled (no None)
@@ -586,10 +586,10 @@ class TestDisconnectAndFinalize(unittest.TestCase):
             result = s.finalize_on_disconnect("yahtzee-alice")
             self.assertTrue(result)
             db.settle_bet.assert_called_once_with(
-                s.args, bet_id=7, won=False, payout=0,
+                s.args, bet_id=7, won=False, payout=0, pool=None,
             )
             dg.update_game_status.assert_called_once_with(
-                s.args, 42, "cancelled",
+                s.args, 42, "cancelled", pool=None,
             )
             self.assertIsNone(s.get_game("yahtzee-alice"))
 
