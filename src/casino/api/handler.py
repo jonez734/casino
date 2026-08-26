@@ -25,6 +25,20 @@ from casino.tictactoe.api_handler import TictactoeServiceHandler
 from casino.yahtzee.api_handler import YahtzeeServiceHandler
 
 
+def _resolve_pool(args: Any) -> Any:
+    """Resolve a connection pool per CONN_POOL_PATTERN.
+
+    Prefers ``args.pool`` (set at bed startup) and falls back to
+    ``database.getpool(args)`` so the daemon always owns the pool.
+    Mirrors the resolution shape in
+    ``casino.services.player.PlayerService._pool``.
+    """
+    pool = getattr(args, "pool", None)
+    if pool is not None:
+        return pool
+    return database.getpool(args)
+
+
 class CasinoSessionManager(SessionManager):
     """Extends base SessionManager with table/spectator tracking.
 
@@ -252,6 +266,7 @@ class TableServiceHandler(BaseService):
         token_store: Any = None,
         instance_id: Optional[str] = None,
         clock: Any = None,
+        pool: Any = None,
     ) -> None:
         super().__init__(
             args,
@@ -261,8 +276,9 @@ class TableServiceHandler(BaseService):
             instance_id=instance_id,
             clock=clock,
         )
-        self.table_service = self.TableService(args)
+        self.table_service = self.TableService(args, pool=pool)
         self.channel_state = channel_state
+        self._pool = pool
 
     async def handle_message(
         self, server: Any, websocket: Any, path: str, message: dict[str, Any]
@@ -468,10 +484,11 @@ class TableServiceHandler(BaseService):
         # cannot take a second seat. Multi-player is v2.
         from casino.dal import table as dal_table_join
 
-        table = dal_table_join.get_table(self.args, table_moniker)
+        table = dal_table_join.get_table(self.args, table_moniker, pool=self._pool)
         if table and table.get("type") == "slots":
             try:
-                with database.connect(self.args) as conn, database.cursor(conn) as cur:
+                connect_cm = database.connect(self.args, pool=self._pool) if self._pool is not None else database.connect(self.args)
+                with connect_cm as conn, database.cursor(conn) as cur:
                     cur.execute(
                         database.query(
                             "SELECT COUNT(DISTINCT playermoniker) AS n "
@@ -561,13 +578,13 @@ class TableServiceHandler(BaseService):
             return {"type": "error", "code": "invalid_request", "message": "table_monikers required"}
 
         if "all" in [t.lower() for t in table_monikers]:
-            table_monikers = await async_dal_table.get_player_tables(self.args, player_moniker)
+            table_monikers = await async_dal_table.get_player_tables(self.args, player_moniker, pool=self._pool)
 
         kicked_tables = []
         errors = []
 
         for table_moniker in table_monikers:
-            table = await async_dal_table.get_table(self.args, table_moniker)
+            table = await async_dal_table.get_table(self.args, table_moniker, pool=self._pool)
             if not table:
                 errors.append(f"Table not found: {table_moniker}")
                 continue
@@ -582,7 +599,7 @@ class TableServiceHandler(BaseService):
                 errors.append(f"Permission denied for table: {table_moniker}")
                 continue
 
-            removed = await async_dal_table.remove_player_from_table(self.args, table_moniker, player_moniker)
+            removed = await async_dal_table.remove_player_from_table(self.args, table_moniker, player_moniker, pool=self._pool)
             if removed:
                 kicked_tables.append(table_moniker)
                 try:
@@ -626,7 +643,7 @@ class TableServiceHandler(BaseService):
             return {"type": "error", "code": "invalid_request", "message": "moniker required"}
 
         try:
-            table = await async_dal_table.get_table(self.args, table_moniker)
+            table = await async_dal_table.get_table(self.args, table_moniker, pool=self._pool)
         except Exception as e:
             io.echo(f"_handle_watch_table error: {e}", level="error")
             return {"type": "error", "code": "service_error", "message": str(e)}
@@ -766,6 +783,7 @@ class GameServiceHandler(BaseService):
         token_store: Any = None,
         instance_id: Optional[str] = None,
         clock: Any = None,
+        pool: Any = None,
     ) -> None:
         super().__init__(
             args,
@@ -775,7 +793,7 @@ class GameServiceHandler(BaseService):
             instance_id=instance_id,
             clock=clock,
         )
-        self.game_service = self.GameService(args)
+        self.game_service = self.GameService(args, pool=pool)
 
     async def handle_message(
         self, server: Any, websocket: Any, path: str, message: dict[str, Any]
@@ -904,6 +922,7 @@ class BetServiceHandler(BaseService):
         token_store: Any = None,
         instance_id: Optional[str] = None,
         clock: Any = None,
+        pool: Any = None,
     ) -> None:
         super().__init__(
             args,
@@ -913,7 +932,7 @@ class BetServiceHandler(BaseService):
             instance_id=instance_id,
             clock=clock,
         )
-        self.game_service = self.GameService(args)
+        self.game_service = self.GameService(args, pool=pool)
 
     async def handle_message(
         self, server: Any, websocket: Any, path: str, message: dict[str, Any]
@@ -1459,6 +1478,13 @@ class MessageRouter:
             instance_id=instance_id,
             clock=clock,
         )
+
+        # CONN_POOL_PATTERN: resolve a single pool at daemon startup and
+        # thread it into every handler that owns a DB-touching service.
+        # Mirrors the resolution shape in
+        # casino.services.player.PlayerService._pool.
+        pool = _resolve_pool(args)
+        token_kwargs["pool"] = pool
 
         # Create services
         self.auth_service = AuthService(args, self.sessions, self.channel_state)

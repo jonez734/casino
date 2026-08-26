@@ -34,14 +34,18 @@ AI_X = "AI_X"
 AI_O = "AI_O"
 
 
-def _default_find_table(args: Any, player_moniker: str) -> dict | None:
+def _default_find_table(args: Any, player_moniker: str, *, pool: Any = None) -> dict | None:
     """Look up the player's existing open tictactoe table, if any.
 
     Mirrors yahtzee/service.py:_default_find_table: a direct SQL
     query because dal_table.list_tables does not support owner
     filtering and we want a fast path.
+
+    Args:
+        pool: Optional connection pool (CONN_POOL_PATTERN)
     """
-    with database.connect(args) as conn, database.cursor(conn) as cur:
+    connect_cm = database.connect(args, pool=pool) if pool is not None else database.connect(args)
+    with connect_cm as conn, database.cursor(conn) as cur:
         cur.execute(
             database.query(
                 """SELECT moniker, type, minimumbet, maximumbet, ownermoniker,
@@ -154,15 +158,21 @@ class TictactoeService:
         dealer: TictactoeDealer | None = None,
         table_service: TableService | None = None,
         find_table_fn: Any | None = None,
+        *,
+        pool: Any = None,
     ) -> None:
         self.args = args
+        self._pool = pool
         self._games: dict[str, TictactoeGame] = {}
-        self._table_service = table_service if table_service is not None else TableService(args)
+        self._table_service = (
+            table_service if table_service is not None
+            else TableService(args, pool=pool)
+        )
         self._dealer = dealer if dealer is not None else TictactoeDealer()
         self._find_table_fn = find_table_fn if find_table_fn is not None else _default_find_table
 
     def _ensure_table(self, player_moniker: str) -> dict:
-        existing = self._find_table_fn(self.args, player_moniker)
+        existing = self._find_table_fn(self.args, player_moniker, pool=self._pool)
         if existing is not None:
             return existing
         result = self._table_service.create_table(
@@ -216,7 +226,7 @@ class TictactoeService:
         else:  # mode == 2
             players = [player_moniker, "__awaiting_opponent__"]
 
-        game_row = dal_game.create_game(self.args, table_moniker, "tictactoe")
+        game_row = dal_game.create_game(self.args, table_moniker, "tictactoe", pool=self._pool)
         game_id = int(game_row["id"])
 
         try:
@@ -227,9 +237,10 @@ class TictactoeService:
                 game_id=game_id,
                 amount=bet_amount,
                 notes=f"tictactoe_v1_mode{mode}",
+                pool=self._pool,
             )
         except Exception:
-            dal_game.update_game_status(self.args, game_id, "cancelled")
+            dal_game.update_game_status(self.args, game_id, "cancelled", pool=self._pool)
             raise
 
         bet_id = int(bet_row["id"])
@@ -442,8 +453,9 @@ class TictactoeService:
                 "bet_amount": int(game.bet_amount),
                 "net": int(payout_amount - game.bet_amount),
             },
+            pool=self._pool,
         )
-        dal_game.update_game_status(self.args, game.game_id, "closed")
+        dal_game.update_game_status(self.args, game.game_id, "closed", pool=self._pool)
         result = game.result_dict(payout_amount=payout_amount, new_balance=new_balance)
         result["type"] = "tictactoe_result"
         self._games.pop(game.table_moniker, None)
@@ -459,13 +471,15 @@ class TictactoeService:
                 bet_id=game.bet_id,
                 won=(payout_amount > 0),
                 payout=payout_amount,
+                pool=self._pool,
             )
         except Exception:
             return 0
         # Look up the new balance; if the player row is missing in the
         # test mock, return 0.
         try:
-            with database.connect(self.args) as conn, database.cursor(conn) as cur:
+            connect_cm = database.connect(self.args, pool=self._pool) if self._pool is not None else database.connect(self.args)
+            with connect_cm as conn, database.cursor(conn) as cur:
                 cur.execute(
                     database.query(
                         "SELECT credits FROM $engine.__member WHERE moniker = :m",
@@ -489,7 +503,8 @@ class TictactoeService:
             "moves_played": game.moves_played,
         }
         try:
-            with database.connect(self.args) as conn, database.cursor(conn) as cur:
+            connect_cm = database.connect(self.args, pool=self._pool) if self._pool is not None else database.connect(self.args)
+            with connect_cm as conn, database.cursor(conn) as cur:
                 cur.execute(
                     database.query(
                         """INSERT INTO $casino.__log

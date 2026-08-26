@@ -25,13 +25,17 @@ from . import lib
 from .dealer import YahtzeeDealer
 
 
-def _default_find_table(args: Any, player_moniker: str) -> dict | None:
+def _default_find_table(args: Any, player_moniker: str, *, pool: Any = None) -> dict | None:
     """Look up the player's existing open yahtzee table, if any.
 
     Uses a direct SQL query because dal_table.list_tables does
     not support owner filtering and we want a fast path.
+
+    Args:
+        pool: Optional connection pool (CONN_POOL_PATTERN)
     """
-    with database.connect(args) as conn, database.cursor(conn) as cur:
+    connect_cm = database.connect(args, pool=pool) if pool is not None else database.connect(args)
+    with connect_cm as conn, database.cursor(conn) as cur:
         cur.execute(
             database.query(
                 """SELECT moniker, type, minimumbet, maximumbet, ownermoniker,
@@ -114,10 +118,16 @@ class YahtzeeService:
         dealer: YahtzeeDealer | None = None,
         table_service: TableService | None = None,
         find_table_fn: Any | None = None,
+        *,
+        pool: Any = None,
     ) -> None:
         self.args = args
+        self._pool = pool
         self._games: dict[str, YahtzeeGame] = {}
-        self._table_service = table_service if table_service is not None else TableService(args)
+        self._table_service = (
+            table_service if table_service is not None
+            else TableService(args, pool=pool)
+        )
         self._dealer = dealer if dealer is not None else YahtzeeDealer()
         self._find_table_fn = find_table_fn if find_table_fn is not None else _default_find_table
 
@@ -128,7 +138,7 @@ class YahtzeeService:
         ``player_moniker``; if found, returns it. Otherwise creates
         a new hidden one.
         """
-        existing = self._find_table_fn(self.args, player_moniker)
+        existing = self._find_table_fn(self.args, player_moniker, pool=self._pool)
         if existing is not None:
             return existing
 
@@ -171,7 +181,7 @@ class YahtzeeService:
         if existing_game is not None and not existing_game.is_over:
             return existing_game.state_dict()
 
-        game_row = dal_game.create_game(self.args, table_moniker, "yahtzee")
+        game_row = dal_game.create_game(self.args, table_moniker, "yahtzee", pool=self._pool)
         game_id = int(game_row["id"])
 
         try:
@@ -182,9 +192,10 @@ class YahtzeeService:
                 game_id=game_id,
                 amount=bet_amount,
                 notes="yahtzee_v1",
+                pool=self._pool,
             )
         except Exception:
-            dal_game.update_game_status(self.args, game_id, "cancelled")
+            dal_game.update_game_status(self.args, game_id, "cancelled", pool=self._pool)
             raise
 
         bet_id = int(bet_row["id"])
@@ -252,6 +263,7 @@ class YahtzeeService:
             bet_id=game.bet_id,
             won=(net > 0),
             payout=net,
+            pool=self._pool,
         )
 
         game.scorecard[category] = value
@@ -272,8 +284,9 @@ class YahtzeeService:
                     "bet_amount": int(game.bet_amount),
                     "net": int(net),
                 },
+                pool=self._pool,
             )
-            dal_game.update_game_status(self.args, game.game_id, "closed")
+            dal_game.update_game_status(self.args, game.game_id, "closed", pool=self._pool)
             result = game.result_dict()
             self._games.pop(table_moniker, None)
             result["type"] = "yahtzee_result"
@@ -297,8 +310,9 @@ class YahtzeeService:
                 bet_id=game.bet_id,
                 won=False,
                 payout=0,
+                pool=self._pool,
             )
-            dal_game.update_game_status(self.args, game.game_id, "cancelled")
+            dal_game.update_game_status(self.args, game.game_id, "cancelled", pool=self._pool)
         finally:
             self._games.pop(table_moniker, None)
         return True
@@ -327,7 +341,8 @@ class YahtzeeService:
             "net": net,
             "rake": 0,
         }
-        with database.connect(self.args) as conn, database.cursor(conn) as cur:
+        connect_cm = database.connect(self.args, pool=self._pool) if self._pool is not None else database.connect(self.args)
+        with connect_cm as conn, database.cursor(conn) as cur:
             cur.execute(
                 database.query(
                     """INSERT INTO $casino.__log

@@ -72,10 +72,13 @@ class YahtzeeServiceHandler:
         token_store: Any = None,
         instance_id: Optional[str] = None,
         clock: Any = None,
+        pool: Any = None,
     ) -> None:
         self.args = args
         self.sessions = sessions
-        self._service = service if service is not None else YahtzeeService(args)
+        self._service = (
+            service if service is not None else YahtzeeService(args, pool=pool)
+        )
         self.secret = bytes(secret) if secret else None
         self.token_store = token_store
         self.instance_id = str(instance_id) if instance_id else None

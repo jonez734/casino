@@ -21,8 +21,9 @@ class GameService:
     SUITS = ["H", "D", "S", "C"]
     PIPS = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"]
 
-    def __init__(self, args: Any):
+    def __init__(self, args: Any, *, pool: Any = None):
         self.args = args
+        self._pool = pool
         self._shoes: dict[str, dict[str, Any]] = {}  # table_moniker -> shoe state
 
     def _create_shoe(self, decks: int = 6) -> list[str]:
@@ -44,7 +45,7 @@ class GameService:
                 return shoe
 
         # Load from database or create new
-        table = dal_table.get_table(self.args, table_moniker)
+        table = dal_table.get_table(self.args, table_moniker, pool=self._pool)
         if not table:
             raise ValueError(f"Table {table_moniker} not found")
 
@@ -70,7 +71,7 @@ class GameService:
         if table_moniker not in self._shoes:
             return
         shoe = self._shoes[table_moniker]
-        dal_table.update_shoe(self.args, table_moniker, shoe["cards"], shoe["uses"])
+        dal_table.update_shoe(self.args, table_moniker, shoe["cards"], shoe["uses"], pool=self._pool)
 
     def _draw_card(self, table_moniker: str) -> str:
         """Draw a card from the table's shoe."""
@@ -111,11 +112,11 @@ class GameService:
 
     def start_game(self, table_moniker: str, game_type: str = "blackjack") -> dict[str, Any]:
         """Start a new game at a table."""
-        table = dal_table.get_table(self.args, table_moniker)
+        table = dal_table.get_table(self.args, table_moniker, pool=self._pool)
         if not table:
             return {"success": False, "message": "Table not found"}
 
-        game = dal_game.create_game(self.args, table_moniker, game_type)
+        game = dal_game.create_game(self.args, table_moniker, game_type, pool=self._pool)
 
         return {
             "success": True,
@@ -130,7 +131,7 @@ class GameService:
         amount: int,
     ) -> dict[str, Any]:
         """Place a bet and create player hand."""
-        table = dal_table.get_table(self.args, table_moniker)
+        table = dal_table.get_table(self.args, table_moniker, pool=self._pool)
         if not table:
             return {"success": False, "message": "Table not found"}
 
@@ -145,30 +146,31 @@ class GameService:
                 "message": f"Bet cannot exceed {table['maximumbet']}",
             }
 
-        game = dal_game.get_active_game(self.args, table_moniker)
+        game = dal_game.get_active_game(self.args, table_moniker, pool=self._pool)
         io.echo(f"place_bet: get_active_game returned: {game}", level="info")
         if not game:
             game_data = self.start_game(table_moniker)
             if not game_data["success"]:
                 return game_data
-            game = dal_game.get_active_game(self.args, table_moniker)
+            game = dal_game.get_active_game(self.args, table_moniker, pool=self._pool)
 
         try:
             bet = dal_bet.place_bet(
-                self.args, player_moniker, table_moniker, game["id"], amount
+                self.args, player_moniker, table_moniker, game["id"], amount,
+                pool=self._pool,
             )
         except ValueError as e:
             return {"success": False, "message": str(e)}
 
-        hand = dal_game.create_hand(self.args, game["id"], player_moniker)
+        hand = dal_game.create_hand(self.args, game["id"], player_moniker, pool=self._pool)
 
         cards = [self._draw_card(table_moniker), self._draw_card(table_moniker)]
-        dal_game.update_hand_cards(self.args, hand["id"], cards)
+        dal_game.update_hand_cards(self.args, hand["id"], cards, pool=self._pool)
 
-        dal_bet.update_bet_hand_id(self.args, bet["id"], hand["id"])
+        dal_bet.update_bet_hand_id(self.args, bet["id"], hand["id"], pool=self._pool)
 
         currenthand = ", ".join(cards)
-        dal_bet.update_bet_currenthand(self.args, bet["id"], currenthand)
+        dal_bet.update_bet_currenthand(self.args, bet["id"], currenthand, pool=self._pool)
 
         return {
             "success": True,
@@ -181,21 +183,21 @@ class GameService:
 
     def hit(self, table_moniker: str, player_moniker: str) -> dict[str, Any]:
         """Player hits (takes another card)."""
-        game = dal_game.get_active_game(self.args, table_moniker)
+        game = dal_game.get_active_game(self.args, table_moniker, pool=self._pool)
         if not game:
             return {"success": False, "message": "No active game"}
 
-        hand = dal_game.get_player_hand(self.args, game["id"], player_moniker)
+        hand = dal_game.get_player_hand(self.args, game["id"], player_moniker, pool=self._pool)
         if not hand:
             return {"success": False, "message": "No hand found"}
 
         cards = list(hand["cards"])
         cards.append(self._draw_card(table_moniker))
-        dal_game.update_hand_cards(self.args, hand["id"], cards)
+        dal_game.update_hand_cards(self.args, hand["id"], cards, pool=self._pool)
 
         total = self._hand_value(cards)
 
-        table = dal_table.get_table(self.args, table_moniker)
+        table = dal_table.get_table(self.args, table_moniker, pool=self._pool)
         attrs = table.get("attrs", {}) or {} if table else {}
         charlie_enabled = attrs.get("charlie", False)
 
@@ -203,9 +205,9 @@ class GameService:
 
         if status != "bust" and charlie_enabled and len(cards) >= 5:
             status = "charlie"
-            dal_game.update_hand_status(self.args, hand["id"], "charlie")
+            dal_game.update_hand_status(self.args, hand["id"], "charlie", pool=self._pool)
         elif status == "bust":
-            dal_game.update_hand_status(self.args, hand["id"], "bust")
+            dal_game.update_hand_status(self.args, hand["id"], "bust", pool=self._pool)
 
         return {
             "success": True,
@@ -217,11 +219,11 @@ class GameService:
 
     def stand(self, table_moniker: str, player_moniker: str) -> dict[str, Any]:
         """Player stands (ends turn)."""
-        game = dal_game.get_active_game(self.args, table_moniker)
+        game = dal_game.get_active_game(self.args, table_moniker, pool=self._pool)
         if not game:
             return {"success": False, "message": "No active game"}
 
-        hand = dal_game.get_player_hand(self.args, game["id"], player_moniker)
+        hand = dal_game.get_player_hand(self.args, game["id"], player_moniker, pool=self._pool)
         if not hand:
             return {"success": False, "message": "No hand found"}
 
@@ -240,11 +242,11 @@ class GameService:
         """Player surrenders - forfeit 50% of bet."""
         from casino.dal import bet as dal_bet
 
-        game = dal_game.get_active_game(self.args, table_moniker)
+        game = dal_game.get_active_game(self.args, table_moniker, pool=self._pool)
         if not game:
             return {"success": False, "message": "No active game"}
 
-        table = dal_table.get_table(self.args, table_moniker)
+        table = dal_table.get_table(self.args, table_moniker, pool=self._pool)
         if not table:
             return {"success": False, "message": "Table not found"}
 
@@ -254,7 +256,7 @@ class GameService:
         if not surrender_rule:
             return {"success": False, "message": "Surrender not allowed at this table"}
 
-        hand = dal_game.get_player_hand(self.args, game["id"], player_moniker)
+        hand = dal_game.get_player_hand(self.args, game["id"], player_moniker, pool=self._pool)
         if not hand:
             return {"success": False, "message": "No hand found"}
 
@@ -271,7 +273,7 @@ class GameService:
         if not hand_id:
             return {"success": False, "message": "Hand not found"}
 
-        bet = dal_bet.get_bet_for_hand(self.args, hand_id)
+        bet = dal_bet.get_bet_for_hand(self.args, hand_id, pool=self._pool)
         if not bet:
             return {"success": False, "message": "No bet found"}
 
@@ -280,9 +282,9 @@ class GameService:
             return {"success": False, "message": "Surrender not allowed at this table"}
 
         surrender_amount = int(bet["amount"] * surrender_multiplier)
-        dal_bet.settle_bet(self.args, bet["id"], True, surrender_amount)
+        dal_bet.settle_bet(self.args, bet["id"], True, surrender_amount, pool=self._pool)
 
-        dal_game.update_hand_attrs(self.args, hand_id, {"status": "surrendered"})
+        dal_game.update_hand_attrs(self.args, hand_id, {"status": "surrendered"}, pool=self._pool)
 
         dal_game.update_game_attrs(
             self.args, game["id"],
@@ -291,6 +293,7 @@ class GameService:
                 "bet_amount": int(bet["amount"]),
                 "net": -(int(bet["amount"]) - surrender_amount),
             },
+            pool=self._pool,
         )
 
         return {
@@ -303,11 +306,11 @@ class GameService:
 
     def can_surrender(self, table_moniker: str, player_moniker: str) -> dict[str, Any]:
         """Check if player can surrender."""
-        game = dal_game.get_active_game(self.args, table_moniker)
+        game = dal_game.get_active_game(self.args, table_moniker, pool=self._pool)
         if not game:
             return {"success": False, "can_surrender": False}
 
-        table = dal_table.get_table(self.args, table_moniker)
+        table = dal_table.get_table(self.args, table_moniker, pool=self._pool)
         if not table:
             return {"success": False, "can_surrender": False}
 
@@ -317,7 +320,7 @@ class GameService:
         if not surrender_rule:
             return {"success": True, "can_surrender": False}
 
-        hand = dal_game.get_player_hand(self.args, game["id"], player_moniker)
+        hand = dal_game.get_player_hand(self.args, game["id"], player_moniker, pool=self._pool)
         if not hand:
             return {"success": True, "can_surrender": False}
 
@@ -334,14 +337,14 @@ class GameService:
 
     def can_split(self, table_moniker: str, player_moniker: str, hand_id: Optional[int] = None) -> dict[str, Any]:
         """Check if player can split their hand."""
-        game = dal_game.get_active_game(self.args, table_moniker)
+        game = dal_game.get_active_game(self.args, table_moniker, pool=self._pool)
         if not game:
             return {"success": False, "message": "No active game"}
 
         from casino.dal import bet as dal_bet
 
         if hand_id is not None:
-            hand = dal_game.get_hand(self.args, hand_id)
+            hand = dal_game.get_hand(self.args, hand_id, pool=self._pool)
             if not hand:
                 return {"success": False, "message": "Hand not found"}
 
@@ -359,7 +362,7 @@ class GameService:
             if split_count >= 3:
                 return {"success": False, "message": "Maximum splits reached (4 hands max)"}
 
-            player_bet = dal_bet.get_bet_for_hand(self.args, hand_id)
+            player_bet = dal_bet.get_bet_for_hand(self.args, hand_id, pool=self._pool)
             if not player_bet:
                 return {"success": False, "message": "No bet found"}
 
@@ -374,7 +377,7 @@ class GameService:
                 "bet_amount": player_bet["amount"],
             }
 
-        hands = dal_game.get_player_hands(self.args, game["id"], player_moniker)
+        hands = dal_game.get_player_hands(self.args, game["id"], player_moniker, pool=self._pool)
         if not hands:
             return {"success": False, "message": "No hand found"}
 
@@ -390,7 +393,7 @@ class GameService:
         if card1_rank != card2_rank:
             return {"success": False, "message": "Cards must have same rank to split"}
 
-        player_bet = dal_bet.get_player_bet_for_game(self.args, game["id"], player_moniker)
+        player_bet = dal_bet.get_player_bet_for_game(self.args, game["id"], player_moniker, pool=self._pool)
         if not player_bet:
             return {"success": False, "message": "No bet found"}
 
@@ -411,21 +414,21 @@ class GameService:
         if not can_split["success"]:
             return can_split
 
-        game = dal_game.get_active_game(self.args, table_moniker)
+        game = dal_game.get_active_game(self.args, table_moniker, pool=self._pool)
         if not game:
             return {"success": False, "message": "No active game"}
 
         if hand_id is not None:
-            hand = dal_game.get_hand(self.args, hand_id)
+            hand = dal_game.get_hand(self.args, hand_id, pool=self._pool)
             if not hand:
                 return {"success": False, "message": "Hand not found"}
-            player_bet = dal_bet.get_bet_for_hand(self.args, hand_id)
+            player_bet = dal_bet.get_bet_for_hand(self.args, hand_id, pool=self._pool)
         else:
-            hands = dal_game.get_player_hands(self.args, game["id"], player_moniker)
+            hands = dal_game.get_player_hands(self.args, game["id"], player_moniker, pool=self._pool)
             if not hands:
                 return {"success": False, "message": "No hand found"}
             hand = hands[0]
-            player_bet = dal_bet.get_player_bet_for_game(self.args, game["id"], player_moniker)
+            player_bet = dal_bet.get_player_bet_for_game(self.args, game["id"], player_moniker, pool=self._pool)
 
         cards = list(hand["cards"]) if hand["cards"] else []
 
@@ -435,7 +438,8 @@ class GameService:
         bet_amount = player_bet["amount"]
 
         from bbsengine6 import database
-        with database.connect(self.args) as conn, database.cursor(conn) as cur:
+        connect_cm = database.connect(self.args, pool=self._pool) if self._pool is not None else database.connect(self.args)
+        with connect_cm as conn, database.cursor(conn) as cur:
             cur.execute(
                 database.query(
                     "UPDATE $engine.__member SET credits = credits - :amount WHERE moniker = :player_moniker",
@@ -452,30 +456,31 @@ class GameService:
         hand1_cards = [card1, self._draw_card(table_moniker)]
         hand2_cards = [card2, self._draw_card(table_moniker)]
 
-        dal_game.update_hand_cards(self.args, hand["id"], hand1_cards)
+        dal_game.update_hand_cards(self.args, hand["id"], hand1_cards, pool=self._pool)
 
         new_attrs1 = {"split_count": split_count + 1}
-        dal_game.update_hand_attrs(self.args, hand["id"], new_attrs1)
+        dal_game.update_hand_attrs(self.args, hand["id"], new_attrs1, pool=self._pool)
 
-        hand2 = dal_game.create_hand(self.args, game["id"], player_moniker + f"_split_{split_count + 2}")
-        dal_game.update_hand_cards(self.args, hand2["id"], hand2_cards)
+        hand2 = dal_game.create_hand(self.args, game["id"], player_moniker + f"_split_{split_count + 2}", pool=self._pool)
+        dal_game.update_hand_cards(self.args, hand2["id"], hand2_cards, pool=self._pool)
 
         new_attrs2 = {"split_count": split_count + 1}
-        dal_game.update_hand_attrs(self.args, hand2["id"], new_attrs2)
+        dal_game.update_hand_attrs(self.args, hand2["id"], new_attrs2, pool=self._pool)
 
-        dal_game.update_hand_status(self.args, hand["id"], f"split_{split_count + 1}")
-        dal_game.update_hand_status(self.args, hand2["id"], f"split_{split_count + 2}")
+        dal_game.update_hand_status(self.args, hand["id"], f"split_{split_count + 1}", pool=self._pool)
+        dal_game.update_hand_status(self.args, hand2["id"], f"split_{split_count + 2}", pool=self._pool)
 
-        dal_bet.update_bet_hand_id(self.args, player_bet["id"], hand["id"])
+        dal_bet.update_bet_hand_id(self.args, player_bet["id"], hand["id"], pool=self._pool)
 
         split_bet = dal_bet.place_split_bet(
-            self.args, player_moniker, table_moniker, game["id"], bet_amount, hand_id=hand2["id"]
+            self.args, player_moniker, table_moniker, game["id"], bet_amount,
+            hand_id=hand2["id"], pool=self._pool,
         )
 
         currenthand1 = ", ".join(hand1_cards)
         currenthand2 = ", ".join(hand2_cards)
-        dal_bet.update_bet_currenthand(self.args, player_bet["id"], currenthand1)
-        dal_bet.update_bet_currenthand(self.args, split_bet["id"], currenthand2)
+        dal_bet.update_bet_currenthand(self.args, player_bet["id"], currenthand1, pool=self._pool)
+        dal_bet.update_bet_currenthand(self.args, split_bet["id"], currenthand2, pool=self._pool)
 
         io.echo(f"split: hand1={hand1_cards}, hand2={hand2_cards}", level="info")
 
@@ -498,16 +503,16 @@ class GameService:
 
     def can_double(self, table_moniker: str, player_moniker: str, hand_id: Optional[int] = None) -> dict[str, Any]:
         """Check if player can double down."""
-        game = dal_game.get_active_game(self.args, table_moniker)
+        game = dal_game.get_active_game(self.args, table_moniker, pool=self._pool)
         if not game:
             return {"success": False, "message": "No active game"}
 
         if hand_id is not None:
-            player_bet = dal_bet.get_bet_for_hand(self.args, hand_id)
+            player_bet = dal_bet.get_bet_for_hand(self.args, hand_id, pool=self._pool)
             if not player_bet:
                 return {"success": False, "message": "No bet found for hand"}
 
-            hand = dal_game.get_hand(self.args, hand_id)
+            hand = dal_game.get_hand(self.args, hand_id, pool=self._pool)
             if not hand:
                 return {"success": False, "message": "Hand not found"}
 
@@ -526,7 +531,7 @@ class GameService:
                 "additional_cost": player_bet["amount"],
             }
 
-        hands = dal_game.get_player_hands(self.args, game["id"], player_moniker)
+        hands = dal_game.get_player_hands(self.args, game["id"], player_moniker, pool=self._pool)
         if not hands:
             return {"success": False, "message": "No hand found"}
 
@@ -536,7 +541,7 @@ class GameService:
         if len(cards) != 2:
             return {"success": False, "message": "Can only double with exactly 2 cards"}
 
-        player_bet = dal_bet.get_player_bet_for_game(self.args, game["id"], player_moniker)
+        player_bet = dal_bet.get_player_bet_for_game(self.args, game["id"], player_moniker, pool=self._pool)
         if not player_bet:
             return {"success": False, "message": "No bet found"}
 
@@ -554,7 +559,8 @@ class GameService:
     def _get_player_balance(self, player_moniker: str) -> int:
         """Get player's credit balance."""
         from bbsengine6 import database
-        with database.connect(self.args) as conn, database.cursor(conn) as cur:
+        connect_cm = database.connect(self.args, pool=self._pool) if self._pool is not None else database.connect(self.args)
+        with connect_cm as conn, database.cursor(conn) as cur:
             cur.execute(
                 database.query(
                     "SELECT credits FROM $engine.__member WHERE moniker = :player_moniker",
@@ -572,24 +578,24 @@ class GameService:
         if not can_double["success"]:
             return can_double
 
-        game = dal_game.get_active_game(self.args, table_moniker)
+        game = dal_game.get_active_game(self.args, table_moniker, pool=self._pool)
         if not game:
             return {"success": False, "message": "No active game"}
 
         if hand_id is not None:
-            player_bet = dal_bet.get_bet_for_hand(self.args, hand_id)
+            player_bet = dal_bet.get_bet_for_hand(self.args, hand_id, pool=self._pool)
             if not player_bet:
                 return {"success": False, "message": "No bet found for hand"}
 
-            hand = dal_game.get_hand(self.args, hand_id)
+            hand = dal_game.get_hand(self.args, hand_id, pool=self._pool)
             if not hand:
                 return {"success": False, "message": "Hand not found"}
         else:
-            hands = dal_game.get_player_hands(self.args, game["id"], player_moniker)
+            hands = dal_game.get_player_hands(self.args, game["id"], player_moniker, pool=self._pool)
             if not hands:
                 return {"success": False, "message": "No hand found"}
             hand = hands[0]
-            player_bet = dal_bet.get_player_bet_for_game(self.args, game["id"], player_moniker)
+            player_bet = dal_bet.get_player_bet_for_game(self.args, game["id"], player_moniker, pool=self._pool)
 
         cards = list(hand["cards"]) if hand["cards"] else []
 
@@ -599,7 +605,8 @@ class GameService:
         bet_amount = player_bet["amount"]
 
         from bbsengine6 import database
-        with database.connect(self.args) as conn, database.cursor(conn) as cur:
+        connect_cm = database.connect(self.args, pool=self._pool) if self._pool is not None else database.connect(self.args)
+        with connect_cm as conn, database.cursor(conn) as cur:
             cur.execute(
                 database.query(
                     "UPDATE $engine.__member SET credits = credits - :amount WHERE moniker = :player_moniker",
@@ -607,20 +614,20 @@ class GameService:
                 )
             )
 
-        dal_bet.double_bet(self.args, player_bet["id"], bet_amount * 2)
+        dal_bet.double_bet(self.args, player_bet["id"], bet_amount * 2, pool=self._pool)
 
         new_card = self._draw_card(table_moniker)
         cards.append(new_card)
-        dal_game.update_hand_cards(self.args, hand["id"], cards)
+        dal_game.update_hand_cards(self.args, hand["id"], cards, pool=self._pool)
 
         total = self._hand_value(cards)
         status = "bust" if total > 21 else "standing"
 
         if status == "bust":
-            dal_game.update_hand_status(self.args, hand["id"], "bust")
+            dal_game.update_hand_status(self.args, hand["id"], "bust", pool=self._pool)
 
         currenthand = ", ".join(cards)
-        dal_bet.update_bet_currenthand(self.args, player_bet["id"], currenthand)
+        dal_bet.update_bet_currenthand(self.args, player_bet["id"], currenthand, pool=self._pool)
 
         io.echo(f"double: {cards}, total={total}, status={status}", level="info")
 
@@ -637,11 +644,11 @@ class GameService:
     def get_game_state(self, table_moniker: str, player_moniker: str) -> dict[str, Any]:
         """Get current game state for a player."""
         io.echo(f"get_game_state: table_moniker={table_moniker}, player={player_moniker}", level="info")
-        table = dal_table.get_table(self.args, table_moniker)
+        table = dal_table.get_table(self.args, table_moniker, pool=self._pool)
         if not table:
             return {"error": "Table not found"}
 
-        game = dal_game.get_current_game(self.args, table_moniker)
+        game = dal_game.get_current_game(self.args, table_moniker, pool=self._pool)
         if not game:
             return {
                 "table_moniker": table_moniker,
@@ -652,20 +659,20 @@ class GameService:
                 "insurance_taken": 0,
             }
 
-        hands = dal_game.get_player_hands(self.args, game["id"], player_moniker)
+        hands = dal_game.get_player_hands(self.args, game["id"], player_moniker, pool=self._pool)
 
-        dealer_hand = dal_game.get_dealer_hand(self.args, game["id"])
+        dealer_hand = dal_game.get_dealer_hand(self.args, game["id"], pool=self._pool)
         dealer_cards = (
             list(dealer_hand["cards"]) if dealer_hand and dealer_hand["cards"] else []
         )
 
         if hands and not dealer_cards:
             if not dealer_hand:
-                dal_game.create_dealer_hand(self.args, game["id"])
+                dal_game.create_dealer_hand(self.args, game["id"], pool=self._pool)
             dealer_cards = [self._draw_card(table_moniker), self._draw_card(table_moniker)]
-            dal_game.update_dealer_hand_cards(self.args, game["id"], dealer_cards)
+            dal_game.update_dealer_hand_cards(self.args, game["id"], dealer_cards, pool=self._pool)
             if len(dealer_cards) >= 2:
-                dal_game.set_dealer_hole_card(self.args, game["id"], dealer_cards[1])
+                dal_game.set_dealer_hole_card(self.args, game["id"], dealer_cards[1], pool=self._pool)
 
         self._hand_value(dealer_cards) if dealer_cards else 0
 
@@ -680,7 +687,7 @@ class GameService:
             status = attrs.get("status")
             split_count = attrs.get("split_count", 0)
 
-            hand_bet = dal_bet.get_bet_for_hand(self.args, hand_id) if hand_id else None
+            hand_bet = dal_bet.get_bet_for_hand(self.args, hand_id, pool=self._pool) if hand_id else None
 
             can_split = len(cards) == 2 and split_count < 3
             can_double = len(cards) == 2
@@ -707,7 +714,7 @@ class GameService:
             if len(cards) == 2 and self._is_dealer_showing_ace(table_moniker):
                 insurance_available = True
                 if hand_bet:
-                    insurance_taken = dal_bet.get_insurance(self.args, hand_bet["id"])
+                    insurance_taken = dal_bet.get_insurance(self.args, hand_bet["id"], pool=self._pool)
 
         dealer_hand_for_client = self._hide_hole_card(dealer_cards, game["id"])
 
@@ -736,7 +743,7 @@ class GameService:
         if not dealer_cards or len(dealer_cards) < 2:
             return dealer_cards
 
-        hole_card = dal_game.get_dealer_hole_card(self.args, game_id)
+        hole_card = dal_game.get_dealer_hole_card(self.args, game_id, pool=self._pool)
         if hole_card and hole_card in dealer_cards:
             visible_cards = [dealer_cards[0], "hidden"]
             return visible_cards
@@ -744,13 +751,13 @@ class GameService:
 
     def _is_dealer_showing_ace(self, table_moniker: str) -> bool:
         """Check if dealer's upcard is an Ace."""
-        table = dal_table.get_table(self.args, table_moniker)
+        table = dal_table.get_table(self.args, table_moniker, pool=self._pool)
         if not table:
             return False
-        game = dal_game.get_current_game(self.args, table_moniker)
+        game = dal_game.get_current_game(self.args, table_moniker, pool=self._pool)
         if not game:
             return False
-        dealer_hand = dal_game.get_dealer_hand(self.args, game["id"])
+        dealer_hand = dal_game.get_dealer_hand(self.args, game["id"], pool=self._pool)
         if not dealer_hand or not dealer_hand.get("cards"):
             return False
         dealer_cards = list(dealer_hand["cards"])
@@ -764,15 +771,15 @@ class GameService:
         if not self._is_dealer_showing_ace(table_moniker):
             return {"success": False, "message": "Insurance not available"}
 
-        game = dal_game.get_active_game(self.args, table_moniker)
+        game = dal_game.get_active_game(self.args, table_moniker, pool=self._pool)
         if not game:
             return {"success": False, "message": "No active game"}
 
-        bet = dal_bet.get_player_bet_for_game(self.args, game["id"], player_moniker)
+        bet = dal_bet.get_player_bet_for_game(self.args, game["id"], player_moniker, pool=self._pool)
         if not bet:
             return {"success": False, "message": "No bet found"}
 
-        existing_insurance = dal_bet.get_insurance(self.args, bet["id"])
+        existing_insurance = dal_bet.get_insurance(self.args, bet["id"], pool=self._pool)
         if existing_insurance > 0:
             return {"success": False, "message": "Insurance already taken"}
 
@@ -794,15 +801,15 @@ class GameService:
         if amount > max_insurance:
             return {"success": False, "message": f"Insurance cannot exceed {max_insurance}"}
 
-        game = dal_game.get_active_game(self.args, table_moniker)
+        game = dal_game.get_active_game(self.args, table_moniker, pool=self._pool)
         if not game:
             return {"success": False, "message": "No active game"}
 
-        bet = dal_bet.get_player_bet_for_game(self.args, game["id"], player_moniker)
+        bet = dal_bet.get_player_bet_for_game(self.args, game["id"], player_moniker, pool=self._pool)
         if not bet:
             return {"success": False, "message": "No bet found"}
 
-        dal_bet.set_insurance(self.args, bet["id"], amount)
+        dal_bet.set_insurance(self.args, bet["id"], amount, pool=self._pool)
 
         return {
             "success": True,
@@ -812,19 +819,19 @@ class GameService:
 
     def _run_dealer_turn(self, game_id: int, table_moniker: str) -> list:
         """Run dealer turn - hit until 17 or more."""
-        dealer_hand = dal_game.get_or_create_dealer_hand(self.args, game_id)
+        dealer_hand = dal_game.get_or_create_dealer_hand(self.args, game_id, pool=self._pool)
         dealer_cards = list(dealer_hand["cards"]) if dealer_hand["cards"] else []
 
         if not dealer_cards:
             dealer_cards = [self._draw_card(table_moniker), self._draw_card(table_moniker)]
-            dal_game.update_dealer_hand_cards(self.args, game_id, dealer_cards)
+            dal_game.update_dealer_hand_cards(self.args, game_id, dealer_cards, pool=self._pool)
 
-        table = dal_table.get_table(self.args, table_moniker)
+        table = dal_table.get_table(self.args, table_moniker, pool=self._pool)
         attrs = table.get("attrs", {}) or {} if table else {}
         soft_17_rule = attrs.get("soft_17", "hit")
 
-        dal_game.reveal_dealer_hole_card(self.args, game_id)
-        dealer_hand = dal_game.get_dealer_hand(self.args, game_id)
+        dal_game.reveal_dealer_hole_card(self.args, game_id, pool=self._pool)
+        dealer_hand = dal_game.get_dealer_hand(self.args, game_id, pool=self._pool)
         dealer_cards = list(dealer_hand["cards"]) if dealer_hand["cards"] else []
 
         dealer_total = self._hand_value(dealer_cards)
@@ -834,14 +841,14 @@ class GameService:
             if dealer_total >= 17:
                 if dealer_total == 17 and soft_17_rule == "hit" and hand.is_soft():
                     dealer_cards.append(self._draw_card(table_moniker))
-                    dal_game.update_dealer_hand_cards(self.args, game_id, dealer_cards)
+                    dal_game.update_dealer_hand_cards(self.args, game_id, dealer_cards, pool=self._pool)
                     dealer_total = self._hand_value(dealer_cards)
                     hand = Hand.from_strings(dealer_cards)
                 else:
                     break
             else:
                 dealer_cards.append(self._draw_card(table_moniker))
-                dal_game.update_dealer_hand_cards(self.args, game_id, dealer_cards)
+                dal_game.update_dealer_hand_cards(self.args, game_id, dealer_cards, pool=self._pool)
                 dealer_total = self._hand_value(dealer_cards)
                 hand = Hand.from_strings(dealer_cards)
 
@@ -849,13 +856,13 @@ class GameService:
 
     def settle_game(self, table_moniker: str) -> dict[str, Any]:
         """Settle all bets for a game."""
-        game = dal_game.get_active_game(self.args, table_moniker)
+        game = dal_game.get_active_game(self.args, table_moniker, pool=self._pool)
         if not game:
             return {"success": False, "message": "No active game"}
 
         game_type = game.get("kind", "blackjack")
 
-        hands = dal_game.get_game_hands(self.args, game["id"])
+        hands = dal_game.get_game_hands(self.args, game["id"], pool=self._pool)
 
         dealer_cards = self._run_dealer_turn(game["id"], table_moniker)
         dealer_total = self._hand_value(dealer_cards)
@@ -866,7 +873,7 @@ class GameService:
             if not hand_id:
                 continue
 
-            bet = dal_bet.get_bet_for_hand(self.args, hand_id)
+            bet = dal_bet.get_bet_for_hand(self.args, hand_id, pool=self._pool)
             if not bet or bet["status"] != "pending":
                 continue
 
@@ -882,7 +889,7 @@ class GameService:
                 dal_player.increment_stat(self.args, player_moniker, f"{game_type}.hands_played", 1)
                 continue
 
-            insurance_amount = dal_bet.get_insurance(self.args, bet["id"])
+            insurance_amount = dal_bet.get_insurance(self.args, bet["id"], pool=self._pool)
 
             player_cards = list(hand["cards"])
             player_total = self._hand_value(player_cards)
@@ -893,32 +900,32 @@ class GameService:
             outcome = None
 
             if player_blackjack and dealer_blackjack:
-                dal_bet.settle_bet(self.args, bet["id"], True, bet["amount"])
+                dal_bet.settle_bet(self.args, bet["id"], True, bet["amount"], pool=self._pool)
                 outcome = "push"
             elif player_blackjack:
                 payout = int(bet["amount"] * Decimal("2.5"))
-                dal_bet.settle_bet(self.args, bet["id"], True, payout)
+                dal_bet.settle_bet(self.args, bet["id"], True, payout, pool=self._pool)
                 net_change = payout - original_bet
                 outcome = "blackjack"
             elif dealer_blackjack:
-                dal_bet.settle_bet(self.args, bet["id"], False, 0)
+                dal_bet.settle_bet(self.args, bet["id"], False, 0, pool=self._pool)
                 net_change = -original_bet
                 outcome = "loss"
             elif player_total > 21:
-                dal_bet.settle_bet(self.args, bet["id"], False, 0)
+                dal_bet.settle_bet(self.args, bet["id"], False, 0, pool=self._pool)
                 net_change = -original_bet
                 outcome = "bust"
             elif hand_status == "charlie" or dealer_total > 21 or player_total > dealer_total:
                 payout = bet["amount"] * 2
-                dal_bet.settle_bet(self.args, bet["id"], True, payout)
+                dal_bet.settle_bet(self.args, bet["id"], True, payout, pool=self._pool)
                 net_change = int(payout) - original_bet
                 outcome = "win"
             elif player_total < dealer_total:
-                dal_bet.settle_bet(self.args, bet["id"], False, 0)
+                dal_bet.settle_bet(self.args, bet["id"], False, 0, pool=self._pool)
                 net_change = -original_bet
                 outcome = "loss"
             else:
-                dal_bet.settle_bet(self.args, bet["id"], True, bet["amount"])
+                dal_bet.settle_bet(self.args, bet["id"], True, bet["amount"], pool=self._pool)
                 outcome = "push"
 
             if outcome == "blackjack":
@@ -948,16 +955,17 @@ class GameService:
                         "bet_amount": int(bet["amount"]),
                         "net": int(net_change),
                     },
+                    pool=self._pool,
                 )
 
             if insurance_amount > 0:
                 if dealer_blackjack:
                     payout = insurance_amount * 2
-                    dal_bet.settle_insurance(self.args, bet["id"], True, payout)
+                    dal_bet.settle_insurance(self.args, bet["id"], True, payout, pool=self._pool)
                 else:
-                    dal_bet.settle_insurance(self.args, bet["id"], False, 0)
+                    dal_bet.settle_insurance(self.args, bet["id"], False, 0, pool=self._pool)
 
-        dal_game.update_game_status(self.args, game["id"], "settled")
+        dal_game.update_game_status(self.args, game["id"], "settled", pool=self._pool)
 
         return {
             "success": True,

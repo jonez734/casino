@@ -10,8 +10,9 @@ from casino.dal import table as dal_table
 class TableService:
     """Service for table management."""
 
-    def __init__(self, args: Any):
+    def __init__(self, args: Any, *, pool: Any = None):
         self.args = args
+        self._pool = pool
 
     def create_table(
         self,
@@ -38,7 +39,8 @@ class TableService:
           on infrastructure errors (owner missing, etc.).
         """
         table = dal_table.create_table(
-            self.args, game_type, owner_moniker, min_bet, max_bet, moniker, hidden=hidden
+            self.args, game_type, owner_moniker, min_bet, max_bet, moniker,
+            hidden=hidden, pool=self._pool,
         )
         if table is None:
             return {
@@ -61,7 +63,7 @@ class TableService:
 
     def get_table(self, moniker: str) -> Optional[dict[str, Any]]:
         """Get table by moniker."""
-        return dal_table.get_table(self.args, moniker)
+        return dal_table.get_table(self.args, moniker, pool=self._pool)
 
     def get_table_stats(self, moniker: str, game_type: str) -> dict[str, Any]:
         """Per-table aggregate stats, shape depends on ``game_type``.
@@ -73,7 +75,8 @@ class TableService:
         """
         surr_mult = get_surrender_multiplier(self.args)
         return dal_table.get_table_stats(
-            self.args, moniker, game_type, surrender_multiplier=surr_mult
+            self.args, moniker, game_type, surrender_multiplier=surr_mult,
+            pool=self._pool,
         )
 
     def list_tables(
@@ -87,13 +90,13 @@ class TableService:
         always see every table so they can be discovered and managed).
         """
         tables = dal_table.list_tables(
-            self.args, game_type, include_hidden=is_sysop
+            self.args, game_type, include_hidden=is_sysop, pool=self._pool,
         )
 
         result = []
         for table in tables:
-            players = dal_table.get_table_players(self.args, table["moniker"])
-            spectators = dal_table.get_table_spectators(self.args, table["moniker"])
+            players = dal_table.get_table_players(self.args, table["moniker"], pool=self._pool)
+            spectators = dal_table.get_table_spectators(self.args, table["moniker"], pool=self._pool)
             result.append({
                 "moniker": table["moniker"],
                 "game_type": table["type"],
@@ -121,14 +124,14 @@ class TableService:
         join. Sysops can join any table (including hidden) without
         approval.
         """
-        table = dal_table.get_table(self.args, moniker)
+        table = dal_table.get_table(self.args, moniker, pool=self._pool)
         if not table:
             return {
                 "success": False,
                 "message": "Table not found",
             }
 
-        dal_table.add_player_to_table(self.args, moniker, player_moniker)
+        dal_table.add_player_to_table(self.args, moniker, player_moniker, pool=self._pool)
 
         return {
             "success": True,
@@ -138,7 +141,9 @@ class TableService:
 
     def leave_table(self, moniker: str, player_moniker: str) -> dict[str, Any]:
         """Player leaves a table (stands up)."""
-        success = dal_table.remove_player_from_table(self.args, moniker, player_moniker)
+        success = dal_table.remove_player_from_table(
+            self.args, moniker, player_moniker, pool=self._pool
+        )
 
         return {
             "success": success,
@@ -147,7 +152,7 @@ class TableService:
 
     def delete_table(self, moniker: str, current_moniker: str, is_sysop: bool = False) -> dict[str, Any]:
         """Delete a table (owner or sysop)."""
-        table = dal_table.get_table(self.args, moniker)
+        table = dal_table.get_table(self.args, moniker, pool=self._pool)
         if not table:
             return {
                 "success": False,
@@ -160,7 +165,7 @@ class TableService:
                 "message": "Only the owner or sysop can delete this table",
             }
 
-        dal_table.delete_table(self.args, moniker)
+        dal_table.delete_table(self.args, moniker, pool=self._pool)
 
         return {
             "success": True,
@@ -176,7 +181,7 @@ class TableService:
             is_sysop: Whether current user is sysop
             **updates: Fields to update (new_moniker, minimumbet, maximumbet, status, hidden)
         """
-        table = dal_table.get_table(self.args, moniker)
+        table = dal_table.get_table(self.args, moniker, pool=self._pool)
         if not table:
             return {
                 "success": False,
@@ -201,7 +206,7 @@ class TableService:
                 "message": "hidden must be a boolean",
             }
 
-        updated = dal_table.update_table(self.args, moniker, **updates)
+        updated = dal_table.update_table(self.args, moniker, pool=self._pool, **updates)
         if updated:
             return {
                 "success": True,
@@ -215,7 +220,7 @@ class TableService:
 
     def reset_shoe(self, moniker: str, current_moniker: str, is_sysop: bool = False) -> dict[str, Any]:
         """Reset table shoe (owner or sysop only)."""
-        table = dal_table.get_table(self.args, moniker)
+        table = dal_table.get_table(self.args, moniker, pool=self._pool)
         if not table:
             return {
                 "success": False,
@@ -228,7 +233,7 @@ class TableService:
                 "message": "Only the owner or sysop can reset the shoe",
             }
 
-        dal_table.reset_shoe(self.args, moniker)
+        dal_table.reset_shoe(self.args, moniker, pool=self._pool)
 
         return {
             "success": True,

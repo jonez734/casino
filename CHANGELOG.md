@@ -7,7 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### fix: casino DAL accepts `pool=` for CONN_POOL_PATTERN compliance
+### fix: casino services + handlers thread connection pool (CONN_POOL_PATTERN)
+
+`casino.services.{table,game,bank}` and the
+yahtzee/tictactoe services (`casino.yahtzee.service.YahtzeeService`,
+`casino.tictactoe.service.TictactoeService`) now accept an
+optional `pool=` keyword in `__init__`, stored on `self._pool`,
+and threaded into every `dal_*` call inside the service. The
+`_default_find_table` helpers in both yahtzee and tictactoe
+take a `pool=` keyword that the service forwards from
+`self._pool`. Three direct `database.connect(self.args)` call
+sites in `services/game.py` (the `split()` debit, the
+`_get_player_balance` helper, and the `double()` debit) plus
+the same pattern in `services/bank.py` and the
+yahtzee/tictactoe `_write_turn_log` paths now read
+`database.connect(self.args, pool=self._pool)` when the
+service has a pool; otherwise they fall back to the legacy
+`database.connect(self.args)` shape.
+
+`casino.api.handler` adds a `_resolve_pool(args)` module
+helper that prefers `args.pool` (set at bed startup) and
+falls back to `database.getpool(args)`. The
+`MessageRouter.__init__` calls it once and threads the
+resulting `pool=` into every service handler constructor
+(`TableServiceHandler`, `GameServiceHandler`,
+`BetServiceHandler`, `ChatServiceHandler`,
+`YahtzeeServiceHandler`, `TictactoeServiceHandler`). The
+`SlotServiceHandler` and the underlying `services.slots`
+module stay as-is and continue to exercise the DAL
+fallback; a follow-up wraps the slots module-level
+functions in a `SlotService` class so the slot handler can
+thread `pool=` too.
+
+`TableServiceHandler._handle_join_table`'s inline single-
+seater slot check threads `pool=self._pool` into the
+direct `dal_table_join.get_table(...)` call and the
+`database.connect(self.args)` follow-up for the seat
+count. The async path inside `_handle_kick_player` and
+`_handle_watch_table` threads `pool=self._pool` into every
+`async_dal_table.*` call.
+
+The `YahtzeeService` and `TictactoeService` constructors
+and the matching handler constructors now accept the
+`pool=` kwarg without requiring it (callers can keep
+passing `service=...` to inject a pre-built instance).
+
+
 
 Every public function in `casino/dal/{bet,game,table}.py` (sync)
 and `casino/dal/aiosql/{bet,game,table}.py` (async) now accepts an
