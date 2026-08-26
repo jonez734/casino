@@ -29,4 +29,4 @@ except PingUnavailable as exc:
     io.echo(str(exc), level="error")
     sys.exit(1)
 finally:
-    io.echo(f"{{decsc}}{{curpos:{io.getterminalheight()},0}}{{el}}{{decrc}}{{reset}}{{/all}}")
+    io.echo(f"{{decsc}}{{curpos:{io.terminal.height()},0}}{{el}}{{decrc}}{{reset}}{{/all}}")

@@ -40,7 +40,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     finally:
         io.echo(
-            f"{{decsc}}{{curpos:{io.getterminalheight()},0}}{{el}}{{decrc}}{{reset}}{{/all}}"
+            f"{{decsc}}{{curpos:{io.terminal.height()},0}}{{el}}{{decrc}}{{reset}}{{/all}}"
         )
     return 0
 
