@@ -198,6 +198,15 @@ else
 	fi; \
 	echo "installing $$WHEEL"; \
 	$(PYTHON) -m pip install --no-cache-dir "$$WHEEL"
+	# TODO(verify-install): after this `pip install` of $$WHEEL,
+	# compare the wheel's METADATA Version against `pip show casino`
+	# to catch the silent-no-op case where pip reports "already
+	# installed" without actually installing. See
+	# zoidoffice/src/Makefile's VERIFY_INSTALL variable for the
+	# reference implementation. The wheel path here is set in the
+	# recipe ($$WHEEL), not as a Makefile-evaluated variable, so
+	# the verify step must use $$WHEEL not $(WHEEL). Editable branch
+	# (DEPLOY_EDITABLE=1, line 191) installs from source so no check.
 endif
 
 help:
