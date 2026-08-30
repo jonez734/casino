@@ -118,8 +118,12 @@ def main(args, **kw):
             "h",
             help=_render_action_menu,
         )
+        if choice is None:
+            choice = ""
+        else:
+            choice = choice.upper()
 
-        if choice == "h":
+        if choice == "H":
             io.echo("{var:promptcolor}You hit:{var:normalcolor}")
             player.hand.hit(shoe)
             player.hand.show()
@@ -133,7 +137,7 @@ def main(args, **kw):
             if player_total == 21:
                 io.echo("{var:labelcolor}21 - standing")
                 break
-        elif choice == "d":
+        elif choice == "D":
             if len(player.hand.cards) != 2:
                 io.echo("{level.warning}Can only double down on the first two cards.{var:normalcolor}")
                 continue
@@ -146,7 +150,7 @@ def main(args, **kw):
                 io.echo("{level.error}Bust!{var:normalcolor}")
                 player.incstat("bust")
             break
-        elif choice == "q":
+        elif choice == "Q":
             io.echo("{var:promptcolor}You quit the hand.{var:normalcolor}")
             player.incstat("loss")
             quit_hand = True
