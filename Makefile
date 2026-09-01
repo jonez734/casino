@@ -132,8 +132,19 @@ sign:
 
 release: clean version build rename-sdist sign
 
+# DEPLOY_UPGRADE is set by `deploytool --upgrade` (default true) and
+# unset by `--no-upgrade`. When "1", every `pip install` in this
+# Makefile passes `--upgrade` so the install replaces any prior version
+# of the same distribution and pulls the newest transitive deps from
+# PyPI. When empty, the prior behavior holds: pip is a no-op if the
+# wheel version already matches what's installed. Same env-var contract
+# as the other per-project Makefiles (`ifeq ($(DEPLOY_UPGRADE),1)`
+# literal-string match — deploytool is the canonical writer).
+DEPLOY_UPGRADE ?=
+PIP_UPGRADE_FLAG := $(if $(filter 1,$(DEPLOY_UPGRADE)),--upgrade,)
+
 install:
-	$(PYTHON) -m pip install .
+	$(PYTHON) -m pip install $(PIP_UPGRADE_FLAG) .
 
 # --- test targets (pre-existing) ---------------------------------------------
 
@@ -178,6 +189,48 @@ deploy-www:
 	$(MAKE) -C www prod
 	$(RSYNC) $(STAGE) $(HOST):$(STAGE)
 
+# Verify that the wheel just installed is the one `pip show` reports
+# as installed. Catches the silent-no-op case where `pip install <wheel>`
+# exits 0 without actually replacing an existing install (different
+# venv, orphaned .dist-info, permission-denied mid-install, etc.). On
+# mismatch, prints the verbatim `pip show` output (stdout) and aborts
+# the deploy with a summary (stderr).
+#
+# Unlike zoidoffice/src/Makefile's VERIFY_INSTALL, this takes the
+# wheel path as $$WHEEL (recipe-scoped), not as $(WHEEL) (Makefile-
+# evaluated), because the wheel filename embeds a timestamp that is
+# only known after `ls -t $(OUTDIR)/...` runs at recipe time. The
+# three-way comparison is the same shape as zoidoffice:
+#   - filename:  regex-extracted from $$WHEEL
+#   - METADATA:  Version: line from the wheel's METADATA (unzip -p)
+#   - pip show:  Version: line from `pip show $(PROJECT)` post-install
+# All three must agree. Editable installs (DEPLOY_EDITABLE=1) skip
+# this -- `pip show` for an editable install reports the *source-tree*
+# version, not a wheel version, and the comparison semantics differ.
+define verify-install
+	EXPECTED_FROM_FILENAME=$$(basename "$$WHEEL" | sed -E 's/^$(PROJECT)-(.+)-py3-none-any\.whl$$/\1/'); \
+	EXPECTED_FROM_METADATA=$$(unzip -p "$$WHEEL" '*/METADATA' 2>/dev/null | awk -F': ' '/^Version: / {print $$2; exit}'); \
+	echo "=== verify-install ($(PROJECT)) ==="; \
+	echo "  wheel filename Version: $$EXPECTED_FROM_FILENAME"; \
+	echo "  wheel METADATA Version: $$EXPECTED_FROM_METADATA"; \
+	echo "--- pip show $(PROJECT) ---"; \
+	SHOW_OUTPUT=$$($(PYTHON) -m pip show $(PROJECT) 2>&1); \
+	SHOW_RC=$$?; \
+	echo "$$SHOW_OUTPUT"; \
+	echo "(pip show exited $$SHOW_RC)"; \
+	echo "--- end pip show ---"; \
+	INSTALLED=$$(echo "$$SHOW_OUTPUT" | awk '/^Version: / {print $$2; exit}'); \
+	if [ "$$INSTALLED" != "$$EXPECTED_FROM_FILENAME" ] \
+		|| [ "$$INSTALLED" != "$$EXPECTED_FROM_METADATA" ]; then \
+		echo "verify-install FAILED: $$WHEEL was installed but pip show does not agree" >&2; \
+		echo "  expected filename:  $$EXPECTED_FROM_FILENAME" >&2; \
+		echo "  expected METADATA:  $$EXPECTED_FROM_METADATA" >&2; \
+		echo "  pip show Version:   $$INSTALLED" >&2; \
+		exit 1; \
+	fi; \
+	echo "verify-install OK: pip show reports $$INSTALLED"
+endef
+
 # Build a fresh wheel then install it into the active venv. Mirrors
 # bbsengine6's deploy-tui so the install artifact path is uniform
 # across projects (always via /srv/repo/<project>/ wheels).
@@ -188,7 +241,7 @@ DEPLOY_EDITABLE ?=
 deploy-tui: build
 ifeq ($(DEPLOY_EDITABLE),1)
 	$(MAKE) version
-	$(PYTHON) -m pip install --no-cache-dir -e .
+	$(PYTHON) -m pip install $(PIP_UPGRADE_FLAG) --no-cache-dir -e .
 	-rm -rf src/casino.egg-info
 else
 	@WHEEL=$$(ls -t $(OUTDIR)/$(PROJECT)-*.whl 2>/dev/null | head -1); \
@@ -197,16 +250,8 @@ else
 		exit 1; \
 	fi; \
 	echo "installing $$WHEEL"; \
-	$(PYTHON) -m pip install --no-cache-dir "$$WHEEL"
-	# TODO(verify-install): after this `pip install` of $$WHEEL,
-	# compare the wheel's METADATA Version against `pip show casino`
-	# to catch the silent-no-op case where pip reports "already
-	# installed" without actually installing. See
-	# zoidoffice/src/Makefile's VERIFY_INSTALL variable for the
-	# reference implementation. The wheel path here is set in the
-	# recipe ($$WHEEL), not as a Makefile-evaluated variable, so
-	# the verify step must use $$WHEEL not $(WHEEL). Editable branch
-	# (DEPLOY_EDITABLE=1, line 191) installs from source so no check.
+	$(PYTHON) -m pip install $(PIP_UPGRADE_FLAG) --no-cache-dir "$$WHEEL"
+	@$(verify-install)
 endif
 
 help:
