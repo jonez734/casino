@@ -1537,11 +1537,9 @@ class MessageRouter:
 
         # Wire the router's channel_state into the server so
         # server.publish(...) sees the same subscriptions that
-        # casino's join_table / leave_table / watch_table handlers
-        # record. Without this, server.publish consults a default
-        # ChannelState() that has no subscribers and channel_publish
-        # silently drops the broadcast.
-        server._channel_state = self.channel_state
+        # server._channel_state is wired by bed.main.BED.start before this
+        # router runs, so server.publish() reaches the same subscribers
+        # the casino handlers register here.
 
         server.register_service(
             self.table_service,
