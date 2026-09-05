@@ -157,6 +157,21 @@ def main(args, **kwargs):
             else:
                 io.echo("ok", level="ok")
 
+        # 5. Channel overrides — casino-specific tuning applied on top
+        #    of the engine-level auto_seed (which already ran during
+        #    bbsengine6.startup via the channel MessageRouter). Reads
+        #    casino.channel_creator and casino.channel_overrides from
+        #    args._casino_config (populated by MessageRouter._bootstrap_casino_config).
+        #    Best-effort: warn-and-skip per option b.
+        from . import checkchannels
+
+        if checkchannels.main(args, conn=conn) is False:
+            io.echo(
+                "casino startup: checkchannels reported hard failure; "
+                "continuing (overrides are non-fatal)",
+                level="error",
+            )
+
         return failcount == 0
 
 
