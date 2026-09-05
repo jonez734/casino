@@ -28,6 +28,74 @@ New test files pin the pool-threading contract end-to-end:
   store it on ``self._pool``, and forward it into every
   ``dal_*`` call. Covers both the "pool= present" and the
   "pool=None fallback" paths. Also pins the
+
+Casino now plumbs sender context through every `server.publish`
+call so `ChannelService.can_publish` can enforce announce-only
+gating. The yahtzee / tictactoe broadcast helpers also stopped
+calling `server.publish` directly and now go through
+`channel_publish(channel_state, table_channel("casino", ...),
+payload, server=..., sender_moniker=..., args=...)`.
+
+**New helpers** (BaseService):
+
+- `_publish_to_table(server, table_moniker, message, sender_moniker)`
+- `_publish_global(server, message, sender_moniker)`
+
+Both helpers route through `bbsengine6.net.channel_publish` with
+the caller's moniker and `args` attached; without these the
+announce-only enforcement would silently bypass for casino
+traffic.
+
+**Replaced call sites** in `casino.api.handler`:
+
+- blackjack game-state broadcast
+- bet result broadcast
+- slot result broadcast
+- chat message broadcast (table + global)
+- game_state broadcast
+
+**Yahtzee / Tictactoe** `_broadcast` helpers: same replacement;
+resolve `channel_state` via `getattr(self, "_router", None)` so
+the helpers work whether the parent router wired the state or
+not.
+
+**Channel literal refactor** — every `f"casino:table:{moniker}"`
+and `"casino:global"` in the publish helpers / yahtzee /
+tictactoe now uses `bbsengine6.channel.naming.table_channel` and
+`global_channel`. Single source of truth for the channel naming
+convention.
+
+**Drop server._channel_state wiring** — `bed.main.BED.start` now
+threads the shared `ChannelState` to both `WebSocketServer` and
+`MessageRouterClass`, so the per-router
+`server._channel_state = self.channel_state` line in
+`casino.api.handler.register_all` is redundant and removed.
+
+**Tests** — pre-existing `tests/test_channel_integration.py`
+covers disconnect cleanup and message-type registration; 5/5
+pass against the dev sandbox DB.
+
+## [0.0.1.dev202608032039]
+
+New test files pin the pool-threading contract end-to-end:
+
+- ``tests/test_dal_conn_pool.py`` — every public function in
+  ``casino.dal.{bet,game,table}.py`` accepts an optional
+  keyword-only ``pool`` argument; ``pool=`` is forwarded into
+  ``database.connect(args, pool=pool)`` when supplied, and the
+  legacy ``database.connect(args)`` fallback remains when
+  ``pool=None``. Same shape for the ``_stats_from_*`` internal
+  helpers that nest inside ``get_table_stats``.
+- ``tests/test_dal_aiosql_conn_pool.py`` — every public async
+  function in ``casino.dal.aiosql.{bet,game,table}.py`` accepts
+  the same ``pool=`` and threads it into ``database.async_query``
+  via the ``pool=`` keyword the helper already supports.
+- ``tests/test_services_conn_pool.py`` — ``TableService``,
+  ``GameService``, ``BankService``, ``YahtzeeService``, and
+  ``TictactoeService`` accept ``pool=`` on their constructors,
+  store it on ``self._pool``, and forward it into every
+  ``dal_*`` call. Covers both the "pool= present" and the
+  "pool=None fallback" paths. Also pins the
   ``_default_find_table(args, player_moniker, *, pool=None)``
   signature on both yahtzee and tictactoe.
 - ``tests/test_message_router_wires_pool.py`` — every
