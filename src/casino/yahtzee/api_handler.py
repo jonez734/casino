@@ -172,6 +172,7 @@ class YahtzeeServiceHandler:
             return
         try:
             from bbsengine6.net import channel_publish
+            from bbsengine6.channel.naming import table_channel
 
             # ``channel_state`` lives on the parent router (the casino
             # MessageRouter). Walk ``self`` to find it; if the parent
@@ -182,7 +183,7 @@ class YahtzeeServiceHandler:
             sender = payload.get("player_moniker") or payload.get("moniker") or ""
             await channel_publish(
                 state,
-                f"casino:table:{table_moniker}",
+                table_channel("casino", table_moniker),
                 payload,
                 server=server,
                 sender_moniker=sender,

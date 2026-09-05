@@ -173,9 +173,11 @@ class BaseService:
             return
         from bbsengine6.net import channel_publish
 
+        from bbsengine6.channel.naming import table_channel
+
         await channel_publish(
             self.channel_state,
-            f"casino:table:{table_moniker}",
+            table_channel("casino", table_moniker),
             message,
             server=server,
             sender_moniker=sender_moniker,
@@ -193,10 +195,11 @@ class BaseService:
         if not server or not self.channel_state:
             return
         from bbsengine6.net import channel_publish
+        from bbsengine6.channel.naming import global_channel
 
         await channel_publish(
             self.channel_state,
-            "casino:global",
+            global_channel("casino"),
             message,
             server=server,
             sender_moniker=sender_moniker,
