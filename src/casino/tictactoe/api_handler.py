@@ -155,7 +155,20 @@ class TictactoeServiceHandler:
         if not table_moniker or server is None:
             return
         try:
-            await server.publish(f"casino:table:{table_moniker}", payload)
+            from bbsengine6.net import channel_publish
+
+            # See yahtzee.api_handler._broadcast for the parent-router
+            # lookup rationale.
+            state = getattr(getattr(self, "_router", None), "channel_state", None)
+            sender = payload.get("player_moniker") or payload.get("moniker") or ""
+            await channel_publish(
+                state,
+                f"casino:table:{table_moniker}",
+                payload,
+                server=server,
+                sender_moniker=sender,
+                args=self.args,
+            )
         except Exception as e:
             io.echo(f"tictactoe broadcast failed: {e}", level="warning")
 

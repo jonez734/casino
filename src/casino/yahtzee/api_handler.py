@@ -171,7 +171,23 @@ class YahtzeeServiceHandler:
         if not table_moniker or server is None:
             return
         try:
-            await server.publish(f"casino:table:{table_moniker}", payload)
+            from bbsengine6.net import channel_publish
+
+            # ``channel_state`` lives on the parent router (the casino
+            # MessageRouter). Walk ``self`` to find it; if the parent
+            # wasn't wired (legacy / door-mode) we fall back to a fresh
+            # state. The publish falls through to the same in-memory map
+            # server-side either way.
+            state = getattr(getattr(self, "_router", None), "channel_state", None)
+            sender = payload.get("player_moniker") or payload.get("moniker") or ""
+            await channel_publish(
+                state,
+                f"casino:table:{table_moniker}",
+                payload,
+                server=server,
+                sender_moniker=sender,
+                args=self.args,
+            )
         except Exception as e:
             io.echo(f"yahtzee broadcast failed: {e}", level="warning")
 

@@ -134,6 +134,7 @@ class BaseService:
         token_store: Any = None,
         instance_id: Optional[str] = None,
         clock: Any = None,
+        channel_state: Optional["ChannelState"] = None,
     ) -> None:
         self.args = args
         self.sessions = session_manager
@@ -141,6 +142,7 @@ class BaseService:
         self.token_store = token_store
         self.instance_id = str(instance_id) if instance_id else None
         self._clock = clock
+        self.channel_state = channel_state
 
     def _now(self) -> float:
         """Return the current UNIX timestamp, honoring ``clock`` if set."""
@@ -149,6 +151,57 @@ class BaseService:
         import time as _time
 
         return _time.time()
+
+    async def _publish_to_table(
+        self,
+        server: Any,
+        table_moniker: str,
+        message: dict[str, Any],
+        sender_moniker: str,
+    ) -> None:
+        """Publish ``message`` to ``casino:table:<table_moniker>`` with the
+        caller's moniker attached for permission checks.
+
+        Wraps ``server.publish`` so the underlying ``channel_publish`` call
+        sees ``sender_moniker`` + ``args`` and can consult
+        ``ChannelService.can_publish``. Without this the publish would
+        bypass announce-only enforcement (the announce-only flag is
+        currently set on ``system:announcements`` only, but future
+        channels may flip it for tables too).
+        """
+        if not server or not table_moniker or not self.channel_state:
+            return
+        from bbsengine6.net import channel_publish
+
+        await channel_publish(
+            self.channel_state,
+            f"casino:table:{table_moniker}",
+            message,
+            server=server,
+            sender_moniker=sender_moniker,
+            args=self.args,
+        )
+
+    async def _publish_global(
+        self,
+        server: Any,
+        message: dict[str, Any],
+        sender_moniker: str,
+    ) -> None:
+        """Publish ``message`` to ``casino:global`` with the caller's moniker
+        attached for permission checks. See :meth:`_publish_to_table`."""
+        if not server or not self.channel_state:
+            return
+        from bbsengine6.net import channel_publish
+
+        await channel_publish(
+            self.channel_state,
+            "casino:global",
+            message,
+            server=server,
+            sender_moniker=sender_moniker,
+            args=self.args,
+        )
 
     def _check_access(
         self, websocket: Any, op: str, message: dict[str, Any]
@@ -883,7 +936,9 @@ class GameServiceHandler(BaseService):
                 f"players={player_count} observers={observer_count}",
                 level="info",
             )
-            await server.publish(f"casino:table:{table_moniker}", broadcast_state)
+            await self._publish_to_table(
+                server, table_moniker, broadcast_state, sender_moniker=moniker
+            )
 
         return game_state
 
@@ -1020,7 +1075,9 @@ class BetServiceHandler(BaseService):
                     f"players={player_count} observers={observer_count}",
                     level="info",
                 )
-                await server.publish(f"casino:table:{table_moniker}", broadcast_state)
+                await self._publish_to_table(
+                    server, table_moniker, broadcast_state, sender_moniker=moniker
+                )
 
             return None
         else:
@@ -1300,7 +1357,9 @@ class SlotServiceHandler(BaseService):
                 },
             }
             try:
-                await server.publish(f"casino:table:{table_moniker}", broadcast_msg)
+                await self._publish_to_table(
+                    server, table_moniker, broadcast_msg, sender_moniker=state.moniker
+                )
             except Exception as e:
                 io.echo(f"slot broadcast failed: {e}", level="warning")
 
@@ -1574,20 +1633,35 @@ class MessageRouter:
     async def handle_broadcast(self, server: Any, websocket: Any, path: str, message: dict[str, Any]) -> None:
         """Handle message that should be broadcast."""
         msg_type = message.get("type")
+        # Resolve the sender moniker for permission checks. Falls back to
+        # the empty string when the websocket is unauthenticated, which
+        # lets the announce-only gate apply (announce-only channels
+        # reject empty/non-announcer senders).
+        sender_moniker = ""
+        session_id = self._legacy_session_id(websocket)
+        state = self.sessions.get_by_session(session_id)
+        if state is not None:
+            sender_moniker = getattr(state, "moniker", "") or ""
 
         if msg_type == "chat_message":
             scope = message.get("scope", "global")
             table_moniker = message.get("moniker")
 
             if scope == "table" and table_moniker:
-                await server.publish(f"casino:table:{table_moniker}", message)
+                await self._publish_to_table(
+                    server, table_moniker, message, sender_moniker=sender_moniker
+                )
             else:
-                await server.publish("casino:global", message)
+                await self._publish_global(
+                    server, message, sender_moniker=sender_moniker
+                )
 
         elif msg_type == "game_state":
             table_moniker = message.get("moniker")
             if table_moniker:
-                await server.publish(f"casino:table:{table_moniker}", message)
+                await self._publish_to_table(
+                    server, table_moniker, message, sender_moniker=sender_moniker
+                )
 
     def unregister_session(self, session_id: int) -> None:
         """Clean up session on disconnect."""
