@@ -7,11 +7,25 @@ RewriteBase /casino/
 
 RewriteRule ^favicon\.ico$ - [last]
 
-# Route directory requests to router
+# Route directory requests to router.
+# @since 2026-09-10 — exclude /engine/ from the catch-all to
+# prevent the mod_rewrite loop that surfaced on the teos
+# vhost ([Thu Sep 10 10:53:05] AH00124: Request exceeded
+# the limit of 10 internal redirects). The previous
+# `^(.+)$` pattern matched the rewritten URL
+# /engine/router.php?uri=... too, so on each subsequent
+# iteration the rule fired again with the same path and a
+# longer query (qsappend), until LimitInternalRecursion=10
+# aborted. The %{REQUEST_URI} check below short-circuits
+# the rule when the URL is already under /engine/, so the
+# rewrite chain terminates after one hop.
+RewriteCond %{REQUEST_URI} !^/engine/
 RewriteCond %{REQUEST_FILENAME} -d
 RewriteRule ^(.+)$ /engine/router.php?uri=$1 [last,qsappend]
 
-# Route clean URLs to router
+# Route clean URLs to router. Same /engine/ exclusion
+# as the directory rule above.
+RewriteCond %{REQUEST_URI} !^/engine/
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteRule ^([a-zA-Z0-9_/-]+)$ /engine/router.php?uri=$1 [last,qsappend]
