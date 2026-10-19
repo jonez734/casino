@@ -23,7 +23,7 @@ VERSION = $(shell date +%Y%m%d%H%M)
 OUTDIR = /srv/repo/$(PROJECT)/
 
 .PHONY: all build version install sdist clean push
-.PHONY: deploy-www deploy-tui
+.PHONY: stage prod deploy-www deploy-tui
 .PHONY: test test-unit test-integration test-all test-phase-1 test-phase-3
 .PHONY: test-quick test-file help
 .PHONY: commit-version
@@ -185,9 +185,16 @@ test-quick:
 test-file:
 	cd src && python -m pytest casino/tests/$(FILE) -v --tb=short
 
-deploy-www:
+# stage: build the www tree under $(STAGE) on this host. Nothing is pushed.
+stage:
 	$(MAKE) -C www prod
+
+# prod: stage, then push the tree to $(HOST).
+prod: stage
 	$(RSYNC) $(STAGE) $(HOST):$(STAGE)
+
+# deploy-www is the name deploytool calls (TARGETS["casino"] "www").
+deploy-www: prod
 
 # Verify that the wheel just installed is the one `pip show` reports
 # as installed. Catches the silent-no-op case where `pip install <wheel>`
