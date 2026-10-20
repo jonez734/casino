@@ -271,9 +271,9 @@ class AuthService(BaseService):
             self.sessions.register_session(session_id, moniker, is_sysop=is_sysop)
             balance = self.player_service.get_balance(moniker)
 
-            # Auto-subscribe to personal channel for direct messages
-            if self.channel_state:
-                channel_subscribe(self.channel_state, session_id, f"member:{moniker}")
+            # Direct messages reach this client through bed's NOTIFY path
+            # (message.store_message -> engine_message_recipient trigger ->
+            # bed MessageService). No per-member channel subscription.
 
             # Deliver pending messages on connect
             pending_messages = []
