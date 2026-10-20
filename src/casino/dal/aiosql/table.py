@@ -370,7 +370,8 @@ async def get_table_players(args: Any, moniker: str, *, pool: Any = None) -> lis
     """
     rows = await database.async_query(
         args,
-        "SELECT playermoniker FROM $casino.__map_cardtable_player WHERE tablemoniker = :moniker",
+        "SELECT playermoniker FROM $casino.map_cardtable_player "
+        "WHERE cardtablemoniker = :moniker AND role IN ('player', 'dealer')",
         pool=pool,
         moniker=moniker
     )
@@ -385,7 +386,8 @@ async def get_table_spectators(args: Any, moniker: str, *, pool: Any = None) -> 
     """
     rows = await database.async_query(
         args,
-        "SELECT playermoniker FROM $casino.__map_cardtable_player WHERE tablemoniker = :moniker AND role = 'spectator'",
+        "SELECT playermoniker FROM $casino.map_cardtable_player "
+        "WHERE cardtablemoniker = :moniker AND role = 'spectator'",
         pool=pool,
         moniker=moniker
     )
@@ -393,20 +395,41 @@ async def get_table_spectators(args: Any, moniker: str, *, pool: Any = None) -> 
 
 
 async def add_player_to_table(args: Any, moniker: str, player_moniker: str, role: str = "player", *, pool: Any = None) -> bool:
-    """Add a player to a table.
+    """Add a member to a table in ``role`` (player, spectator, or dealer).
+
+    Returns False when the member already holds a seat at the table, or
+    when ``role='dealer'`` and the table already has a dealer.
 
     Args:
         pool: Optional async pool (CONN_POOL_PATTERN)
     """
+    if role not in ("player", "spectator", "dealer"):
+        raise ValueError(f"invalid table role: {role!r}")
     rows = await database.async_query(
         args,
-        """INSERT INTO $casino.__map_cardtable_player (tablemoniker, playermoniker, role, joinedat)
+        """INSERT INTO $casino.map_cardtable_player (cardtablemoniker, playermoniker, role, joinedat)
            VALUES (:moniker, :player_moniker, :role, NOW())
-           ON CONFLICT DO NOTHING RETURNING tablemoniker""",
+           ON CONFLICT DO NOTHING RETURNING cardtablemoniker""",
         pool=pool,
         moniker=moniker, player_moniker=player_moniker, role=role
     )
     return len(rows) > 0
+
+
+async def get_table_dealer(args: Any, moniker: str, *, pool: Any = None) -> str | None:
+    """Return the member holding the dealer seat at ``moniker``, or None.
+
+    A None result means the table has a virtual (bot) dealer, which has no
+    row in ``map_cardtable_player``.
+    """
+    rows = await database.async_query(
+        args,
+        "SELECT playermoniker FROM $casino.map_cardtable_player "
+        "WHERE cardtablemoniker = :moniker AND role = 'dealer'",
+        pool=pool,
+        moniker=moniker,
+    )
+    return rows[0]["playermoniker"] if rows else None
 
 
 async def remove_player_from_table(args: Any, moniker: str, player_moniker: str, *, pool: Any = None) -> bool:
@@ -417,7 +440,7 @@ async def remove_player_from_table(args: Any, moniker: str, player_moniker: str,
     """
     rows = await database.async_query(
         args,
-        "DELETE FROM $casino.__map_cardtable_player WHERE tablemoniker = :moniker AND playermoniker = :player_moniker RETURNING tablemoniker",
+        "DELETE FROM $casino.map_cardtable_player WHERE cardtablemoniker = :moniker AND playermoniker = :player_moniker RETURNING cardtablemoniker",
         pool=pool,
         moniker=moniker, player_moniker=player_moniker
     )
@@ -501,7 +524,7 @@ async def get_player_tables(args: Any, player_moniker: str, *, pool: Any = None)
     """
     rows = await database.async_query(
         args,
-        "SELECT DISTINCT tablemoniker FROM $casino.__map_cardtable_player WHERE playermoniker = :player_moniker",
+        "SELECT DISTINCT cardtablemoniker AS tablemoniker FROM $casino.map_cardtable_player WHERE playermoniker = :player_moniker",
         pool=pool,
         player_moniker=player_moniker
     )

@@ -279,7 +279,7 @@ def get_table_spectators(args: Any, moniker: str, *, pool: Any = None) -> list[s
     with _connect_ctx(args, pool) as conn, database.cursor(conn) as cur:
             cur.execute(
                 database.query(
-                    "SELECT DISTINCT p.playermoniker FROM $casino.map_cardtable_player p WHERE p.cardtablemoniker = :moniker",
+                    "SELECT DISTINCT p.playermoniker FROM $casino.map_cardtable_player p WHERE p.cardtablemoniker = :moniker AND p.role IN ('player', 'dealer')",
                     moniker=moniker
                 )
             )
@@ -297,7 +297,7 @@ def add_player_to_table(
     with _connect_ctx(args, pool) as conn, database.cursor(conn) as cur:
             cur.execute(
                 database.query(
-                    "INSERT INTO $casino.map_cardtable_player (cardtablemoniker, playermoniker) VALUES (:moniker, :player_moniker) ON CONFLICT DO NOTHING",
+                    "INSERT INTO $casino.map_cardtable_player (cardtablemoniker, playermoniker, role) VALUES (:moniker, :player_moniker, 'player') ON CONFLICT DO NOTHING",
                     moniker=moniker, player_moniker=player_moniker
                 )
             )

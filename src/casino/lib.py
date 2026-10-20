@@ -667,7 +667,7 @@ class CasinoPlayer:
     def _refresh_seat(self):
         """Re-query the DB for the player's current table.
 
-        Joins ``casino.__map_cardtable_player`` (player → table) with
+        Joins ``casino.map_cardtable_player`` (player → table) with
         ``casino.__table`` (table → type) to recover both the table
         moniker and its ``game_type``. Sets
         ``current_table_moniker`` and ``current_table_game_type`` on
@@ -687,10 +687,10 @@ class CasinoPlayer:
             with database.connect(self.args) as conn, database.cursor(conn) as cur:
                 cur.execute(
                     database.query(
-                        "SELECT m.tablemoniker, t.type AS game_type "
-                        "FROM $casino.__map_cardtable_player m "
-                        "JOIN $casino.__table t ON t.moniker = m.tablemoniker "
-                        "WHERE m.playermoniker = :moniker LIMIT 1",
+                        "SELECT m.cardtablemoniker AS tablemoniker, t.type AS game_type "
+                        "FROM $casino.map_cardtable_player m "
+                        "JOIN $casino.__table t ON t.moniker = m.cardtablemoniker "
+                        "WHERE m.playermoniker = :moniker AND m.role IN ('player', 'dealer') LIMIT 1",
                         moniker=self.moniker,
                     )
                 )
