@@ -12,6 +12,10 @@ def init(args, **kw: dict) -> bool:
         version=__version__,
         apis={},
     )
+    # Casino supplies bbsengine6's @here group: the sender's current table.
+    from casino import here as casino_here
+
+    casino_here.install(args)
     menu_next.register_menu_options(
         "casino.lib",
         menu_next.MenuOption("c", "Connect",       "auth"),
