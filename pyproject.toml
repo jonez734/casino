@@ -29,6 +29,7 @@ classifiers = [
 ]
 dependencies = [
     "bbsengine6",
+    "pillow",
 ]
 
 [project.optional-dependencies]
