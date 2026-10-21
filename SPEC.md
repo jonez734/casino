@@ -438,6 +438,35 @@ the broader pattern and `bbsengine6/TODO_zoid6_role.md` §4
 ("Cross-module schema ownership pattern") for the canonical
 reference and open follow-ups.
 
+### 8.2 Table seats and message groups
+
+`casino.map_cardtable_player` holds one row per member per table, with a
+`role` (`player`, `spectator`, or `dealer`). The schema is
+`src/casino/sql/map_cardtable_player.sql`.
+
+| role | Seated | In `table:<moniker>` message group |
+|---|---|---|
+| `player` | yes | yes |
+| `dealer` | yes (a real member holds the dealer seat) | yes |
+| `spectator` | no | no |
+
+- At most one `dealer` per table (partial unique index).
+- A member appears at a table once (partial unique index on member rows).
+- A **virtual (bot) dealer** has no row. It posts to the table group as the
+  named message source `casino.dealer:<moniker>`, registered for the prefix
+  `table:<moniker>` when the table is created and removed when it is deleted.
+- Groups are derived from seating. `casino/tablegroups.py` owns the naming
+  rule and the create, seat, unseat, delete, and reconcile operations. Every
+  game calls it; no game builds group names itself.
+- A seat write notifies the group only after the seat row is written. Group
+  updates are best-effort: a failure is logged and corrected by
+  `tablegroups.reconcile`, which runs at startup and sets each table's group
+  to exactly its seated members.
+
+Poker and tictactoe seats are not yet written to the database; their
+persistence is a separate phase. Until then their table groups are only
+correct while the process runs.
+
 ## 9. Per-table stats & duplicate-table short-circuit
 
 ### `create_table` short-circuit (owner-or-sysop)

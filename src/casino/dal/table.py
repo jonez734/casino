@@ -297,11 +297,11 @@ def add_player_to_table(
     with _connect_ctx(args, pool) as conn, database.cursor(conn) as cur:
             cur.execute(
                 database.query(
-                    "INSERT INTO $casino.map_cardtable_player (cardtablemoniker, playermoniker, role) VALUES (:moniker, :player_moniker, 'player') ON CONFLICT DO NOTHING",
+                    "INSERT INTO $casino.map_cardtable_player (cardtablemoniker, playermoniker, role) VALUES (:moniker, :player_moniker, 'player') ON CONFLICT DO NOTHING RETURNING cardtablemoniker",
                     moniker=moniker, player_moniker=player_moniker
                 )
             )
-            return True
+            return cur.fetchone() is not None
 
 
 def remove_player_from_table(args: Any, moniker: str, player_moniker: str, *, pool: Any = None) -> bool:

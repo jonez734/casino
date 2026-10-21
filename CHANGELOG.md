@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### feat(casino): table message groups and seat roles
+
+- Every table gets a message group `table:<moniker>`. A member is in the
+  group exactly while seated (`player` or `dealer`); spectators are not.
+- `casino.map_cardtable_player` gains `role` (`player`, `spectator`,
+  `dealer`), one dealer per table, and one row per member per table.
+- A virtual (bot) dealer posts as the named source `casino.dealer:<moniker>`,
+  registered for `table:<moniker>` at create and removed at delete.
+- New module `casino/tablegroups.py` owns the group lifecycle; the table
+  service calls it on create, seat, unseat, and delete.
+- Startup reconcile sets every table group to its seated members and removes
+  groups for tables that no longer exist.
+
+### fix(casino): seat queries used a table the schema never creates
+
+The async DAL and `lib.py` queried `casino.__map_cardtable_player` (columns
+`tablemoniker`, `joinedat`). The schema defines `casino.map_cardtable_player`
+(`cardtablemoniker`, `playermoniker`). Every seat query now uses the schema
+name and columns.
+
+`add_player_to_table` (sync) now reports whether a row was actually inserted,
+not always `True`.
+
+**Upgrade note:** `sql/map_cardtable_player.sql` and `sql/message_source.sql`
+only apply to new databases. An existing database needs
+`bbsengine6/py/src/bbsengine6/sql/upgrade_message_source_and_seat_role.sql`,
+run by the table owner.
+
 ### test(casino): regression guards for CONN_POOL_PATTERN threading
 
 New test files pin the pool-threading contract end-to-end:

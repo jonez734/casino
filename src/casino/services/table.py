@@ -55,6 +55,8 @@ class TableService:
                 "table": existing,
                 "message": f"Table {existing['moniker']} already exists",
             }
+        from casino import tablegroups
+        tablegroups.on_table_created(table["moniker"], owner_moniker=owner_moniker)
         return {
             "success": True,
             "table": table,
@@ -131,7 +133,10 @@ class TableService:
                 "message": "Table not found",
             }
 
-        dal_table.add_player_to_table(self.args, moniker, player_moniker, pool=self._pool)
+        seated = dal_table.add_player_to_table(self.args, moniker, player_moniker, pool=self._pool)
+        if seated:
+            from casino import tablegroups
+            tablegroups.on_seat(moniker, player_moniker, role="player")
 
         return {
             "success": True,
@@ -144,6 +149,9 @@ class TableService:
         success = dal_table.remove_player_from_table(
             self.args, moniker, player_moniker, pool=self._pool
         )
+        if success:
+            from casino import tablegroups
+            tablegroups.on_unseat(moniker, player_moniker)
 
         return {
             "success": success,
@@ -166,6 +174,8 @@ class TableService:
             }
 
         dal_table.delete_table(self.args, moniker, pool=self._pool)
+        from casino import tablegroups
+        tablegroups.on_table_deleted(moniker)
 
         return {
             "success": True,
