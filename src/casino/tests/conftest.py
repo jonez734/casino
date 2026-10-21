@@ -53,3 +53,32 @@ def dbname() -> str:
 def dbname_args() -> list[str]:
     """Argparse argv list for ``parser.parse_args(...)`` callers."""
     return _dbname.dbname_args()
+
+
+@pytest.fixture(autouse=True)
+def _no_table_group_writes(request, monkeypatch):
+    """Keep table message-group side effects out of database-touching tests.
+
+    Table create, seat, unseat, and delete write message groups through
+    bbsengine6, on connections the tests do not roll back, so an unrelated test
+    that touches a table could leave group rows in the live database. Replace
+    the tablegroups entry points with no-op recorders for every test. Tests that
+    exercise the group logic itself (test_tablegroups*) stub at a lower level
+    and opt out with the ``tablegroups_real`` marker.
+    """
+    if request.node.get_closest_marker("tablegroups_real") is not None:
+        yield
+        return
+
+    from casino import tablegroups as tg
+
+    calls: list[tuple] = []
+
+    def _recorder(name):
+        def _record(*args, **kwargs):
+            calls.append((name, args, kwargs))
+        return _record
+
+    for name in ("on_table_created", "on_seat", "on_unseat", "on_table_deleted"):
+        monkeypatch.setattr(tg, name, _recorder(name))
+    yield calls

@@ -7,6 +7,8 @@ of step with the seats. These tests fail if a hook is removed.
 from __future__ import annotations
 
 import sys
+
+import pytest
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -14,6 +16,8 @@ from unittest.mock import MagicMock, patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import casino.services.table as svc  # noqa: E402
+
+pytestmark = pytest.mark.tablegroups_real
 
 
 def _service():

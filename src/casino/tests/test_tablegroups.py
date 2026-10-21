@@ -8,6 +8,8 @@ reconcile against seats.
 from __future__ import annotations
 
 import sys
+
+import pytest
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, call, patch
@@ -15,6 +17,8 @@ from unittest.mock import MagicMock, call, patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from casino import tablegroups as tg  # noqa: E402
+
+pytestmark = pytest.mark.tablegroups_real
 
 
 class TestNaming(unittest.TestCase):
