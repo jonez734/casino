@@ -225,7 +225,7 @@ class TestYahtzeeGameMainSetsUpDealerAndPlayer(unittest.TestCase):
         with patch.object(
             yahtzee_play, "main", return_value=sentinel
         ) as mock_play, patch.object(game, "member") as mock_member:
-            mock_member.getcurrentid.return_value = "alice"
+            mock_member.getcurrentmoniker.return_value = "alice"
             result = game.main(_make_args(), credits=500, bet_amount=50)
 
         self.assertIs(result, sentinel)

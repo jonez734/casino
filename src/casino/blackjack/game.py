@@ -30,7 +30,7 @@ def main(args, **kw):
     shoe.shuffle(3)
 
     player = lib.BlackjackPlayer()
-    player.memberid = member.getcurrentid(args)
+    player.memberid = member.getcurrentmoniker(args)
     io.echo(f"{player=}", level="debug")
     dealer = lib.BlackjackPlayer()
     dealer.kind = "dealer"

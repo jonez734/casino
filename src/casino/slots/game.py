@@ -30,7 +30,7 @@ def buildargs(args, **kw: dict):
 
 def main(args, **kw: dict) -> bool:
     io.terminal.title("slots")
-    memberid = member.getcurrentid(args)
+    memberid = member.getcurrentmoniker(args)
     if not memberid:
         io.echo("{error}Could not determine current member.{normal}")
         return False

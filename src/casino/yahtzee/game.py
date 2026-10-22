@@ -31,7 +31,7 @@ def buildargs(args, **kw: dict):
 
 def main(args, **kw) -> bool:
     io.terminal.title("yahtzee")
-    memberid = member.getcurrentid(args)
+    memberid = member.getcurrentmoniker(args)
     if not memberid:
         io.echo("{error}Could not determine current member.{normal}")
         return False

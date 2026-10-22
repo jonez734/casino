@@ -166,7 +166,7 @@ def main(argv: list[str] | None = None) -> int:
         with database.getpool(args, database=args.databasename) as pool:
             session.start(args, pool=pool)
 
-            player_moniker = member.getcurrentid(args, pool=pool)
+            player_moniker = member.getcurrentmoniker(args, pool=pool)
             if not player_moniker:
                 io.echo("{level.error}Could not determine current member.{/all}")
                 return 1
