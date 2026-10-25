@@ -28,7 +28,7 @@ classifiers = [
     "Topic :: Terminals",
 ]
 dependencies = [
-    "bbsengine6",
+    "bbsengine6>=0.0.3.dev202610",
     "pillow",
 ]
 
