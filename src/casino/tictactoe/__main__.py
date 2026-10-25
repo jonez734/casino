@@ -94,7 +94,7 @@ def _run_mode0(svc: TictactoeService, player_moniker: str) -> int:
     if initial.get("type") == "error":
         io.echo(f"{{level.error}}{initial.get('message')}{{/all}}")
         return 1
-    io.echo("{{var:titlecolor}}tic-tac-toe (mode 0: AI vs AI){{/all}}")
+    io.echo(f"{{var:titlecolor}}tic-tac-toe (mode 0: AI vs AI){{/all}}")
     states = svc.auto_play_mode0(initial["table_moniker"])
     for state in states:
         if state.get("type") == "tictactoe_state":
@@ -113,7 +113,7 @@ def _run_mode1(svc: TictactoeService, player_moniker: str) -> int:
     if state.get("type") == "error":
         io.echo(f"{{level.error}}{state.get('message')}{{/all}}")
         return 1
-    io.echo("{{var:titlecolor}}tic-tac-toe (mode 1: you vs AI){{/all}}")
+    io.echo(f"{{var:titlecolor}}tic-tac-toe (mode 1: you vs AI){{/all}}")
     io.echo("{var:labelcolor}you are X. enter a cell 0-8 (top-left = 0, bottom-right = 8).{/all}")
     table_moniker = state["table_moniker"]
 

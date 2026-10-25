@@ -243,7 +243,7 @@ class CasinoClient:
                 f"{{var:labelcolor}}location:    {{var:valuecolor}}{msg.get('location','')}"
             )
             io.echo(
-                "{{var:labelcolor}}visibility:  "
+                f"{{var:labelcolor}}visibility:  "
                 + f"{{var:valuecolor}}{'hidden' if msg.get('hidden') else 'public'}"
             )
             keys = label_for_key.get(game_type, ("hands_played",))
@@ -288,8 +288,8 @@ class CasinoClient:
             if message:
                 io.echo(f"{{var:labelcolor}}status:  {{var:valuecolor}}{message}")
             io.echo(
-                "{{var:labelcolor}}note:    "
-                "{{var:valuecolor}}use [L]eave to get up, or place a bet to play"
+                f"{{var:labelcolor}}note:    "
+                f"{{var:valuecolor}}use [L]eave to get up, or place a bet to play"
             )
 
         elif msg_type == "game_state":
@@ -505,7 +505,7 @@ class CasinoClient:
             cards_str = " ".join(player_hand)
             io.echo(f"Your hand: {cards_str} [{player_total}]{{f6}}")
         else:
-            io.echo("No hand yet. Place a bet.{{f6}}")
+            io.echo(f"No hand yet. Place a bet.{{f6}}")
 
         dealer_hand = state.get("dealer_hand", [])
         dealer_total = state.get("dealer_total", 0)

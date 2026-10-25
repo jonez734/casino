@@ -340,7 +340,7 @@ def auto_main(args: Any, **kw: dict) -> bool:
             player.is_over = True
 
     io.echo("{f6}")
-    io.echo("{{var:titlecolor}}final scorecard{{/all}}")
+    io.echo(f"{{var:titlecolor}}final scorecard{{/all}}")
     for cat in yahtzee_lib.CATEGORIES:
         v = player.scorecard[cat]
         if v is None:
