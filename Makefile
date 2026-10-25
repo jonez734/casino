@@ -261,12 +261,42 @@ else
 	@$(verify-install)
 endif
 
+# Local venv install (no remote). Builds a casino wheel and pip-installs it
+# into VENV_DIR, mirroring bbsengine6's `venv` and bed's `deploy-venv`.
+# VENV_DIR defaults to ~/.venv and honors deploytool's --prefix (DEPLOY_PREFIX).
+# bbsengine6 requires <3.13, so VENV_PYTHON defaults to python3.12 for a new venv.
+VENV_DIR ?= $(or $(DEPLOY_PREFIX),$(HOME)/.venv)
+VENV_PYTHON ?= python3.12
+venv:
+	@if [ ! -x "$(VENV_DIR)/bin/python" ]; then \
+		command -v "$(VENV_PYTHON)" >/dev/null 2>&1 || { echo "venv: $(VENV_PYTHON) not found; install it or set VENV_PYTHON" >&2; exit 1; }; \
+		"$(VENV_PYTHON)" -m venv "$(VENV_DIR)" || { echo "venv: could not create $(VENV_DIR)" >&2; exit 1; }; \
+	fi
+	"$(VENV_DIR)/bin/python" -m pip install --upgrade pip
+	"$(VENV_DIR)/bin/python" -m pip install --upgrade build
+	@$(MAKE) version
+	@work="$$(mktemp -d)" && \
+	trap 'rm -rf "$$work"' EXIT && \
+	mkdir "$$work/src" && \
+	tar -C . --exclude=./build --exclude=./dist --exclude='*.egg-info' --exclude=__pycache__ --exclude=.git -cf - . | tar -C "$$work/src" -xf - && \
+	wheels="$$work/out" && \
+	"$(VENV_DIR)/bin/python" -m build --wheel --outdir "$$wheels" "$$work/src" && \
+	whl="$$(ls "$$wheels"/*.whl)" && \
+	want="$$(unzip -p "$$whl" '*/METADATA' | sed -n 's/^Version: //p' | head -1)" && \
+	"$(VENV_DIR)/bin/python" -m pip install --upgrade --force-reinstall --no-deps "$$whl" && \
+	have="$$("$(VENV_DIR)/bin/python" -m pip show casino | sed -n 's/^Version: //p')" && \
+	if [ "$$have" != "$$want" ]; then echo "venv: installed casino $$have, but the wheel is $$want" >&2; exit 1; fi && \
+	echo "casino $$want installed into $(VENV_DIR)"
+
+.PHONY: venv
+
 help:
 	@echo "Available build targets:"
 	@echo "  make build        - Bump version, run python -m build into $(OUTDIR)"
 	@echo "  make version      - Rewrite src/casino/_version.py from git + date"
 	@echo "  make sdist        - Build sdist only into $(OUTDIR)"
 	@echo "  make install      - pip install . in current env"
+	@echo "  make venv         - Build casino wheel and install into VENV_DIR (default ~/.venv; --prefix sets DEPLOY_PREFIX)"
 	@echo "  make deploy-tui                       - install casino into the active venv (shared zoid6 venv)"
 	@echo "  make deploy-tui DEPLOY_EDITABLE=1     - install editable from src/ (live edits; set by deploytool --editable)"
 	@echo "  make deploy-www   - build www and rsync to $(HOST)"
