@@ -726,6 +726,17 @@ def buildargs(args: Namespace | None = None, **kwargs: Any) -> argparse.Argument
     )
     parser.add_argument("--verbose", action="store_true", dest="verbose")
     parser.add_argument("--debug", action="store_true", dest="debug")
+    parser.add_argument(
+        "--install",
+        action="store_true",
+        default=False,
+        help=(
+            "Run casino's database setup, then exit. Requires bed's engine "
+            "schema (run 'bed --install' first). Run once per install as the "
+            "install owner (a superuser or a member of zoid6). The service "
+            "start path does not run this."
+        ),
+    )
 
     defaults = {
         "databasename": "zoid6",

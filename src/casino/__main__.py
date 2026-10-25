@@ -114,6 +114,45 @@ def _run_blackjack(args: Namespace, remaining_argv: list) -> int:
     return 0
 
 
+def _run_install(args: Namespace) -> int:
+    """``casino --install`` branch: casino's database setup, once per install.
+
+    Casino requires bed. The bed engine schema must already exist (bed's
+    own bootstrap creates it), and the connecting role must be a superuser
+    or a member of zoid6. Both are checked here before any DDL runs.
+    Target database comes from ``--databasename``.
+    """
+    from bed.startup import verify_install
+
+    from bbsengine6.backend import checksuperuser
+    from casino.startup import main as casino_startup
+
+    if not verify_install(args):
+        io.echo(
+            "{level.error}casino --install: bed's engine schema is missing; "
+            "run 'bed --install' first",
+            level="error",
+        )
+        return 1
+
+    with database.getpool(args, dbname=args.databasename) as pool, \
+            database.connect(args, pool=pool) as conn:
+        if checksuperuser.main(args, conn=conn) is not True:
+            io.echo(
+                "{level.error}casino --install: connecting role is not a superuser "
+                "or zoid6 member",
+                level="error",
+            )
+            return 1
+
+    if casino_startup(args) is not True:
+        io.echo("{level.error}casino --install failed", level="error")
+        return 1
+
+    io.echo("{level.ok}casino --install complete", level="ok")
+    return 0
+
+
 _BLACKJACK_SUBCOMMAND = "blackjack"
 
 
@@ -144,6 +183,9 @@ def main(argv: list[str] | None = None) -> int:
     from casino.auth import _resolve_token_file
 
     _resolve_token_file(args)
+
+    if getattr(args, "install", False):
+        return _run_install(args)
 
     if remaining_argv and remaining_argv[0] == _BLACKJACK_SUBCOMMAND:
         return _run_blackjack(args, remaining_argv[1:])
