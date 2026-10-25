@@ -87,8 +87,8 @@ def main(args, **kwargs):
             io.echo(" ok ", level="ok")
 
         io.echo(
-            "{{var:labelcolor}}priv casino.{{var:valuecolor}}CREATE"
-            "{{var:labelcolor}} -> {{var:valuecolor}}sysop{{var:labelcolor}}: ",
+            f"{{var:labelcolor}}priv casino.{{var:valuecolor}}CREATE"
+            f"{{var:labelcolor}} -> {{var:valuecolor}}sysop{{var:labelcolor}}: ",
             end="",
         )
         if (
