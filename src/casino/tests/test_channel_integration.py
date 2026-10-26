@@ -12,6 +12,7 @@
 #   ``bbsengine6.channel.api.handler``, exercised directly because
 #   the router no longer wires them in casino's register_all path.
 
+from casino.tests import _dbname
 import sys
 import unittest
 from unittest.mock import MagicMock
@@ -28,7 +29,7 @@ class TestChannelSubscriptionIntegration(unittest.IsolatedAsyncioTestCase):
 
         self.args = MagicMock()
         self.args.pool = MagicMock()
-        self.args.databasename = "test"
+        self.args.databasename = _dbname.current_dbname()
 
         self.router = MessageRouter(self.args)
         self.sessions = self.router.sessions

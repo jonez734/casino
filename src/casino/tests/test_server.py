@@ -2,6 +2,7 @@
 # casino/tests/test_server.py
 # Integration tests for server with mocked database
 
+from casino.tests import _dbname
 import json
 import sys
 import unittest
@@ -25,7 +26,7 @@ class TestServerMocked(unittest.IsolatedAsyncioTestCase):
         # Create mock args
         self.mock_args = MagicMock()
         self.mock_args.pool = MagicMock()
-        self.mock_args.databasename = "test"
+        self.mock_args.databasename = _dbname.current_dbname()
 
         # Create server
         self.server = WebSocketServer(host="127.0.0.1", port=18770)

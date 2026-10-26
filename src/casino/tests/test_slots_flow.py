@@ -2,6 +2,7 @@
 # casino/tests/test_slots_flow.py
 # Flow-level tests for the slots service: validation, atomic spin, history.
 
+from casino.tests import _dbname
 import argparse
 import sys
 import unittest
@@ -119,7 +120,7 @@ class TestSlotServiceValidation(unittest.TestCase):
     """Pre-spin validation errors return error codes without touching the DB."""
 
     def setUp(self):
-        self.args = argparse.Namespace(databasename="test", database="test")
+        self.args = argparse.Namespace(databasename=_dbname.current_dbname(), database=_dbname.current_dbname())
 
     def _patch_db(self, table=None):
         return patch(
@@ -180,7 +181,7 @@ class TestSlotServiceSpinSuccess(unittest.TestCase):
     """Happy path: atomic transaction debits, records, and credits stats."""
 
     def setUp(self):
-        self.args = argparse.Namespace(databasename="test", database="test")
+        self.args = argparse.Namespace(databasename=_dbname.current_dbname(), database=_dbname.current_dbname())
 
     def test_successful_spin_writes_audit_and_bumps_stats(self):
         from casino.services.slots import _dealers, handle_spin, invalidate_dealer
@@ -311,7 +312,7 @@ class TestSlotServiceSpinSuccess(unittest.TestCase):
 
 class TestSlotPaytableLookup(unittest.TestCase):
     def setUp(self):
-        self.args = argparse.Namespace(databasename="test", database="test")
+        self.args = argparse.Namespace(databasename=_dbname.current_dbname(), database=_dbname.current_dbname())
 
     def test_paytable_lookup(self):
         from casino.services.slots import _dealers, handle_get_paytable, invalidate_dealer
@@ -359,7 +360,7 @@ class TestSlotServiceHandler(unittest.TestCase):
         from casino.api.handler import SlotServiceHandler
         from casino.tests._session_mock import make_sessions_mock
 
-        self.args = argparse.Namespace(databasename="test", database="test")
+        self.args = argparse.Namespace(databasename=_dbname.current_dbname(), database=_dbname.current_dbname())
         self.sessions = make_sessions_mock(moniker="alice")
         self.handler = SlotServiceHandler(self.args, self.sessions, channel_state=None)
         # Door-mode test: no token wiring, fall back to session-only auth.
@@ -425,7 +426,7 @@ class TestSlotServiceHandlerSpinBroadcast(unittest.TestCase):
         from casino.api.handler import SlotServiceHandler
         from casino.tests._session_mock import make_sessions_mock
 
-        self.args = argparse.Namespace(databasename="test", database="test")
+        self.args = argparse.Namespace(databasename=_dbname.current_dbname(), database=_dbname.current_dbname())
         self.sessions = make_sessions_mock(moniker="alice", table_moniker="slots-test")
         self.handler = SlotServiceHandler(self.args, self.sessions, channel_state=None)
         # Door-mode test: no token wiring, fall back to session-only auth.

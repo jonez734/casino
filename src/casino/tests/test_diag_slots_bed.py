@@ -13,6 +13,7 @@
 # Skipped if bed is not reachable at localhost:8765.
 from __future__ import annotations
 
+from casino.tests import _dbname
 import argparse
 import asyncio
 import json
@@ -58,8 +59,8 @@ def build_args() -> argparse.Namespace:
     a.bed_port = BED_PORT
     a.bed_path = "/"
     a.bed_call_timeout = 5.0
-    a.databasename = "test"
-    a.database = "test"
+    a.databasename = _dbname.current_dbname()
+    a.database = _dbname.current_dbname()
     a.token_file = None
     return a
 

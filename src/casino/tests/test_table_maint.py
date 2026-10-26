@@ -2,6 +2,7 @@
 # casino/tests/test_table_maint.py
 # Tests for table maintenance functions (owner/sysop permissions)
 
+from casino.tests import _dbname
 import argparse
 import sys
 import unittest
@@ -48,7 +49,7 @@ class TestTableService(unittest.TestCase):
     """Test TableService for owner/sysop permission handling."""
 
     def setUp(self):
-        self.args = argparse.Namespace(databasename="test")
+        self.args = argparse.Namespace(databasename=_dbname.current_dbname())
 
     def test_update_table_owner_allowed(self):
         """Test that owner can update table fields."""
@@ -288,7 +289,7 @@ class TestTableDAL(unittest.TestCase):
     """Test table DAL functions."""
 
     def setUp(self):
-        self.args = argparse.Namespace(databasename="test")
+        self.args = argparse.Namespace(databasename=_dbname.current_dbname())
 
     def test_update_table_min_max_bet(self):
         """Test updating min/max bet via DAL."""
@@ -415,7 +416,7 @@ class TestListTables(unittest.TestCase):
     """Test listing tables includes status."""
 
     def setUp(self):
-        self.args = argparse.Namespace(databasename="test")
+        self.args = argparse.Namespace(databasename=_dbname.current_dbname())
 
     def test_list_tables_includes_status(self):
         """Test that list_tables returns status field."""

@@ -21,6 +21,7 @@
 #   TestHandlerFullMessageFlow              auth + spin + paytable + history
 #   TestDealerCacheInvalidationLifecycle    cache hit/miss across updates
 
+from casino.tests import _dbname
 import argparse
 import contextlib
 import random
@@ -32,7 +33,7 @@ sys.path.insert(0, "/home/opencode/data/work/casino/src")
 
 
 def _make_args(**overrides):
-    base = {"databasename": "test", "database": "test", "debug": False}
+    base = {"databasename": _dbname.current_dbname(), "database": _dbname.current_dbname(), "debug": False}
     base.update(overrides)
     return argparse.Namespace(**base)
 

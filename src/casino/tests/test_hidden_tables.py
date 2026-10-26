@@ -2,6 +2,7 @@
 # casino/tests/test_hidden_tables.py
 # Tests for hidden table functionality
 
+from casino.tests import _dbname
 import argparse
 import sys
 import unittest
@@ -52,7 +53,7 @@ class TestHiddenTableDAL(unittest.TestCase):
     """Test that hidden flag is properly handled at the DAL layer."""
 
     def setUp(self):
-        self.args = argparse.Namespace(databasename="test")
+        self.args = argparse.Namespace(databasename=_dbname.current_dbname())
 
     def test_create_table_with_hidden_true(self):
         """Hidden=True is stored when creating a table."""
@@ -329,7 +330,7 @@ class TestHiddenTableService(unittest.TestCase):
     """Test that TableService properly enforces the hidden semantics."""
 
     def setUp(self):
-        self.args = argparse.Namespace(databasename="test")
+        self.args = argparse.Namespace(databasename=_dbname.current_dbname())
 
     def test_create_table_with_hidden(self):
         """Service propagates the hidden flag through to the DAL."""
