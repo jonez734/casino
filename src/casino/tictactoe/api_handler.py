@@ -142,7 +142,9 @@ class TictactoeServiceHandler:
             elif msg_type == "tictactoe_join":
                 result = self._service.join(table_moniker, moniker)
             else:
-                return None
+                # Claimed (in TICTACTOE_MSG_TYPES) but no branch: an explicit error, never a silent drop.
+                return {"type": "error", "code": "unhandled_type",
+                        "message": f"tictactoe has no handler for {msg_type!r}"}
         except Exception as e:
             return {"type": "error", "code": "internal", "message": str(e)}
 

@@ -34,6 +34,18 @@ sys.path.insert(0, "/home/opencode/data/work/bbsengine6/py/src")
 sys.path.insert(0, "/home/opencode/data/work/bed/src")
 
 
+
+
+async def _finished_disconnect():
+    """A disconnect that is already done. run()'s finally awaits it on the exit path."""
+    return None
+
+async def _finished_receiver():
+    """A receive loop that is already done. run() creates it as a task and cancels it; a
+    coroutine-function stub finishes cleanly, where an AsyncMock call would leave an
+    un-awaited coroutine behind (KNOWN_GAPS 9)."""
+    return None
+
 def _make_args(**overrides) -> argparse.Namespace:
     args = argparse.Namespace()
     args.bed_host = "127.0.0.1"
@@ -131,7 +143,7 @@ def test_run_dispatches_to_token_file_when_token_file_set(tmp_path):
     client = CasinoClient(args)
     client.cmd_auth = AsyncMock(return_value=True)
     client.connect = AsyncMock(return_value=True)
-    client.receive_loop = AsyncMock(return_value=None)
+    client.receive_loop = _finished_receiver
 
     # The helper mutates the supplied client in place; let it run
     # against the real (mocked) bed modules via the patch context.
@@ -186,7 +198,7 @@ def test_run_falls_back_to_prompt_when_token_file_unset():
     client = CasinoClient(args)
     client.cmd_auth = AsyncMock(return_value=True)
     client.connect = AsyncMock(return_value=True)
-    client.receive_loop = AsyncMock(return_value=None)
+    client.receive_loop = _finished_receiver
 
     with patch("casino.auth._connect_with_token") as mock_connect, \
          patch("casino.client.casino_client._client_menu", return_value="Q"):
@@ -279,8 +291,8 @@ def test_connect_with_token_mutates_supplied_client_in_place(tmp_path):
 
     existing = CasinoClient(args)
     existing.connect = AsyncMock(return_value=True)
-    existing.disconnect = AsyncMock(return_value=None)
-    existing.receive_loop = AsyncMock(return_value=None)
+    existing.disconnect = _finished_disconnect
+    existing.receive_loop = _finished_receiver
 
     real_loop = asyncio.new_event_loop()
 
@@ -323,7 +335,14 @@ def test_connect_with_token_mutates_supplied_client_in_place(tmp_path):
         with patch.dict(sys.modules, fake_modules):
             result = _connect_with_token(args, "127.0.0.1", 8765, client=existing)
     finally:
+        # Drain the loop before closing it: cancel and finish any receiver task still pending,
+        # so no coroutine is left for the garbage collector to report (KNOWN_GAPS 9).
         if not real_loop.is_closed():
+            pending = asyncio.all_tasks(real_loop)
+            for task in pending:
+                task.cancel()
+            if pending:
+                real_loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
             real_loop.close()
 
     assert result is existing, "_connect_with_token must return the supplied client"

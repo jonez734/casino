@@ -155,7 +155,9 @@ class YahtzeeServiceHandler:
                             "message": "category must be a string"}
                 result = self._service.score(table_moniker, moniker, category)
             else:
-                return None
+                # Claimed (in YAHTZEE_MSG_TYPES) but no branch: an explicit error, never a silent drop.
+                return {"type": "error", "code": "unhandled_type",
+                        "message": f"yahtzee has no handler for {msg_type!r}"}
         except KeyError as e:
             return {"type": "error", "code": "no_active_game", "message": str(e)}
         except PermissionError as e:

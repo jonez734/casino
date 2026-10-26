@@ -1624,13 +1624,13 @@ class MessageRouter:
 
         # Register yahtzee service for dice play
         server.register_service(
-            self.yahtzee_service_handler, ["yahtzee_quick_play", "yahtzee_roll", "yahtzee_reroll", "yahtzee_score"]
+            self.yahtzee_service_handler, list(self.yahtzee_service_handler.YAHTZEE_MSG_TYPES)
         )
 
         # Register tictactoe service for board play
         server.register_service(
             self.tictactoe_service_handler,
-            ["tictactoe_quick_play", "tictactoe_move", "tictactoe_resign", "tictactoe_join"],
+            list(self.tictactoe_service_handler.TICTACTOE_MSG_TYPES),
         )
 
     async def handle_broadcast(self, server: Any, websocket: Any, path: str, message: dict[str, Any]) -> None:
