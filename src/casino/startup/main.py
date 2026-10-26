@@ -157,6 +157,23 @@ def main(args, **kwargs):
             else:
                 io.echo("ok", level="ok")
 
+        # 4b. Ownership. Objects created above run as the connecting role; move
+        #     every casino object to zoid6, the schema owner, so zoid6-owned code
+        #     and bed's grants can reach them. Idempotent.
+        io.echo(
+            f"{{var:labelcolor}}owner migration {{var:valuecolor}}casino -> zoid6{{var:labelcolor}}: ",
+            end="",
+        )
+        if (
+            database.importsql(
+                args, "owner_zoid6_migration.sql", conn=conn, package="casino.sql"
+            )
+            is False
+        ):
+            io.echo("fail", level="error")
+            return False
+        io.echo(" ok ", level="ok")
+
         # 5. Channel overrides — casino-specific tuning applied on top
         #    of the engine-level auto_seed (which already ran during
         #    bbsengine6.startup via the channel MessageRouter). Reads
