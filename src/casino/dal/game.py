@@ -449,3 +449,29 @@ def get_or_create_dealer_hand(args: Any, game_id: int, *, pool: Any = None) -> d
     if hand is None:
         hand = create_dealer_hand(args, game_id, pool=pool)
     return hand
+
+
+def set_action_deadline(args: Any, game_id: int, deadline: Any, *, pool: Any = None) -> None:
+    """Store the round's action deadline (None clears it: no clock running)."""
+    with _connect_ctx(args, pool) as conn, database.cursor(conn) as cur:
+        cur.execute(
+            database.query(
+                "UPDATE $casino.__game SET action_deadline = :deadline WHERE id = :game_id",
+                deadline=deadline, game_id=game_id,
+            )
+        )
+
+
+def get_action_deadline(args: Any, game_id: int, *, pool: Any = None) -> Any:
+    """The round's stored action deadline, or None."""
+    with _connect_ctx(args, pool) as conn, database.cursor(conn) as cur:
+        cur.execute(
+            database.query(
+                "SELECT action_deadline FROM $casino.__game WHERE id = :game_id",
+                game_id=game_id,
+            )
+        )
+        row = cur.fetchone()
+        if row is None:
+            return None
+        return row["action_deadline"] if isinstance(row, dict) else row[0]

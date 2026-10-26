@@ -118,10 +118,16 @@ class GameService:
 
         game = dal_game.create_game(self.args, table_moniker, game_type, pool=self._pool)
 
+        # Round clock: one deadline for every open hand, from the table's turn_seconds. 0 = off.
+        from casino.services import round_clock as _rc
+        deadline = _rc.deadline_for(int(table.get("turn_seconds") or 0))
+        dal_game.set_action_deadline(self.args, game["id"], deadline, pool=self._pool)
+
         return {
             "success": True,
             "game_id": game["id"],
             "message": f"Game {game['id']} started",
+            "action_deadline": deadline.isoformat() if deadline else None,
         }
 
     def place_bet(
@@ -181,11 +187,26 @@ class GameService:
             "message": f"Bet {amount} placed",
         }
 
+    def _round_expired(self, table_moniker: str, game: dict[str, Any]) -> bool:
+        """True (and the expiry applied) when the round's clock has run out.
+
+        Checked before any action is applied, so a late hit, stand, or double cannot beat the
+        clock. An expired round takes the table's penalty for every unfinished hand.
+        """
+        from casino.services import round_clock as _rc
+        deadline = dal_game.get_action_deadline(self.args, game["id"], pool=self._pool)
+        if not _rc.is_expired(deadline):
+            return False
+        _rc.expire_round(self, table_moniker, pool=self._pool)
+        return True
+
     def hit(self, table_moniker: str, player_moniker: str) -> dict[str, Any]:
         """Player hits (takes another card)."""
         game = dal_game.get_active_game(self.args, table_moniker, pool=self._pool)
         if not game:
             return {"success": False, "message": "No active game"}
+        if self._round_expired(table_moniker, game):
+            return {"success": False, "message": "The round clock expired"}
 
         hand = dal_game.get_player_hand(self.args, game["id"], player_moniker, pool=self._pool)
         if not hand:
@@ -222,6 +243,8 @@ class GameService:
         game = dal_game.get_active_game(self.args, table_moniker, pool=self._pool)
         if not game:
             return {"success": False, "message": "No active game"}
+        if self._round_expired(table_moniker, game):
+            return {"success": False, "message": "The round clock expired"}
 
         hand = dal_game.get_player_hand(self.args, game["id"], player_moniker, pool=self._pool)
         if not hand:
@@ -242,6 +265,9 @@ class GameService:
         """Player surrenders - forfeit 50% of bet."""
         from casino.dal import bet as dal_bet
 
+        game = dal_game.get_active_game(self.args, table_moniker, pool=self._pool)
+        if game and self._round_expired(table_moniker, game):
+            return {"success": False, "message": "The round clock expired"}
         game = dal_game.get_active_game(self.args, table_moniker, pool=self._pool)
         if not game:
             return {"success": False, "message": "No active game"}
@@ -410,6 +436,9 @@ class GameService:
 
     def split(self, table_moniker: str, player_moniker: str, hand_id: Optional[int] = None) -> dict[str, Any]:
         """Split player's hand into two hands."""
+        game = dal_game.get_active_game(self.args, table_moniker, pool=self._pool)
+        if game and self._round_expired(table_moniker, game):
+            return {"success": False, "message": "The round clock expired"}
         can_split = self.can_split(table_moniker, player_moniker, hand_id)
         if not can_split["success"]:
             return can_split
@@ -574,6 +603,9 @@ class GameService:
 
     def double(self, table_moniker: str, player_moniker: str, hand_id: Optional[int] = None) -> dict[str, Any]:
         """Double down - double bet and get exactly one more card."""
+        game = dal_game.get_active_game(self.args, table_moniker, pool=self._pool)
+        if game and self._round_expired(table_moniker, game):
+            return {"success": False, "message": "The round clock expired"}
         can_double = self.can_double(table_moniker, player_moniker, hand_id)
         if not can_double["success"]:
             return can_double
