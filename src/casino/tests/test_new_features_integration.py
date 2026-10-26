@@ -90,6 +90,16 @@ class BaseIntegrationTest(unittest.IsolatedAsyncioTestCase):
         self.router = MessageRouter(self.args)
         self.router.register_all(self.server)
 
+        # Door-mode fixture: no token store is wired, so the session-only opt-in is needed.
+        for svc in (
+            self.router.table_service,
+            self.router.game_service,
+            self.router.bet_service,
+            self.router.chat_service,
+            self.router.slot_service,
+        ):
+            svc.allow_legacy_session_only = True
+
         await self.server.start()
         self._server_started = True
         self.client: Optional[WebSocketTestClient] = None

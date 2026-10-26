@@ -224,6 +224,16 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
         # Register services
         self.router.register_all(self.server)
 
+        # Door-mode fixture: no token store is wired, so the session-only opt-in is needed.
+        for svc in (
+            self.router.table_service,
+            self.router.game_service,
+            self.router.bet_service,
+            self.router.chat_service,
+            self.router.slot_service,
+        ):
+            svc.allow_legacy_session_only = True
+
         # Start server
         await self.server.start()
         self._server_started = True
@@ -358,20 +368,7 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
             table_id = response["moniker"]
             print(f"✓ Created table {table_id}")
 
-            # Step 4: Ping/Pong
-            await self.client.send({"type": "ping"})
-
-            response = await self.client.receive()
-            self.assertEqual(response["type"], "pong")
-            self.assertIn("timestamp", response)
-            print("✓ Ping/Pong successful")
-
-            # Step 5: Multiple ping/pongs to test stability
-            for i in range(3):
-                await self.client.send({"type": "ping"})
-                response = await self.client.receive()
-                self.assertEqual(response["type"], "pong")
-            print("✓ Multiple ping/pongs successful")
+            # Ping/pong is bed's protocol (bed.tests.test_ping_service); casino no longer answers it.
 
             # Step 6: Join the table
             await self.client.send({"type": "join_table", "moniker": table_id})
@@ -435,12 +432,6 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(len(player_hand), 3, "Should have 3 cards after hit")
             else:
                 print("⚠ No game_state received after hit")
-
-            # Step 9: Verify connection is still stable
-            await self.client.send({"type": "ping"})
-            response = await self.client.receive()
-            self.assertEqual(response["type"], "pong")
-            print("✓ Connection still stable after game actions")
 
             print("\n✓ Full blackjack flow completed successfully!")
 
