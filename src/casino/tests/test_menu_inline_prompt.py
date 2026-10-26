@@ -67,12 +67,12 @@ class TestClientMenuInlinePrompt(unittest.TestCase):
         self.assertEqual(mock_ic.call_count, 1)
         prompt = mock_ic.call_args[0][0]
 
-        # 8 visible options + 2 boundary seams = 9 ``{f6}`` markers
+        # 9 visible options + 2 boundary seams = 10 ``{f6}`` markers
         f6_count = prompt.count("{f6}")
         self.assertEqual(
             f6_count,
-            9,
-            f"expected 9 {{f6}} separators (8 visible options "
+            10,
+            f"expected 10 {{f6}} separators (9 visible options "
             f"plus balance-tail and prompt-head seams), got "
             f"{f6_count} in: {prompt!r}",
         )
@@ -116,7 +116,7 @@ class TestClientMenuInlinePrompt(unittest.TestCase):
         """When the player is seated at a blackjack table, the
         seat-gated options become visible (Leave / Bet / Hit /
         Stand). 8 + 4 = 12 visible -> 11 ``{f6}`` between options
-        + 2 boundary seams = 13 ``{f6}`` markers.
+        + 2 boundary seams = 14 ``{f6}`` markers.
         """
         from casino.client.menu import menu as client_menu
 
@@ -129,7 +129,7 @@ class TestClientMenuInlinePrompt(unittest.TestCase):
             client_menu(client)
 
         prompt = mock_ic.call_args[0][0]
-        self.assertEqual(prompt.count("{f6}"), 13)
+        self.assertEqual(prompt.count("{f6}"), 14)
 
     def test_main_menu_prompt_seam_count_matches_visible_plus_one(self):
         """General invariant: ``{f6}`` count == ``len(visible) + 1``

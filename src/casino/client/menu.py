@@ -24,6 +24,7 @@ _OPTIONS_SPEC = (
     MenuOption("c", "Create  (create a new table)",   requires_seated=False),
     MenuOption("u", "Update  (modify an existing table)", requires_seated=False),
     MenuOption("j", "Join Table",                     requires_seated=False),
+    MenuOption("p", "Players (list a table's players)", requires_seated=False),
     MenuOption("l", "Leave   (leave current table)",  requires_seated=True),
     MenuOption("b", "Bet     (place a wager)",         requires_seated=True, allowed_game_types=frozenset({"blackjack", "poker"})),
     MenuOption("h", "Hit     (take another card)",     requires_seated=True, allowed_game_types=frozenset({"blackjack"})),

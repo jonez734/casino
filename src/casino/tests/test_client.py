@@ -525,7 +525,7 @@ class TestMenuVisibility(unittest.TestCase):
 
         # The option list passed to inputchoice must use lowercase
         # letters separated by commas (matches io.inputchoice contract).
-        self.assertEqual(captured["options"], "t,c,u,j,l,b,h,s,m,k,x,q")
+        self.assertEqual(captured["options"], "t,c,u,j,p,l,b,h,s,m,k,x,q")
 
     def test_render_help_reflects_same_filter(self):
         """F1/HELP must echo only the currently-visible long labels."""

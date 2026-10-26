@@ -685,6 +685,43 @@ class CasinoClient:
             self._loop.run_until_complete(asyncio.sleep(0.05))
         return self._table_info
 
+    def cmd_list_players(self) -> None:
+        """List the players at a table. The prompt defaults to the current table.
+
+        Each seat is labelled [BOT] or [HUMAN]. Bots are not a seat type yet (the seat-module
+        phase adds it), so every seat is [HUMAN] for now. Spectators are listed separately and are
+        not seated.
+        """
+        default = self.current_table_moniker or ""
+        prompt = (
+            f"{{var:promptcolor}}Table moniker [{default}]: {{var:inputcolor}}"
+            if default else "{var:promptcolor}Table moniker: {var:inputcolor}"
+        )
+        moniker = io.inputstring(prompt, default or None)
+        moniker = (moniker or default or "").strip()
+        if not moniker:
+            io.echo("{errorcolor}no table given{/all}", level="error")
+            return
+
+        table = self._fetch_table(moniker)
+        if table is None:
+            io.echo(f"{{errorcolor}}no table named {moniker}{{/all}}", level="error")
+            return
+
+        seated = table.get("players") or []
+        spectators = table.get("spectators") or []
+        io.echo(f"{{var:labelcolor}}Players at {{var:valuecolor}}{moniker}{{var:labelcolor}}:")
+        io.echo(f"{{var:labelcolor}}{'Seat':<6}{'Name':<24}{'Kind':<9}{'Role'}")
+        if not seated:
+            io.echo("  (no one seated)")
+        for seat, name in enumerate(seated, start=1):
+            kind = "[HUMAN]"
+            io.echo(f"  {seat:<4}{name:<24}{kind:<9}player")
+        if spectators:
+            io.echo(f"{{var:labelcolor}}Spectators (not seated):")
+            for name in spectators:
+                io.echo(f"  {'':<4}{name:<24}{'[HUMAN]':<9}spectator")
+
     def cmd_join_table(self) -> None:
         """Handle join_table command."""
         moniker = io.inputstring("{var:promptcolor}Table moniker: {var:inputcolor}")
@@ -1092,6 +1129,9 @@ class CasinoClient:
             elif cmd == "J":
                 io.echo("Join")
                 self.cmd_join_table()
+            elif cmd == "P":
+                io.echo("Players")
+                self.cmd_list_players()
             elif cmd == "L":
                 io.echo("Leave")
                 self.cmd_leave_table()
