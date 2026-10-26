@@ -562,6 +562,9 @@ The casino config block is sourced from `bed.json` under the
     "blackjack": {
       "surrender_allowed": "early",
       "surrender_multiplier": 0.5
+    },
+    "clock": {
+      "max_turn_seconds": 120
     }
   }
 }
@@ -574,6 +577,12 @@ Helpers in `src/casino/config.py`:
 | `load_config()`                | Read JSON / merge env (canonical casino config loader; unchanged)                        |
 | `get_casino_config(args)`      | Return the casino-level block: prefers `args._casino_config` (wired by bed), falls back to `args._casino_config_file`, then `{}`. |
 | `get_surrender_multiplier(args)` | Read `casino.blackjack.surrender_multiplier`, defaulting to `0.5`. Honors `surrender_allowed` (`False` / `"none"` → `0.0`); clamps out-of-range and garbage values to the `0.5` default. |
+| `get_max_turn_seconds(args)` | Read `casino.clock.max_turn_seconds`, the sysop ceiling for a table's `turn_seconds` (the play clock). Defaults to `120`; clamped to `0..3600`; a non-integer falls back to `120`. `0` disables the clock on every table. |
+
+The play clock is a per-table `turn_seconds` (0 = off). The ceiling is config, not
+database state: the bed casino service refuses a `casino_create_table` or
+`casino_update_table` whose `turn_seconds` is not an integer, is negative, or is above
+`get_max_turn_seconds`, before any write. The database stores what it is given.
 
 `MessageRouter.__init__` calls `_bootstrap_casino_config(args)`,
 which auto-discovers the `casino` section from `args.config_file`

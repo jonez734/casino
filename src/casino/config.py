@@ -134,3 +134,23 @@ def get_surrender_multiplier(args: Any) -> float:
     except (TypeError, ValueError):
         mult = 0.5
     return mult if 0.0 <= mult <= 1.0 else 0.5
+
+
+DEFAULT_MAX_TURN_SECONDS = 120
+MAX_TURN_SECONDS_CEILING = 3600
+
+
+def get_max_turn_seconds(args: Any) -> int:
+    """Sysop ceiling for a table's ``turn_seconds`` (the play clock), from ``casino.clock``.
+
+    Defaults to ``120``. ``0`` disables the play clock on every table. Values are clamped to
+    ``0..3600``; a non-integer falls back to the default.
+    """
+    cfg = get_casino_config(args)
+    clock = cfg.get("clock", {}) if isinstance(cfg, dict) else {}
+    try:
+        value = int(clock.get("max_turn_seconds", DEFAULT_MAX_TURN_SECONDS))
+    except (TypeError, ValueError):
+        return DEFAULT_MAX_TURN_SECONDS
+    return max(0, min(value, MAX_TURN_SECONDS_CEILING))
+
