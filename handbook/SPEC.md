@@ -5,7 +5,7 @@
 > wiring (MessageRouter + CasinoSessionManager + bed-native auth)
 > in place; games are feature-complete per their READMEs.
 
-> **Note**: See [`TODO.md`](./TODO.md) for a list of unimplemented
+> **Note**: See [`TODO.md`](../TODO.md) for a list of unimplemented
 > features and future work.
 
 ## Table of Contents
@@ -30,7 +30,7 @@
 
 `casino` is a Python package that ships five casino-style games
 (blackjack, slots, poker, yahtzee, tic-tac-toe) on top of
-[bbsengine6](../bbsengine6/). It exposes three run modes:
+[bbsengine6](../../bbsengine6/). It exposes three run modes:
 
 1. **Door-mode BBS module** — registered with bbsengine6, interactive
    ttyio menu in a BBS session.

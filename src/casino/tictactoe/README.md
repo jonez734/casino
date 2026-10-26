@@ -122,7 +122,7 @@ messages use the existing WebSocket transport.
   `dal.game.update_game_attrs` (sync + aiosql) — this is what
   feeds the per-table `get_table_stats` aggregate when
   `Moniker.create_table` short-circuits on a duplicate moniker.
-  See `casino.SPEC.md` §9.
+  See `casino/handbook/SPEC.md` §9.
 - Disconnect mid-game: `finalize_on_disconnect` settles the open
   bet as a loss (`payout=0`), sets `__game.status = 'cancelled'`.
   Mode 0 ignores disconnects. Mode 2 picks the leaver as the

@@ -106,7 +106,7 @@ that re-introduces an ACS leak would not be guarded.
 
 The WS-client has two call sites where multiple `[X]label`
 fragments are joined into a single `io.inputchoice()` prompt
-string (see `SPEC.md` §6.1):
+string (see `handbook/SPEC.md` §6.1):
 
 - `src/casino/client/menu.py:menu()` — main casino_client prompt.
 - `src/casino/client/casino_client.py:cmd_bank_menu()` — bank

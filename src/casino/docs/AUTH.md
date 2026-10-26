@@ -63,7 +63,7 @@ When `audit=True` and a row is newly created, one
 `io.echo(..., level="debug")` fires with the membermoniker. Subsequent
 constructions for the same member are silent. There is no explicit
 `casino init <moniker>` step in v1 — the audit echo is the sysop's
-window into "who got auto-created." See `SPEC.md` §2.1 for the full
+window into "who got auto-created." See `handbook/SPEC.md` §2.1 for the full
 rationale.
 
 ## Connection model

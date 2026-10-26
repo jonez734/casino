@@ -14,7 +14,7 @@ WebSocket-driven real-time game server. It runs in three modes:
 3. **Standalone TUI client** (`casino`, default branch) — long-lived
    WebSocket client for sysops and CI.
 
-> **See [`SPEC.md`](SPEC.md)** for the architecture: the layered
+> **See [`handbook/SPEC.md`](handbook/SPEC.md)** for the architecture: the layered
 > services / DAL / games stack, the message types, the poker variant
 > plugin system, and the per-game READMEs.
 >
@@ -180,7 +180,8 @@ casino/
 │   └── Makefile                  deploy-www target
 ├── ascii-playing-cards.txt       1998 ejm98 ASCII card art
 ├── Makefile                      Build / release / deploy-www
-└── TODO.md  TODO_CLIENT.md  SPEC.md  CHANGELOG.md  README.md
+└── TODO.md  TODO_CLIENT.md  CHANGELOG.md  README.md
+    handbook/SPEC.md
 ```
 
 ## Dependencies

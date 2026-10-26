@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # casino/tests/test_menu_inline_prompt.py
 # Pins the inline-prompt rendering contract documented at
-# SPEC.md §6.1 ("Menu rendering contract (WS-client inline prompts)").
+# handbook/SPEC.md §6.1 ("Menu rendering contract (WS-client inline prompts)").
 #
 # Two ``io.inputchoice(...)`` call sites join multiple ``[X]label``
 # fragments into a single prompt string. Pre-fix they used ``""`` as
@@ -134,7 +134,7 @@ class TestClientMenuInlinePrompt(unittest.TestCase):
     def test_main_menu_prompt_seam_count_matches_visible_plus_one(self):
         """General invariant: ``{f6}`` count == ``len(visible) + 1``
         across representative states. This is the contract from
-        SPEC.md §6.1: one ``{f6}`` between adjacent options plus
+        handbook/SPEC.md §6.1: one ``{f6}`` between adjacent options plus
         one ``{f6}`` after the balance and one ``{f6}`` before the
         trailing prompt.
         """
