@@ -977,36 +977,51 @@ class CasinoClient:
         ``self.connect()`` then ``self.cmd_auth()``.
         """
         from .. import auth
-
-        token_path = getattr(self.args, "token_file", None)
-        if token_path:
-            host = getattr(self.args, "bed_host", "127.0.0.1")
-            port = int(getattr(self.args, "bed_port", 8765))
-            if not auth._connect_with_token(self.args, host, port, client=self):
-                return
-        else:
-            self._loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(self._loop)
-
-            if not self._loop.run_until_complete(self.connect()):
-                auth._close_loop_for(self)
-                return
-
-            self._receive_task = self._loop.create_task(self.receive_loop())
-
-            self._loop.run_until_complete(self.cmd_auth())
-            self._loop.run_until_complete(asyncio.sleep(0.5))
-
         from . import bottombar as _bar
 
-        _bar.attach(lambda: self)
+        self._exit_reason = "quit"
         try:
-            self._run_menu_loop()
-        finally:
-            _bar.detach()
+            token_path = getattr(self.args, "token_file", None)
+            if token_path:
+                host = getattr(self.args, "bed_host", "127.0.0.1")
+                port = int(getattr(self.args, "bed_port", 8765))
+                if not auth._connect_with_token(self.args, host, port, client=self):
+                    self._exit_reason = "auth_failed"
+                    return
+            else:
+                self._loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(self._loop)
 
-        self._loop.run_until_complete(self.disconnect())
-        auth._close_loop_for(self)
+                if not self._loop.run_until_complete(self.connect()):
+                    self._exit_reason = "auth_failed"
+                    return
+
+                self._receive_task = self._loop.create_task(self.receive_loop())
+
+                self._loop.run_until_complete(self.cmd_auth())
+                self._loop.run_until_complete(asyncio.sleep(0.5))
+
+            _bar.attach(lambda: self)
+            try:
+                self._run_menu_loop()
+            finally:
+                _bar.detach()
+        except EOFError:
+            self._exit_reason = "eof"
+            io.echo("{/all}{bold}EOF{/bold}")
+        except KeyboardInterrupt:
+            self._exit_reason = "intr"
+            io.echo("{/all}{bold}INTR{/bold}")
+        except Exception:
+            self._exit_reason = "error"
+            raise
+        finally:
+            # Runs on every path: a clean quit, EOF, Ctrl-C, an auth failure, or an error.
+            loop = getattr(self, "_loop", None)
+            if loop is not None:
+                with contextlib.suppress(Exception):
+                    loop.run_until_complete(self.disconnect())
+            auth._close_loop_for(self)
 
     def _run_menu_loop(self) -> None:
         """Menu loop. The bottom bar is redrawn before each prompt, so it reflects the

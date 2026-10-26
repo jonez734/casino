@@ -86,7 +86,11 @@ def _run_bed(args: Namespace) -> int:
 
     client = CasinoClient(args)
     client.run()
-    return 0 if getattr(client, "authenticated", False) else 1
+    # A quit, EOF, or Ctrl-C after a successful login is a normal stop (0). Only a
+    # session that never authenticated is a failure (1).
+    if getattr(client, "_exit_reason", None) == "auth_failed":
+        return 1
+    return 0 if getattr(client, "authenticated", False) or getattr(client, "_exit_reason", None) in ("quit", "eof", "intr") else 1
 
 
 def _run_blackjack(args: Namespace, remaining_argv: list) -> int:

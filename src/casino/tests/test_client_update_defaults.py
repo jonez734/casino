@@ -30,10 +30,16 @@ def test_status_prompt_uses_the_current_value_as_default():
 
 
 def test_update_sends_only_changed_fields():
+    import asyncio
+
     client = cc.CasinoClient.__new__(cc.CasinoClient)
-    client._loop = MagicMock()
+    client._loop = asyncio.new_event_loop()
     sent = []
-    client.send = lambda msg: sent.append(msg) or None
+
+    async def _record(msg):
+        sent.append(msg)
+
+    client.send = _record
     table = {"min_bet": 10, "max_bet": 500, "status": "open"}
     client._fetch_table = lambda moniker, timeout=5.0: table
     # user keeps min (10), changes max to 900, keeps status open
@@ -41,8 +47,11 @@ def test_update_sends_only_changed_fields():
     with patch.object(cc.io, "inputstring", side_effect=lambda *a, **k: next(answers, "open")), \
          patch.object(cc.io, "inputinteger", side_effect=[10, 900]), \
          patch.object(cc.io, "echo"):
-        client._loop.run_until_complete = lambda coro: None
-        client.cmd_update_table()
+        # Drive the real coroutine (send) to completion on a private loop.
+        try:
+            client.cmd_update_table()
+        finally:
+            client._loop.close()
     assert len(sent) == 1
     assert sent[0] == {"type": "casino_update_table", "moniker": "t1", "max_bet": 900}
 
