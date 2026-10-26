@@ -22,11 +22,13 @@ class TableService:
         max_bet: int = 1000,
         moniker: Optional[str] = None,
         hidden: bool = False,
+        attrs: Optional[dict[str, Any]] = None,
     ) -> dict[str, Any]:
         """Create a new casino table.
 
         Args:
             hidden: If True, table is hidden from list_tables for non-sysop users.
+            attrs: Table rules (e.g. ``surrender``); stored on the table row.
 
         Returns one of three shapes:
 
@@ -40,7 +42,7 @@ class TableService:
         """
         table = dal_table.create_table(
             self.args, game_type, owner_moniker, min_bet, max_bet, moniker,
-            hidden=hidden, pool=self._pool,
+            hidden=hidden, attrs=attrs, pool=self._pool,
         )
         if table is None:
             return {

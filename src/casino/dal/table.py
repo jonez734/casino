@@ -7,6 +7,7 @@
 # absent, the legacy ``database.connect(args)`` shape is used as a
 # backward-compat fallback.
 
+import json
 import random
 from typing import Any, Optional
 
@@ -70,6 +71,7 @@ def create_table(
     moniker: Optional[str] = None,
     hidden: bool = False,
     *,
+    attrs: Optional[dict[str, Any]] = None,
     pool: Any = None,
 ) -> dict[str, Any]:
     """
@@ -83,6 +85,8 @@ def create_table(
         max_bet: Maximum bet
         moniker: Unique text identifier (auto-generated if not provided)
         hidden: If True, table is hidden from list_tables for non-sysops
+        attrs: Table rules stored in ``casino.__table.attrs`` (e.g. ``surrender``,
+            ``soft_17``, ``charlie``, ``shoe_decks``). Empty when not given.
         pool: Optional connection pool (CONN_POOL_PATTERN)
 
     Returns:
@@ -154,8 +158,9 @@ def create_table(
 
         cur.execute(
             database.query(
-                "INSERT INTO $casino.__table (moniker, type, minimumbet, maximumbet, ownermoniker, ownersince, accountid, location, status, hidden) VALUES (:moniker, :game_type, :min_bet, :max_bet, :owner_moniker, NOW(), :account_id, :table_name, 'open', :hidden) RETURNING moniker, type, minimumbet, maximumbet, ownermoniker, ownersince, accountid, cheat, cheatpercent, attrs, shoe_cards, shoe_uses, location, status, hidden",
-                moniker=moniker, game_type=game_type, min_bet=min_bet, max_bet=max_bet, owner_moniker=owner_moniker, account_id=account_id, table_name=table_name, hidden=hidden
+                "INSERT INTO $casino.__table (moniker, type, minimumbet, maximumbet, ownermoniker, ownersince, accountid, location, status, hidden, attrs) VALUES (:moniker, :game_type, :min_bet, :max_bet, :owner_moniker, NOW(), :account_id, :table_name, 'open', :hidden, CAST(:attrs AS jsonb)) RETURNING moniker, type, minimumbet, maximumbet, ownermoniker, ownersince, accountid, cheat, cheatpercent, attrs, shoe_cards, shoe_uses, location, status, hidden",
+                moniker=moniker, game_type=game_type, min_bet=min_bet, max_bet=max_bet, owner_moniker=owner_moniker, account_id=account_id, table_name=table_name, hidden=hidden,
+                attrs=json.dumps(attrs or {})
             )
         )
         row = cur.fetchone()

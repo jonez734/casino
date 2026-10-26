@@ -307,7 +307,8 @@ class GameService:
         if surrender_multiplier <= 0:
             return {"success": False, "message": "Surrender not allowed at this table"}
 
-        surrender_amount = int(bet["amount"] * surrender_multiplier)
+        # The bet comes back from the DB as Decimal; Decimal * float raises TypeError.
+        surrender_amount = int(int(bet["amount"]) * surrender_multiplier)
         dal_bet.settle_bet(self.args, bet["id"], True, surrender_amount, pool=self._pool)
 
         dal_game.update_hand_attrs(self.args, hand_id, {"status": "surrendered"}, pool=self._pool)
@@ -693,6 +694,9 @@ class GameService:
 
         hands = dal_game.get_player_hands(self.args, game["id"], player_moniker, pool=self._pool)
 
+        # The table's surrender rule gates the flag, the same default as can_surrender().
+        surrender_allowed = bool((table.get("attrs") or {}).get("surrender", "early"))
+
         dealer_hand = dal_game.get_dealer_hand(self.args, game["id"], pool=self._pool)
         dealer_cards = (
             list(dealer_hand["cards"]) if dealer_hand and dealer_hand["cards"] else []
@@ -726,6 +730,7 @@ class GameService:
             can_hit = status not in ("bust", "standing", "split_1", "split_2", "done", "surrendered")
             can_stand = status not in ("bust", "standing", "split_1", "split_2", "done", "surrendered")
             can_surrender = (
+                surrender_allowed and
                 len(cards) == 2 and
                 status not in ("bust", "standing", "split_1", "split_2", "done", "surrendered", "hit")
             )

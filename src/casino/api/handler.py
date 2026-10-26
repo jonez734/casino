@@ -409,9 +409,12 @@ class TableServiceHandler(BaseService):
         table_moniker = message.get("moniker") or None
         hidden = bool(message.get("hidden", False))
         is_sysop = bool(getattr(state, "is_sysop", False))
+        raw_attrs = message.get("attrs") or {}
+        attrs = raw_attrs if isinstance(raw_attrs, dict) else {}
 
         result = self.table_service.create_table(
-            game_type, state.moniker, min_bet, max_bet, table_moniker, hidden=hidden
+            game_type, state.moniker, min_bet, max_bet, table_moniker,
+            hidden=hidden, attrs=attrs,
         )
 
         if result.get("success"):
