@@ -174,6 +174,21 @@ def main(args, **kwargs):
             return False
         io.echo(" ok ", level="ok")
 
+        # 4c. Table functions. bed's CasinoService calls these: engine.bed_casino_read
+        #     (list and get) and engine.bed_casino_op (create, update, join, leave). They
+        #     are zoid6-owned SECURITY DEFINER functions with EXECUTE granted to bed only.
+        #     They read engine.__bed_token and engine.bed_is_sysop, which bed's install
+        #     creates; a missing bed install fails here, not silently.
+        for sqlfile in ("casino_read_functions.sql", "casino_op_functions.sql"):
+            io.echo(f"{{var:labelcolor}}function {{var:valuecolor}}{sqlfile}{{var:labelcolor}}: ", end="")
+            if (
+                database.importsql(args, sqlfile, conn=conn, package="casino.sql")
+                is False
+            ):
+                io.echo("fail", level="error")
+                return False
+            io.echo(" ok ", level="ok")
+
         # 5. Channel overrides — casino-specific tuning applied on top
         #    of the engine-level auto_seed (which already ran during
         #    bbsengine6.startup via the channel MessageRouter). Reads
