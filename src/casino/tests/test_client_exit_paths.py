@@ -37,6 +37,7 @@ def _client():
     client._bearer_token = None
     client.ws = None
     client.moniker = ""
+    client._close_code = None  # set by receive() when the socket closes; None when it did not
     client.disconnect = MagicMock(return_value="disconnect-coro")
     client.connect = MagicMock(return_value="connect-coro")
     client.cmd_auth = MagicMock(return_value="auth-coro")

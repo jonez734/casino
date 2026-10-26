@@ -56,6 +56,8 @@ class CasinoClient:
         self.current_table_moniker: str | None = None
         self._table_info: dict | None = None
         self.current_table_deadline: str | None = None
+        self._close_code: int | None = None
+        self._close_reason: str = ""
         self.watched_tables: set[str] = set()
         self.current_table_game_type: str | None = None
         self.current_table_players: int = 0
@@ -135,7 +137,12 @@ class CasinoClient:
         try:
             data = await self.ws.recv()
             return json.loads(data)
-        except websockets.exceptions.ConnectionClosed:
+        except websockets.exceptions.ConnectionClosed as e:
+            # Keep the close code: it is how the client tells a keepalive timeout (1011) from
+            # a normal close, so the exit reason recorded for the audit is accurate.
+            rcvd = getattr(e, "rcvd", None)
+            self._close_code = getattr(rcvd, "code", None)
+            self._close_reason = getattr(rcvd, "reason", "") or ""
             return None
         except json.JSONDecodeError:
             return None
@@ -1078,6 +1085,10 @@ class CasinoClient:
         finally:
             # Runs on every path: a clean quit, EOF, Ctrl-C, an auth failure, or an error.
             # Record why the client ended before the socket goes away.
+            # A socket the server closed for keepalive (1011) ended the session for inactivity; say
+            # so, rather than the menu's 'quit' or a generic 'error'.
+            if self._close_code == 1011:
+                self._exit_reason = "idle"
             loop = getattr(self, "_loop", None)
             if loop is not None:
                 # Stop the background receiver first: the exit report reads its own reply,
