@@ -3242,3 +3242,22 @@ Locale init is now in `_run_bed` (`casino/__main__.py`), mirroring
 respects `LC_NUMERIC`. Tests live in
 `casino/tests/test_client_table_render.py`.
 
+## Proper startup for casino (replace `casino.sql` import)
+
+Casino's startup installs its schema through `database.importsql(...,
+package="casino.sql")`, which loads SQL files by name. The table functions
+(`casino_read_functions.sql`, `casino_op_functions.sql`) and the ownership
+step (`owner_zoid6_migration.sql`) were added this way, and the `casino.sql`
+package is only a loading convention, not a real startup module.
+
+- [ ] Give casino a proper startup, in the same shape as bbsengine6's
+       `startup` package: a declared, ordered list of install steps (schema,
+       classes, functions, owner migration, channel overrides), each with its
+       own check and a clear failure message, instead of ad-hoc
+       `importsql` calls inside `casino/startup/main.py`.
+- [ ] Declare the install order in one place, and check it in a test, so a new
+       SQL file cannot land in the wrong position silently.
+- [ ] Decide whether SQL files stay under `casino/sql/` (packaged by
+       `pyproject.toml`) or move into a versioned install directory.
+- [ ] Make each step idempotent and report which steps were skipped, so a
+       second `casino --install` shows what changed.
