@@ -1,6 +1,6 @@
 """bed writes casino tables through a zoid6-owned SECURITY DEFINER function.
 
-bed holds no table privileges on the casino tables. engine.bed_casino_op takes the
+bed holds no table privileges on the casino tables. engine.casino_op takes the
 token hash, resolves the acting moniker from engine.__bed_token, and dispatches by op
 (create, update, join, leave). Ownership and sysop rules are enforced in the function.
 
@@ -33,8 +33,8 @@ def test_function_is_security_definer_owned_by_zoid6():
 
 def test_bed_is_the_only_grantee():
     t = _text()
-    assert "REVOKE ALL ON FUNCTION engine.bed_casino_op(bytea, text, jsonb) FROM PUBLIC" in t
-    assert "GRANT EXECUTE ON FUNCTION engine.bed_casino_op(bytea, text, jsonb) TO bed" in t
+    assert "REVOKE ALL ON FUNCTION engine.casino_op(bytea, text, jsonb) FROM PUBLIC" in t
+    assert "GRANT EXECUTE ON FUNCTION engine.casino_op(bytea, text, jsonb) TO bed" in t
 
 
 def test_actor_comes_from_the_token_row():
@@ -67,8 +67,8 @@ def test_unknown_op_is_refused():
 
 def test_every_refusal_names_the_failing_op():
     t = _text()
-    assert "bed_casino_op(%): forbidden', p_op" in t
-    assert "bed_casino_op(%): no live session for this token', p_op" in t
+    assert "casino_op(%): forbidden', p_op" in t
+    assert "casino_op(%): no live session for this token', p_op" in t
 
 
 def test_casino_startup_installs_the_op_function_after_the_read_function():

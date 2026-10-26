@@ -174,8 +174,8 @@ def main(args, **kwargs):
             return False
         io.echo(" ok ", level="ok")
 
-        # 4c. Table functions. bed's CasinoService calls these: engine.bed_casino_read
-        #     (list and get) and engine.bed_casino_op (create, update, join, leave). They
+        # 4c. Table functions. bed's CasinoService calls these: engine.casino_read
+        #     (list and get) and engine.casino_op (create, update, join, leave). They
         #     are zoid6-owned SECURITY DEFINER functions with EXECUTE granted to bed only.
         #     They read engine.__bed_token and engine.bed_is_sysop, which bed's install
         #     creates; a missing bed install fails here, not silently.

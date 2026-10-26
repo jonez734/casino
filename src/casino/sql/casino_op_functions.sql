@@ -1,7 +1,7 @@
 -- casino/sql/casino_op_functions.sql
 -- One SECURITY DEFINER function for the casino table writes bed serves (called by bed's CasinoService), dispatched by op name, the
 -- same way engine.bed_bank_op dispatches. bed holds no table privileges on the casino tables; it calls
--- engine.bed_casino_op with the SHA-256 digest of the bearer token.
+-- engine.casino_op with the SHA-256 digest of the bearer token.
 --
 -- The acting moniker and sysop status come from the verified token row (engine.__bed_token) and the
 -- sysop member flag, never from the request. Each op checks its own rule before it writes:
@@ -14,7 +14,7 @@
 -- Installed by ``casino --install`` (casino's startup) as the owner, after bed's install has
 -- created engine.__bed_token and engine.bed_is_sysop. Idempotent.
 
-CREATE OR REPLACE FUNCTION engine.bed_casino_op(p_token_hash bytea, p_op text, p_args jsonb)
+CREATE OR REPLACE FUNCTION engine.casino_op(p_token_hash bytea, p_op text, p_args jsonb)
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -39,14 +39,14 @@ BEGIN
     FROM engine.__bed_token t
     WHERE t.token_hash = p_token_hash AND t.expires_at > now();
     IF v_actor IS NULL THEN
-        RAISE EXCEPTION 'bed_casino_op(%): no live session for this token', p_op;
+        RAISE EXCEPTION 'casino_op(%): no live session for this token', p_op;
     END IF;
     v_sysop := engine.bed_is_sysop(v_actor) IS TRUE;
 
     IF p_op = 'create' THEN
         v_owner := coalesce(p_args->>'owner', v_actor::text);
         IF NOT v_sysop AND v_actor IS DISTINCT FROM v_owner THEN
-            RAISE EXCEPTION 'bed_casino_op(%): forbidden', p_op;
+            RAISE EXCEPTION 'casino_op(%): forbidden', p_op;
         END IF;
         v_type := p_args->>'game_type';
         v_min := coalesce((p_args->>'min_bet')::numeric, 10);
@@ -90,7 +90,7 @@ BEGIN
             RETURN jsonb_build_object('success', false, 'message', 'Table not found');
         END IF;
         IF NOT v_sysop AND v_actor IS DISTINCT FROM v_owner THEN
-            RAISE EXCEPTION 'bed_casino_op(%): forbidden', p_op;
+            RAISE EXCEPTION 'casino_op(%): forbidden', p_op;
         END IF;
         IF p_args ? 'status' AND (p_args->>'status') NOT IN ('open', 'closed') THEN
             RETURN jsonb_build_object('success', false, 'message', 'Status must be open or closed');
@@ -121,17 +121,17 @@ BEGIN
     IF p_op = 'leave' THEN
         v_target := coalesce(p_args->>'player', v_actor::text);
         IF NOT v_sysop AND v_actor IS DISTINCT FROM v_target THEN
-            RAISE EXCEPTION 'bed_casino_op(%): forbidden', p_op;
+            RAISE EXCEPTION 'casino_op(%): forbidden', p_op;
         END IF;
         DELETE FROM casino.map_cardtable_player
             WHERE cardtablemoniker = p_args->>'moniker' AND playermoniker = v_target;
         RETURN jsonb_build_object('success', FOUND, 'message', CASE WHEN FOUND THEN 'Left table' ELSE 'Not at table' END);
     END IF;
 
-    RAISE EXCEPTION 'bed_casino_op: unknown op %', p_op;
+    RAISE EXCEPTION 'casino_op: unknown op %', p_op;
 END;
 $$;
 
-ALTER FUNCTION engine.bed_casino_op(bytea, text, jsonb) OWNER TO zoid6;
-REVOKE ALL ON FUNCTION engine.bed_casino_op(bytea, text, jsonb) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION engine.bed_casino_op(bytea, text, jsonb) TO bed;
+ALTER FUNCTION engine.casino_op(bytea, text, jsonb) OWNER TO zoid6;
+REVOKE ALL ON FUNCTION engine.casino_op(bytea, text, jsonb) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION engine.casino_op(bytea, text, jsonb) TO bed;

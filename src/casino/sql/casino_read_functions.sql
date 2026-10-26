@@ -1,7 +1,7 @@
 -- casino/sql/casino_read_functions.sql
 -- One SECURITY DEFINER function for the casino read operations bed serves (called by bed's CasinoService), dispatched by op
 -- name, the same way engine.bed_bank_op dispatches. bed holds no table privileges on the casino
--- tables; it calls engine.bed_casino_read with the SHA-256 digest of the bearer token.
+-- tables; it calls engine.casino_read with the SHA-256 digest of the bearer token.
 --
 -- The acting moniker and sysop status come from the verified token row (engine.__bed_token),
 -- never from the request. Each op checks its own rule before it reads:
@@ -12,7 +12,7 @@
 -- Installed by ``casino --install`` (casino's startup) as the owner, after bed's install has
 -- created engine.__bed_token and engine.bed_is_sysop. Idempotent.
 
-CREATE OR REPLACE FUNCTION engine.bed_casino_table_shape(t casino.__table)
+CREATE OR REPLACE FUNCTION engine.casino_table_shape(t casino.__table)
 RETURNS jsonb
 LANGUAGE sql
 STABLE
@@ -38,11 +38,11 @@ AS $$
     )
 $$;
 
-ALTER FUNCTION engine.bed_casino_table_shape(casino.__table) OWNER TO zoid6;
-REVOKE ALL ON FUNCTION engine.bed_casino_table_shape(casino.__table) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION engine.bed_casino_table_shape(casino.__table) TO bed;
+ALTER FUNCTION engine.casino_table_shape(casino.__table) OWNER TO zoid6;
+REVOKE ALL ON FUNCTION engine.casino_table_shape(casino.__table) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION engine.casino_table_shape(casino.__table) TO bed;
 
-CREATE OR REPLACE FUNCTION engine.bed_casino_read(p_token_hash bytea, p_op text, p_args jsonb)
+CREATE OR REPLACE FUNCTION engine.casino_read(p_token_hash bytea, p_op text, p_args jsonb)
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -58,12 +58,12 @@ BEGIN
     FROM engine.__bed_token t
     WHERE t.token_hash = p_token_hash AND t.expires_at > now();
     IF v_actor IS NULL THEN
-        RAISE EXCEPTION 'bed_casino_read(%): no live session for this token', p_op;
+        RAISE EXCEPTION 'casino_read(%): no live session for this token', p_op;
     END IF;
     v_sysop := engine.bed_is_sysop(v_actor) IS TRUE;
 
     IF p_op = 'list_tables' THEN
-        SELECT coalesce(jsonb_agg(engine.bed_casino_table_shape(t) ORDER BY t.moniker), '[]'::jsonb) INTO v_rows
+        SELECT coalesce(jsonb_agg(engine.casino_table_shape(t) ORDER BY t.moniker), '[]'::jsonb) INTO v_rows
         FROM casino.__table t
         WHERE (p_args->>'game_type' IS NULL OR t.type = p_args->>'game_type')
           AND (v_sysop OR t.hidden IS NULL OR t.hidden = false);
@@ -71,17 +71,17 @@ BEGIN
     END IF;
 
     IF p_op = 'get_table' THEN
-        SELECT engine.bed_casino_table_shape(t) INTO v_row
+        SELECT engine.casino_table_shape(t) INTO v_row
         FROM casino.__table t
         WHERE t.moniker = p_args->>'moniker'
           AND (v_sysop OR t.hidden IS NULL OR t.hidden = false);
         RETURN jsonb_build_object('success', true, 'table', v_row);
     END IF;
 
-    RAISE EXCEPTION 'bed_casino_read: unknown op %', p_op;
+    RAISE EXCEPTION 'casino_read: unknown op %', p_op;
 END;
 $$;
 
-ALTER FUNCTION engine.bed_casino_read(bytea, text, jsonb) OWNER TO zoid6;
-REVOKE ALL ON FUNCTION engine.bed_casino_read(bytea, text, jsonb) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION engine.bed_casino_read(bytea, text, jsonb) TO bed;
+ALTER FUNCTION engine.casino_read(bytea, text, jsonb) OWNER TO zoid6;
+REVOKE ALL ON FUNCTION engine.casino_read(bytea, text, jsonb) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION engine.casino_read(bytea, text, jsonb) TO bed;
