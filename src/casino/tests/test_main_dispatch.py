@@ -171,6 +171,16 @@ class TestMainDispatchDirect(unittest.TestCase):
         run_direct.assert_called_once_with(args, ["foo", "bar"])
 
 
+class _NoopPool:
+    """Stands in for a database pool in the blackjack dispatch tests."""
+
+    def __enter__(self):
+        return object()
+
+    def __exit__(self, *a):
+        return False
+
+
 class TestMainDispatchBlackjackSubcommand(unittest.TestCase):
     """``casino blackjack [...]`` short-circuits before any backend probe.
 
@@ -207,6 +217,8 @@ class TestMainDispatchBlackjackSubcommand(unittest.TestCase):
              patch("bbsengine6.io.terminal") as terminal, \
              patch("locale.setlocale"), \
              patch("time.tzset"), \
+             patch("casino.__main__.database.getpool", return_value=_NoopPool()), \
+             patch("bbsengine6.bottombar.setbottombar"), \
              patch("casino.__main__.CasinoClient") as MockClient:
             terminal.height.return_value = 24
             rc = main(["blackjack"])
@@ -240,6 +252,8 @@ class TestMainDispatchBlackjackSubcommand(unittest.TestCase):
              patch("bbsengine6.io.terminal") as terminal, \
              patch("locale.setlocale"), \
              patch("time.tzset"), \
+             patch("casino.__main__.database.getpool", return_value=_NoopPool()), \
+             patch("bbsengine6.bottombar.setbottombar"), \
              patch("casino.__main__.CasinoClient"):
             terminal.height.return_value = 24
             rc = main(["blackjack", "--databasename", "bjdb"])

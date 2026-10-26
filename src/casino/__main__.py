@@ -95,7 +95,24 @@ def _run_blackjack(args: Namespace, remaining_argv: list) -> int:
 
     bj_args = blackjack_lib.buildargs().parse_args(remaining_argv)
 
-    session.start(bj_args)
+    # The top-level parser consumes the database flags (--databasename,
+    # --databaseuser, ...) before the subcommand, so the blackjack sub-parser
+    # usually never sees them. Carry those over, unless a flag was also given
+    # after ``blackjack`` (then the subcommand's value wins).
+    bj_defaults = blackjack_lib.buildargs().parse_args([])
+    for name in (
+        "databasename", "databasehost", "databaseport",
+        "databaseuser", "databasepassword",
+    ):
+        top = getattr(args, name, None)
+        if top is None:
+            continue
+        if getattr(bj_args, name, None) == getattr(bj_defaults, name, None):
+            setattr(bj_args, name, top)
+
+    # Session and member lookups need a pool; door mode passes one the same way.
+    with database.getpool(bj_args, database=bj_args.databasename) as pool:
+        session.start(bj_args, pool=pool)
 
     io_screen.init()
 
@@ -103,7 +120,13 @@ def _run_blackjack(args: Namespace, remaining_argv: list) -> int:
     time.tzset()
 
     try:
-        module.run(bj_args, "game", package="casino.blackjack")
+        with database.getpool(bj_args, database=bj_args.databasename) as pool:
+            # The bottombar's unread count reads the registry's args and pool. Door
+            # mode sets them via setbottombar; blackjack must do the same, or it
+            # falls back to the default database and role.
+            from bbsengine6 import bottombar
+            bottombar.setbottombar(bj_args, "", player=None, pool=pool)
+            module.run(bj_args, "game", package="casino.blackjack", pool=pool)
     except KeyboardInterrupt:
         io.echo("{/all}{bold}INTR{bold}")
     except EOFError:
