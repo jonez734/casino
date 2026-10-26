@@ -22,7 +22,7 @@ PYTHON = python3
 VERSION = $(shell date +%Y%m%d%H%M)
 OUTDIR = /srv/repo/$(PROJECT)/
 
-.PHONY: all build version install sdist clean push
+.PHONY: all build version install sdist clean push stale-build
 .PHONY: stage prod deploy-www deploy-tui
 .PHONY: test test-unit test-integration test-all test-phase-1 test-phase-3
 .PHONY: test-quick test-file help
@@ -41,7 +41,19 @@ all:
 # `src/casino.egg-info/SOURCES.txt` from a prior run carries
 # forward absolute paths into a fresh build. Matches the pattern
 # shipped in `zoid6/src/Makefile:118-124`.
-clean:
+# Move aside any build/dist/egg-info directory the project holds before a build.
+# A tree left by another user cannot be deleted, but renaming it needs only write
+# access to this project directory. The stale tree is kept under *.stale.<timestamp>.
+stale-build:
+	@ts=$$(date +%Y%m%d%H%M%S); \
+	for d in build dist src/*.egg-info src/casino/*.egg-info *.egg-info; do \
+		for x in $$d; do \
+			[ -e "$$x" ] || continue; \
+			mv "$$x" "$$x.stale.$$ts" && echo "stale-build: moved $$x -> $$x.stale.$$ts"; \
+		done; \
+	done
+
+clean: stale-build
 	-rm -rf build dist
 	-rm -rf *.egg-info src/*.egg-info src/casino/*.egg-info
 	-find . -type d -name __pycache__ -exec rm -rf {} +
