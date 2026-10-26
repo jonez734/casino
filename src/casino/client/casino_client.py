@@ -534,7 +534,7 @@ class CasinoClient:
 
     def cmd_list_tables(self) -> None:
         """Handle list_tables command."""
-        self._loop.run_until_complete(self.send({"type": "list_tables"}))
+        self._loop.run_until_complete(self.send({"type": "casino_list_tables"}))
 
     def cmd_slot_spin(self) -> None:
         """Handle slot_spin command.
@@ -624,7 +624,7 @@ class CasinoClient:
         self._loop.run_until_complete(
             self.send(
                 {
-                    "type": "create_table",
+                    "type": "casino_create_table",
                     "game_type": game_type,
                     "min_bet": min_bet,
                     "max_bet": max_bet,
@@ -642,10 +642,9 @@ class CasinoClient:
         max_bet = io.inputinteger("{var:promptcolor}Maximum bet: {var:inputcolor}")
         status = io.inputstring("{var:promptcolor}Status (open/closed): {var:inputcolor}")
 
-        message = {"type": "update_table", "moniker": moniker}
+        message = {"type": "casino_update_table", "moniker": moniker}
 
-        if new_moniker:
-            message["new_moniker"] = new_moniker
+        # Renaming a table is not served by bed yet; new_moniker is not sent.
         if min_bet is not None:
             message["min_bet"] = min_bet
         if max_bet is not None:
