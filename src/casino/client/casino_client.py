@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import time
 import contextlib
 import json
 from typing import TYPE_CHECKING, Callable
@@ -36,6 +37,7 @@ class CasinoClient:
         self.moniker = ""
         self.balance = 0
         self.current_table_moniker: str | None = None
+        self._table_info: dict | None = None
         self.watched_tables: set[str] = set()
         self.current_table_game_type: str | None = None
         self.current_table_players: int = 0
@@ -268,6 +270,9 @@ class CasinoClient:
             io.echo(
                 f"{{var:labelcolor}}note:        {{var:valuecolor}}{msg.get('message','')}"
             )
+
+        elif msg_type == "table_info":
+            self._table_info = msg.get("table") or None
 
         elif msg_type == "table_updated":
             moniker = msg.get("moniker", "")
@@ -635,24 +640,50 @@ class CasinoClient:
     def cmd_update_table(self) -> None:
         """Handle update_table command - owner or sysop only."""
         moniker = io.inputstring("{var:promptcolor}Table moniker to update: {var:inputcolor}")
+        if not moniker:
+            return
 
-        io.echo("Leave fields blank to keep current values.")
-        new_moniker = io.inputstring(f"{{var:promptcolor}}New moniker [{moniker}]: {{var:inputcolor}}")
-        min_bet = io.inputinteger("{var:promptcolor}Minimum bet: {var:inputcolor}")
-        max_bet = io.inputinteger("{var:promptcolor}Maximum bet: {var:inputcolor}")
-        status = io.inputstring("{var:promptcolor}Status (open/closed): {var:inputcolor}")
+        # Fetch the table's current values, so each prompt shows them as its default.
+        table = self._fetch_table(moniker)
+        if table is None:
+            io.echo(f"{{errorcolor}}No table named {moniker}.{{/all}}")
+            return
+        cur_min = table.get("min_bet")
+        cur_max = table.get("max_bet")
+        cur_status = table.get("status") or "open"
 
-        message = {"type": "casino_update_table", "moniker": moniker}
+        io.echo("Press Enter to keep the current value shown in [brackets].")
+        min_bet = io.inputinteger("{var:promptcolor}Minimum bet [" + str(cur_min) + "]: {var:inputcolor}", oldvalue=cur_min)
+        max_bet = io.inputinteger("{var:promptcolor}Maximum bet [" + str(cur_max) + "]: {var:inputcolor}", oldvalue=cur_max)
+        status = io.inputstring(
+            "{var:promptcolor}Status (open/closed) [" + str(cur_status) + "]: {var:inputcolor}",
+            str(cur_status),
+        ).strip().lower() or cur_status
 
-        # Renaming a table is not served by bed yet; new_moniker is not sent.
-        if min_bet is not None:
+        message: dict = {"type": "casino_update_table", "moniker": moniker}
+
+        # Send only what changed; bed rejects an invalid status itself.
+        if min_bet is not None and min_bet != cur_min:
             message["min_bet"] = min_bet
-        if max_bet is not None:
+        if max_bet is not None and max_bet != cur_max:
             message["max_bet"] = max_bet
-        if status in ("open", "closed"):
+        if status != cur_status:
             message["status"] = status
 
+        if len(message) == 2:
+            io.echo("Nothing changed.")
+            return
+
         self._loop.run_until_complete(self.send(message))
+
+    def _fetch_table(self, moniker: str, timeout: float = 5.0) -> dict | None:
+        """Ask bed for one table and wait for its ``table_info`` reply."""
+        self._table_info = None
+        self._loop.run_until_complete(self.send({"type": "casino_get_table", "moniker": moniker}))
+        deadline = time.monotonic() + timeout
+        while self._table_info is None and time.monotonic() < deadline:
+            self._loop.run_until_complete(asyncio.sleep(0.05))
+        return self._table_info
 
     def cmd_join_table(self) -> None:
         """Handle join_table command."""
@@ -966,7 +997,24 @@ class CasinoClient:
             self._loop.run_until_complete(self.cmd_auth())
             self._loop.run_until_complete(asyncio.sleep(0.5))
 
+        from . import bottombar as _bar
+
+        _bar.attach(lambda: self)
+        try:
+            self._run_menu_loop()
+        finally:
+            _bar.detach()
+
+        self._loop.run_until_complete(self.disconnect())
+        auth._close_loop_for(self)
+
+    def _run_menu_loop(self) -> None:
+        """Menu loop. The bottom bar is redrawn before each prompt, so it reflects the
+        latest state (table, moniker, balance) after every command and reply."""
+        from . import bottombar as _bar
+
         while self.connected and self.authenticated:
+            _bar.redraw()
             cmd = _client_menu(self)
 
             if cmd == "T":
@@ -1018,6 +1066,3 @@ class CasinoClient:
                 break
 
             self._loop.run_until_complete(asyncio.sleep(0.1))
-
-        self._loop.run_until_complete(self.disconnect())
-        auth._close_loop_for(self)
