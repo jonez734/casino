@@ -110,8 +110,20 @@ class TableService:
                 "phase": "waiting",
                 "status": table.get("status", "open"),
                 "hidden": bool(table.get("hidden", False)),
+                "turn_seconds": int(table.get("turn_seconds") or 0),
+                "clock_penalty": table.get("clock_penalty") or "skip",
+                "action_deadline": self._active_deadline(table["moniker"]),
             })
         return result
+
+    def _active_deadline(self, table_moniker: str):
+        """ISO timestamp of the table's open round deadline, or None when no clock is running."""
+        from casino.dal import game as dal_game
+        game = dal_game.get_active_game(self.args, table_moniker, pool=self._pool)
+        if not game:
+            return None
+        deadline = dal_game.get_action_deadline(self.args, game["id"], pool=self._pool)
+        return deadline.isoformat() if deadline else None
 
     def join_table(
         self,

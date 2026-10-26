@@ -29,6 +29,13 @@ AS $$
         'hidden', coalesce(t.hidden, false),
         'location', t.location,
         'phase', 'waiting',
+        'turn_seconds', coalesce(t.turn_seconds, 0),
+        'clock_penalty', coalesce(t.clock_penalty, 'skip'),
+        'action_deadline', (
+            SELECT g.action_deadline FROM casino.__game g
+             WHERE g.tablemoniker = t.moniker
+               AND g.status NOT IN ('settled', 'cancelled')
+             ORDER BY g.datestarted DESC LIMIT 1),
         'players', coalesce((SELECT jsonb_agg(m.playermoniker ORDER BY m.joinedat)
                              FROM casino.map_cardtable_player m
                              WHERE m.cardtablemoniker = t.moniker AND m.role = 'player'), '[]'::jsonb),

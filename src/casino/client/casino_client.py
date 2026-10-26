@@ -21,6 +21,23 @@ if TYPE_CHECKING:
     from bbsengine6 import WebSocketClientProtocol
 
 
+def _clock_cell(table: dict) -> str:
+    """The table's clock: its live countdown when a round is open, else the turn length and penalty.
+
+    The countdown is shown only while the server reports a running round deadline; a table whose
+    clock is off shows '-'.
+    """
+    from casino.client.clock_display import countdown_text
+    live = countdown_text(table.get("action_deadline"))
+    if live:
+        return live
+    seconds = int(table.get("turn_seconds") or 0)
+    if seconds <= 0:
+        return "-"
+    penalty = table.get("clock_penalty") or "skip"
+    return f"{seconds}s {penalty}"
+
+
 class CasinoClient:
     """Terminal client for casino system."""
 
@@ -38,6 +55,7 @@ class CasinoClient:
         self.balance = 0
         self.current_table_moniker: str | None = None
         self._table_info: dict | None = None
+        self.current_table_deadline: str | None = None
         self.watched_tables: set[str] = set()
         self.current_table_game_type: str | None = None
         self.current_table_players: int = 0
@@ -189,13 +207,14 @@ class CasinoClient:
                         _safe_int_str(t["min_bet"]),
                         _safe_int_str(t["max_bet"]),
                         ", ".join(t.get("players", [])) or "(empty)",
+                        _clock_cell(t),
                     ]
                     for t in tables
                 ]
                 for line in render_table(
-                    ["Moniker", "Game", "Min", "Max", "Players"],
+                    ["Moniker", "Game", "Min", "Max", "Players", "Clock"],
                     rows,
-                    alignments=["l", "l", "r", "r", "l"],
+                    alignments=["l", "l", "r", "r", "l", "l"],
                 ):
                     io.echo(line)
 
@@ -273,6 +292,8 @@ class CasinoClient:
 
         elif msg_type == "table_info":
             self._table_info = msg.get("table") or None
+            if self._table_info and self._table_info.get("moniker") == self.current_table_moniker:
+                self.current_table_deadline = self._table_info.get("action_deadline")
 
         elif msg_type == "table_updated":
             moniker = msg.get("moniker", "")
@@ -283,6 +304,7 @@ class CasinoClient:
             if self.current_table_moniker == moniker:
                 self.current_table_moniker = None
                 self.current_table_game_type = None
+                self.current_table_deadline = None
 
         elif msg_type == "joined_table":
             moniker = msg.get("moniker", "")
@@ -751,6 +773,7 @@ class CasinoClient:
         )
         self.current_table_moniker = None
         self.current_table_game_type = None
+        self.current_table_deadline = None
 
     def cmd_bet(self) -> None:
         """Handle bet command."""

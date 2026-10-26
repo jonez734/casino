@@ -362,7 +362,8 @@ class TestHiddenTableService(unittest.TestCase):
         """Non-sysop list_tables excludes hidden tables."""
         from casino.services.table import TableService
 
-        with patch("casino.dal.table.list_tables") as mock_list:
+        with patch("casino.dal.game.get_active_game", return_value=None), \
+             patch("casino.dal.table.list_tables") as mock_list:
             mock_list.return_value = [
                 {
                     "moniker": "public-bj",
@@ -392,7 +393,8 @@ class TestHiddenTableService(unittest.TestCase):
         """Sysop list_tables includes hidden tables."""
         from casino.services.table import TableService
 
-        with patch("casino.dal.table.list_tables") as mock_list:
+        with patch("casino.dal.game.get_active_game", return_value=None), \
+             patch("casino.dal.table.list_tables") as mock_list:
             mock_list.return_value = [
                 {
                     "moniker": "public-bj",

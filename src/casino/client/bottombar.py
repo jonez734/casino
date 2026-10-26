@@ -40,9 +40,16 @@ def _balance_fragment(**kwargs) -> str:
 
 
 def _table_left(**kwargs) -> str:
+    """Left side: the seated table, its game type, and the play clock when one is running."""
+    from casino.client.clock_display import countdown_text
     client = _state()
     table = getattr(client, "current_table_moniker", None) if client is not None else None
-    return f"table: {table}" if table else ""
+    if not table:
+        return ""
+    game_type = getattr(client, "current_table_game_type", None)
+    label = f"table: {table}" + (f" ({game_type})" if game_type else "")
+    clock = countdown_text(getattr(client, "current_table_deadline", None))
+    return f"{label}  {clock}" if clock else label
 
 
 _FRAGMENTS = (_moniker_fragment, _balance_fragment)
