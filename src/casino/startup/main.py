@@ -174,6 +174,17 @@ def main(args, **kwargs):
             return False
         io.echo(" ok ", level="ok")
 
+        # 4b0. Column migration: map_cardtable_player.joinedat. Existing installs skip the
+        #      class file, so the column must be added here before the functions use it.
+        io.echo("{var:labelcolor}migration {var:valuecolor}map_cardtable_player.joinedat{var:labelcolor}: ", end="")
+        if (
+            database.importsql(args, "map_cardtable_player_migration.sql", conn=conn, package="casino.sql")
+            is False
+        ):
+            io.echo("fail", level="error")
+            return False
+        io.echo(" ok ", level="ok")
+
         # 4c. Table functions. bed's CasinoService calls these: engine.casino_read
         #     (list and get) and engine.casino_op (create, update, join, leave). They
         #     are zoid6-owned SECURITY DEFINER functions with EXECUTE granted to bed only.
