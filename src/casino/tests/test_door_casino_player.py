@@ -18,6 +18,10 @@ Skipped if ``CASINO_TEST_DB`` is not set in the environment.
 
 from __future__ import annotations
 
+import pytest
+
+pytestmark = pytest.mark.integration  # needs a live bed daemon or test database
+
 import argparse
 import os
 import sys

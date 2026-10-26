@@ -4,6 +4,10 @@
 #
 # Skipped if CASINO_TEST_DB is not set in the environment.
 
+import pytest
+
+pytestmark = pytest.mark.integration  # needs a live bed daemon or test database
+
 import argparse
 import os
 import sys

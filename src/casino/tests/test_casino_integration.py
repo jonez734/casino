@@ -35,6 +35,8 @@ from typing import Any, Dict, Optional
 
 import pytest
 
+pytestmark = pytest.mark.integration  # needs a live bed daemon or test database
+
 
 sys.path.insert(0, "/home/opencode/data/work/casino/src")
 sys.path.insert(0, "/home/opencode/data/work/bbsengine6/py/src")

@@ -20,6 +20,8 @@ import sys
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
+pytestmark = pytest.mark.integration  # needs a live bed daemon or test database
 import websockets
 
 from bbsengine6 import io
