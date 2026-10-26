@@ -3,6 +3,7 @@
 # CasinoClient.run() handles Ctrl-D (EOF) and Ctrl-C (INTR) without a traceback, records the
 # exit reason, and always runs cleanup. Stubbed: no daemon, no terminal.
 
+import asyncio
 import inspect
 from unittest.mock import MagicMock, patch
 
@@ -13,10 +14,18 @@ from casino import __main__ as cm
 
 
 def _drive(coro_or_value, result=True):
-    """Close a coroutine if one was given, so the stub loop leaves no un-awaited coroutine."""
-    if hasattr(coro_or_value, "close"):
-        coro_or_value.close()
+    """Run a coroutine to completion if one was given, so the stub loop leaves nothing unawaited.
+
+    Closing a coroutine would skip it: the exit report and receiver stop would then never run.
+    """
+    if hasattr(coro_or_value, "send"):
+        # asyncio.run uses its own loop, so this never re-enters the mocked _loop below.
+        return asyncio.run(_await(coro_or_value))
     return result
+
+
+async def _await(coro):
+    return await coro
 
 
 def _client():
@@ -24,10 +33,18 @@ def _client():
     client._loop = MagicMock()
     client._loop.run_until_complete = MagicMock(side_effect=lambda c: _drive(c))
     client.authenticated = True
+    client._receive_task = None
+    client._bearer_token = None
+    client.ws = None
+    client.moniker = ""
     client.disconnect = MagicMock(return_value="disconnect-coro")
     client.connect = MagicMock(return_value="connect-coro")
     client.cmd_auth = MagicMock(return_value="auth-coro")
     client.receive_loop = MagicMock(return_value="recv-coro")
+    # The exit report and receiver stop are covered directly in test_client_exit_report.py.
+    # Here they are plain stubs, so run() never creates a coroutine nothing awaits.
+    client._report_exit = MagicMock(return_value=False)
+    client._stop_receiver = MagicMock(return_value=None)
     client.args = MagicMock(token_file=None)
     return client
 

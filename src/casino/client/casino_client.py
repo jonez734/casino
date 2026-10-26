@@ -1017,11 +1017,59 @@ class CasinoClient:
             raise
         finally:
             # Runs on every path: a clean quit, EOF, Ctrl-C, an auth failure, or an error.
+            # Record why the client ended before the socket goes away.
             loop = getattr(self, "_loop", None)
             if loop is not None:
+                # Stop the background receiver first: the exit report reads its own reply,
+                # and two readers on one socket would drop messages.
+                with contextlib.suppress(Exception):
+                    loop.run_until_complete(self._stop_receiver())
+                with contextlib.suppress(Exception):
+                    loop.run_until_complete(self._report_exit(self._exit_reason))
                 with contextlib.suppress(Exception):
                     loop.run_until_complete(self.disconnect())
             auth._close_loop_for(self)
+
+    async def _stop_receiver(self) -> None:
+        """Cancel the background receive task so only one reader touches the socket."""
+        task = self._receive_task
+        if task is not None and not task.done():
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await task
+        self._receive_task = None
+
+    async def _report_exit(self, reason: str) -> bool:
+        """Send the exit reason to bed as a client_exit audit row.
+
+        Returns True when bed recorded it. When there is no live session (never logged in,
+        the socket is down, or the token has expired), nothing can be recorded in the
+        database, so the reason is written to the client's own log instead.
+        """
+        token = (self._bearer_token or "").strip()
+        if not self.authenticated or not token or not self.ws or not self.moniker:
+            io.echo(f"client exit: reason={reason} (not recorded: no live session)", level="warning")
+            return False
+        try:
+            await self.send({
+                "type": "client_exit",
+                "moniker": self.moniker,
+                "reason": reason,
+            })
+            reply = await asyncio.wait_for(self._await_exit_reply(), timeout=3.0)
+        except Exception as e:
+            io.echo(f"client exit: reason={reason} (not recorded: {e})", level="warning")
+            return False
+        return bool(reply and reply.get("success"))
+
+    async def _await_exit_reply(self) -> dict | None:
+        """Read messages until the client_exit_result arrives; other messages are ignored."""
+        while True:
+            msg = await self.receive()
+            if msg is None:
+                return None
+            if msg.get("type") == "client_exit_result":
+                return msg
 
     def _run_menu_loop(self) -> None:
         """Menu loop. The bottom bar is redrawn before each prompt, so it reflects the
