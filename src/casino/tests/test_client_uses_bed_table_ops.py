@@ -13,15 +13,15 @@ def _src() -> str:
     return CLIENT.read_text()
 
 
-def test_list_uses_bed_casino_list_tables():
+def test_list_uses_casino_list_tables_message():
     assert '{"type": "casino_list_tables"}' in _src()
 
 
-def test_create_uses_bed_casino_create_table():
+def test_create_uses_casino_create_table_message():
     assert '"type": "casino_create_table"' in _src()
 
 
-def test_update_uses_bed_casino_update_table():
+def test_update_uses_casino_update_table_message():
     assert '{"type": "casino_update_table"' in _src()
 
 
