@@ -34,6 +34,7 @@ class PokerPlayer:
     has_folded: bool = False
     showing_cards: bool = True
     credits: int = 0
+    is_bot: bool = False
 
 
 @dataclass
@@ -58,6 +59,9 @@ class PokerTableState:
     dealer_position: int = 0
     current_street: str = "preflop"
     current_player: Optional[str] = None
+    turn_seconds: int = 0
+    clock_penalty: str = "skip"
+    turn_deadline: Optional[Any] = None
     current_bet: int = 0
     pot: int = 0
     side_pots: list[PokerPot] = field(default_factory=list)
@@ -74,15 +78,21 @@ class PokerTableState:
         return [self.players[s] for s in seats if s in self.players]
 
     def get_next_player(self, from_moniker: str) -> Optional[PokerPlayer]:
-        self.get_players_in_order()
-        active_monikers = [p.moniker for p in self.get_active_players()]
+        """The next active seat after ``from_moniker`` in seat order, wrapping around.
 
-        for i, pm in enumerate(active_monikers):
-            if pm == from_moniker:
-                next_idx = (i + 1) % len(active_monikers)
-                if next_idx == 0:
-                    return None  # Full circle
-                return self.players[active_monikers[next_idx]]
+        ``from_moniker`` may have just folded; it is found in the full seat order, not only among
+        the active seats, so the turn can always move on from a seat that has left the hand.
+        """
+        ordered = self.get_players_in_order()
+        if from_moniker not in self.players:
+            return None
+        start = next(i for i, p in enumerate(ordered) if p.moniker == from_moniker)
+        for step in range(1, len(ordered) + 1):
+            candidate = ordered[(start + step) % len(ordered)]
+            if candidate.moniker == from_moniker:
+                return None
+            if not candidate.has_folded:
+                return candidate
         return None
 
 
@@ -260,7 +270,7 @@ class PokerService:
         players_ordered = table.get_players_in_order()
 
         utg_pos = (bb_pos + 1) % len(players_ordered)
-        table.current_player = players_ordered[utg_pos].moniker
+        self._set_turn(table, players_ordered[utg_pos].moniker)
 
         io.echo(f"Started hand at {table_moniker}")
 
@@ -357,6 +367,12 @@ class PokerService:
             return {"success": False, "message": "Not at table"}
 
         player = table.players[player_moniker]
+
+        # The clock runs before anything else: if the seat's turn has expired, its penalty is
+        # applied and the late action is refused, never applied.
+        expiry = self._enforce_turn_clock(table)
+        if expiry is not None:
+            return {"success": False, "message": "Your turn clock expired", "expired": expiry}
 
         if player_moniker != table.current_player:
             return {"success": False, "message": "Not your turn"}
@@ -497,6 +513,42 @@ class PokerService:
             "message": f"{player.moniker} goes all-in for ${all_in_amount}",
         }
 
+    def _set_turn(self, table: PokerTableState, moniker: Optional[str]) -> None:
+        """Give the turn to a seat and start its clock (human seats only)."""
+        from casino.services import poker_clock as _pc
+        table.current_player = moniker
+        seat = table.players.get(moniker) if moniker else None
+        if seat is not None and _pc.clocked(seat):
+            table.turn_deadline = _pc.deadline_for(table.turn_seconds)
+        else:
+            table.turn_deadline = None
+
+    def _enforce_turn_clock(self, table: PokerTableState) -> Optional[dict[str, Any]]:
+        """If the current seat's clock has run out, apply its penalty and pass the turn.
+
+        Called before every action, so an expired seat's late action is never applied. Returns
+        the expiry summary when a penalty was applied, else None.
+        """
+        from casino.services import poker_clock as _pc
+        if not table.current_player or not _pc.is_expired(table.turn_deadline):
+            return None
+        seat = table.players.get(table.current_player)
+        if seat is None:
+            return None
+        facing_bet = table.current_bet > seat.current_bet
+        expiry = _pc.apply_expiry(table, seat, facing_bet=facing_bet)
+        active = table.get_active_players()
+        if expiry["action"] == "fold" and len(active) == 1:
+            # The same resolution as a fold: the last seat takes the pot and the hand ends.
+            winner = active[0]
+            winner.credits += table.pot
+            table.pot = 0
+            table.game_stage = "showdown"
+            expiry["winner"] = winner.moniker
+            return expiry
+        self._advance_to_next_player(table)
+        return expiry
+
     def _advance_to_next_player(self, table: PokerTableState):
         """Advance to next player in turn."""
         active = table.get_active_players()
@@ -507,13 +559,13 @@ class PokerService:
         if table.current_player:
             next_player = table.get_next_player(table.current_player)
             if next_player and not next_player.has_acted:
-                table.current_player = next_player.moniker
+                self._set_turn(table, next_player.moniker)
             elif next_player:
                 all_acted = all(p.has_acted or p.is_all_in for p in active)
                 if all_acted:
                     self._end_street(table)
                 else:
-                    table.current_player = next_player.moniker
+                    self._set_turn(table, next_player.moniker)
 
     def _end_street(self, table: PokerTableState):
         """End current betting street and move to next."""
@@ -537,7 +589,7 @@ class PokerService:
             player.current_bet = 0
 
         table.current_bet = 0
-        table.current_player = None
+        self._set_turn(table, None)
 
         io.echo(f"Community cards ({next_street}): {table.community_cards}")
 
