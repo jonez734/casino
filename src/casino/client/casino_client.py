@@ -58,6 +58,8 @@ class CasinoClient:
         self.current_table_deadline: str | None = None
         self._close_code: int | None = None
         self._close_reason: str = ""
+        # True when the socket closed abnormally (anything but a normal close or keepalive 1011).
+        self._ws_failed: bool = False
         self.watched_tables: set[str] = set()
         self.current_table_game_type: str | None = None
         self.current_table_players: int = 0
@@ -143,6 +145,9 @@ class CasinoClient:
             rcvd = getattr(e, "rcvd", None)
             self._close_code = getattr(rcvd, "code", None)
             self._close_reason = getattr(rcvd, "reason", "") or ""
+            # 1000 (normal) and 1001 (going away) are not failures; 1011 is the keepalive timeout,
+            # recorded as idle. Anything else, including 1006 with no close frame, is a failure.
+            self._ws_failed = self._close_code not in (1000, 1001, 1011)
             return None
         except json.JSONDecodeError:
             return None
@@ -1089,6 +1094,10 @@ class CasinoClient:
             # so, rather than the menu's 'quit' or a generic 'error'.
             if self._close_code == 1011:
                 self._exit_reason = "idle"
+            elif self._ws_failed and self.authenticated:
+                # An abnormal websocket close after login. Before login there is no session, so
+                # the reason stays as it was and nothing is recorded on the server.
+                self._exit_reason = "ws_error"
             loop = getattr(self, "_loop", None)
             if loop is not None:
                 # Stop the background receiver first: the exit report reads its own reply,

@@ -71,4 +71,42 @@ def test_exit_path_records_idle_from_the_close_code():
 @pytest.mark.unit
 def test_idle_is_a_valid_client_exit_reason():
     from casino.client import casino_client as c
-    assert "idle" in ("quit", "eof", "intr", "idle", "auth_failed", "error")
+    assert "idle" in ("quit", "eof", "intr", "idle", "ws_error", "auth_failed", "error")
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("code", [1006, 1002, 1010, 1012])
+def test_abnormal_close_marks_the_websocket_failed(code):
+    client = _client(_ClosedWs(code))
+    client._ws_failed = False
+    asyncio.run(client.receive())
+    assert client._close_code == code
+    assert client._ws_failed is True
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("code", [1000, 1001, 1011])
+def test_normal_or_keepalive_close_is_not_a_websocket_failure(code):
+    client = _client(_ClosedWs(code))
+    client._ws_failed = False
+    asyncio.run(client.receive())
+    assert client._ws_failed is False
+
+
+@pytest.mark.unit
+def test_exit_path_records_ws_error_only_after_login():
+    import inspect
+    src = inspect.getsource(cc.CasinoClient.run)
+    # ws_error is set for an abnormal close, and only when the session was authenticated.
+    assert 'self._exit_reason = "ws_error"' in src
+    assert "self._ws_failed and self.authenticated" in src
+    # 1011 is checked first, so keepalive stays idle.
+    assert src.index("self._close_code == 1011") < src.index('"ws_error"')
+
+
+@pytest.mark.unit
+def test_ws_error_is_a_client_exit_reason_in_the_client():
+    import inspect
+    src = inspect.getsource(cc.CasinoClient.run)
+    assert "ws_error" in src
+    assert "ws_error" in ("quit", "eof", "intr", "idle", "ws_error", "auth_failed", "error")
