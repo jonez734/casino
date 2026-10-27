@@ -3279,10 +3279,19 @@ So a seated human cannot be the dealer.
 
 ## Bottom bar initialization
 
-The client bottom bar is drawn before its state is ready, so the first frame can show the wrong
-layout or missing fields. It needs to be initialized properly before the first redraw.
+The client bottom bar is never given its screen setup. The older path called `io.screen.init()`
+once (through `_ensure_screen_initialized()` in `casino/lib.py`, from `setbottombar()`). That sets
+the terminal scroll region, so the bar stays on the last line. The client path skips it:
 
-- [ ] Initialize the bottom bar (provider, registry, and terminal width) before the first redraw,
-      so the first frame is correct.
-- [ ] Make a redraw before the bar is initialized a no-op rather than drawing partial state.
-- [ ] Test that the first frame after attach shows the balance and table fields.
+- `casino_client.py` `run()` calls `_bar.attach(lambda: self)` (line ~1104), then the menu loop
+  calls `_bar.redraw()` before each prompt.
+- Nothing in the client path calls `screen.init()`. `client/bottombar.py` only stores the provider.
+- So the first redraw draws on a screen with no scroll region, and the bar can scroll off the
+  visible area when output overflows.
+
+- [ ] Call `io.screen.init()` once, before the first `redraw()` in the client (for example in
+      `run()` before `attach`, using the same once-per-process guard as `lib._ensure_screen_initialized`).
+- [ ] Make `redraw()` a no-op until the screen is initialized, rather than drawing into an
+      unconfigured screen.
+- [ ] Test that the client initializes the screen before the first redraw, and that the bar stays
+      on the last line after output that overflows the screen.
