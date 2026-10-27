@@ -55,6 +55,36 @@ def _create_bot_member(args: Any, moniker: str, *, pool: Any = None) -> None:
     _set_password(args, new_bot_password(), moniker, pool=pool)
 
 
+def _table_seat_rule(args: Any, table_moniker: str, *, pool: Any = None):
+    """The seat module for the table's game, or ``None`` when the table or its game has none."""
+    table = dal_table.get_table(args, table_moniker, pool=pool)
+    if not table:
+        return None
+    return seats.seat_module(table.get("type"))
+
+
+def _moniker_taken(args: Any, moniker: str, *, pool: Any = None) -> bool:
+    """True when a member already has this moniker, so a new bot must pick another."""
+    with database.connect(args, pool=pool) if pool is not None else database.connect(args) as conn, \
+            database.cursor(conn) as cur:
+        cur.execute("SELECT 1 FROM engine.__member WHERE moniker = %s", (moniker,))
+        return cur.fetchone() is not None
+
+
+def _next_bot_moniker(args: Any, table_moniker: str, *, pool: Any = None) -> str:
+    """The first bot moniker at this table that no member uses yet.
+
+    The index is not the seat count: removing a bot frees its seat, but its member row stays, so
+    the count can point back at a name that is still in use.
+    """
+    index = 1
+    while True:
+        name = bot_moniker(table_moniker, index)
+        if not _moniker_taken(args, name, pool=pool):
+            return name
+        index += 1
+
+
 def _open_bank_account(args: Any, moniker: str, *, pool: Any = None) -> None:
     """Open the bot's bank account, as a human player gets one."""
     with database.connect(args, pool=pool) if pool is not None else database.connect(args) as conn, \
@@ -90,8 +120,7 @@ class BotService:
         else:
             taken = 0
 
-        index = taken + 1
-        name = bot_moniker(table_moniker, index)
+        name = _next_bot_moniker(self.args, table_moniker, pool=self._pool)
         _create_bot_member(self.args, name, pool=self._pool)
         _open_bank_account(self.args, name, pool=self._pool)
         # The casino player row must exist before its attrs are set, or the UPDATE does nothing.
@@ -99,6 +128,30 @@ class BotService:
         dal_player.set_player_attrs(self.args, name, {"is_bot": True}, pool=self._pool)
         dal_table.add_player_to_table(self.args, table_moniker, name, pool=self._pool)
         return {"success": True, "bot": name, "message": f"Bot {name} sat down at {table_moniker}"}
+
+    def fill_bots(self, table_moniker: str, count: Optional[int] = None) -> dict[str, Any]:
+        """Seat bots one at a time until ``count`` are added, or every empty seat is full.
+
+        Each bot is added by :meth:`add_bot`, so each one follows the same rules. A table that is
+        already full is not an error: the result lists the bots added, which may be none. A game
+        with no seat rule has nothing to fill.
+        """
+        if count is not None and count < 0:
+            return {"success": False, "message": "count cannot be negative", "added": []}
+        if _table_seat_rule(self.args, table_moniker, pool=self._pool) is None:
+            return {"success": True, "added": [], "message": "This game has no seats to fill"}
+
+        added: list[str] = []
+        while count is None or len(added) < count:
+            result = self.add_bot(table_moniker)
+            if not result.get("success"):
+                break
+            added.append(result["bot"])
+        return {
+            "success": True,
+            "added": added,
+            "message": f"Added {len(added)} bot(s) to {table_moniker}",
+        }
 
     def remove_bot(self, table_moniker: str, bot_moniker_: str) -> dict[str, Any]:
         """Unseat a bot. Refused for a human seat. The bot's account and member row are kept."""

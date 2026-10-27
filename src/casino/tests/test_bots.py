@@ -11,6 +11,7 @@ import pytest
 
 from casino.dal import player as dal_player
 from casino.dal import table as dal_table
+from casino import seats
 from casino.services import bots
 
 
@@ -42,6 +43,7 @@ def test_add_bot_creates_member_account_player_and_seat():
     table = {"moniker": "blackjack-jam", "type": "blackjack"}
     with patch.object(dal_table, "get_table", return_value=table), \
          patch.object(dal_table, "count_seated", return_value=1), \
+         patch.object(bots, "_next_bot_moniker", return_value=bots.bot_moniker("blackjack-jam", 2)), \
          patch.object(bots, "_create_bot_member") as make_member, \
          patch.object(bots, "_open_bank_account") as open_bank, \
          patch.object(dal_player, "get_or_create_player") as create_player, \
@@ -124,3 +126,75 @@ def test_bot_moniker_meets_the_member_moniker_rule(table):
 
     for i in (1, 7, 12):
         assert re.match(MEMBER_MONIKER_RULE, bots.bot_moniker(table, i)), bots.bot_moniker(table, i)
+
+
+@pytest.mark.unit
+def test_a_new_bot_never_reuses_a_moniker_still_in_use():
+    # Bot 2 is seated, bot 1 was removed: taken is 1, so a naive index would reuse "_2".
+    svc = _service()
+    table = {"moniker": "blackjack-jam", "type": "blackjack"}
+    in_use = {bots.bot_moniker("blackjack-jam", 2)}
+    with patch.object(dal_table, "get_table", return_value=table), \
+         patch.object(dal_table, "count_seated", return_value=1), \
+         patch.object(bots, "_moniker_taken", side_effect=lambda args, m, pool=None: m in in_use), \
+         patch.object(bots, "_create_bot_member") as make_member, \
+         patch.object(bots, "_open_bank_account"), \
+         patch.object(dal_player, "get_or_create_player"), \
+         patch.object(dal_player, "set_player_attrs"), \
+         patch.object(dal_table, "add_player_to_table", return_value=True):
+        result = svc.add_bot("blackjack-jam")
+    assert result["success"] is True
+    assert result["bot"] != bots.bot_moniker("blackjack-jam", 2)
+    made = make_member.call_args.args[1]
+    assert made == result["bot"]
+
+
+@pytest.mark.unit
+def test_fill_seats_every_empty_seat_by_default():
+    svc = _service()
+    with patch.object(bots, "_table_seat_rule", return_value=seats.seat_module("blackjack")), \
+         patch.object(bots.BotService, "add_bot", side_effect=[
+        {"success": True, "bot": "bot_t_1", "message": ""},
+        {"success": True, "bot": "bot_t_2", "message": ""},
+        {"success": False, "message": "full"},
+    ]) as add:
+        result = svc.fill_bots("blackjack-jam")
+    assert result["success"] is True
+    assert result["added"] == ["bot_t_1", "bot_t_2"]
+    assert add.call_count == 3
+
+
+@pytest.mark.unit
+def test_fill_stops_at_the_requested_count():
+    svc = _service()
+    with patch.object(bots, "_table_seat_rule", return_value=seats.seat_module("blackjack")), \
+         patch.object(bots.BotService, "add_bot", return_value={"success": True, "bot": "bot_t_n", "message": ""}) as add:
+        result = svc.fill_bots("blackjack-jam", count=2)
+    assert result["added"] == ["bot_t_n", "bot_t_n"]
+    assert add.call_count == 2
+
+
+@pytest.mark.unit
+def test_fill_on_a_full_table_adds_nothing_and_says_so():
+    svc = _service()
+    with patch.object(bots, "_table_seat_rule", return_value=seats.seat_module("blackjack")), \
+         patch.object(bots.BotService, "add_bot", return_value={"success": False, "message": "full"}):
+        result = svc.fill_bots("blackjack-jam")
+    assert result["success"] is True
+    assert result["added"] == []
+
+
+@pytest.mark.unit
+def test_fill_refuses_a_negative_count():
+    result = _service().fill_bots("blackjack-jam", count=-1)
+    assert result["success"] is False
+
+
+@pytest.mark.unit
+def test_fill_for_a_game_without_a_seat_rule_adds_nothing():
+    svc = _service()
+    with patch.object(bots.BotService, "add_bot") as add:
+        with patch.object(bots, "_table_seat_rule", return_value=None):
+            result = svc.fill_bots("craps-x")
+    add.assert_not_called()
+    assert result["added"] == []
