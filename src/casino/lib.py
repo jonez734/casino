@@ -738,6 +738,43 @@ def buildargs(args: Namespace | None = None, **kwargs: Any) -> argparse.Argument
         ),
     )
 
+    parser.add_argument(
+        "--install-test-data",
+        action="store_true",
+        default=False,
+        help=(
+            "Create the bed test fixtures (two members, roles, bed grants) and write their passwords "
+            "to ~/.config/casino/test-data/bed-fixtures.json (0600). Defaults to zoid6test."
+        ),
+    )
+    parser.add_argument(
+        "--uninstall-test-data",
+        action="store_true",
+        default=False,
+        help="Remove the bed test fixtures and their password file. Defaults to zoid6test.",
+    )
+    parser.add_argument(
+        "--cleanup-test-state",
+        action="store_true",
+        default=False,
+        help=(
+            "Remove bed test state as far as opencode can (fixture rows, its own memberships, the "
+            "password file), report what remains, and write a jam file for the rest. Defaults to zoid6test."
+        ),
+    )
+    parser.add_argument(
+        "--allow-live",
+        action="store_true",
+        default=False,
+        help="Required, with --confirm, to run a test-data command against a live database.",
+    )
+    parser.add_argument(
+        "--confirm",
+        default=None,
+        metavar="DBNAME",
+        help="Type the live database name to confirm a test-data command against it.",
+    )
+
     defaults = {
         "databasename": "zoid6",
         "databasehost": "localhost",

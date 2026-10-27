@@ -141,6 +141,56 @@ def _run_blackjack(args: Namespace, remaining_argv: list) -> int:
     return 0
 
 
+def _run_cleanup_test_state(args: Namespace) -> int:
+    """``casino --cleanup-test-state``: opencode cleans what it can; the rest goes to a jam file."""
+    from casino import cleanup_test_state as cts
+
+    explicit = any(a == "--databasename" or a.startswith("--databasename=") for a in sys.argv)
+    database_name = args.databasename if explicit else cts.DEFAULT_DATABASE
+    try:
+        return 0 if cts.run(
+            args,
+            database=database_name,
+            allow_live=bool(getattr(args, "allow_live", False)),
+            confirmation=getattr(args, "confirm", None),
+        ) else 1
+    except cts.LiveDatabaseRefused as e:
+        io.echo(f"{{level.error}}casino cleanup-test-state: {e}", level="error")
+        return 1
+
+
+def _run_test_data(args: Namespace) -> int:
+    """``casino --install-test-data`` / ``--uninstall-test-data``: the bed test fixtures.
+
+    Defaults to zoid6test. A live database needs --allow-live and --confirm <name>.
+    """
+    from casino import test_data
+
+    # The parser defaults --databasename to zoid6, so the scratch database is used unless the
+    # operator passed --databasename explicitly (sys.argv records that).
+    explicit = any(a == "--databasename" or a.startswith("--databasename=") for a in sys.argv)
+    database_name = args.databasename if explicit else test_data.DEFAULT_DATABASE
+    try:
+        test_data.check_target(
+            database_name,
+            allow_live=bool(getattr(args, "allow_live", False)),
+            confirmation=getattr(args, "confirm", None),
+        )
+    except test_data.LiveDatabaseRefused as e:
+        io.echo(f"{{level.error}}casino test data: {e}", level="error")
+        return 1
+
+    if getattr(args, "install_test_data", False):
+        ok = test_data.install(args, database=database_name,
+                               allow_live=bool(getattr(args, "allow_live", False)),
+                               confirmation=getattr(args, "confirm", None))
+    else:
+        ok = test_data.uninstall(args, database=database_name,
+                                 allow_live=bool(getattr(args, "allow_live", False)),
+                                 confirmation=getattr(args, "confirm", None))
+    return 0 if ok else 1
+
+
 def _run_install(args: Namespace) -> int:
     """``casino --install`` branch: casino's database setup, once per install.
 
@@ -213,6 +263,12 @@ def main(argv: list[str] | None = None) -> int:
 
     if getattr(args, "install", False):
         return _run_install(args)
+
+    if getattr(args, "install_test_data", False) or getattr(args, "uninstall_test_data", False):
+        return _run_test_data(args)
+
+    if getattr(args, "cleanup_test_state", False):
+        return _run_cleanup_test_state(args)
 
     if remaining_argv and remaining_argv[0] == _BLACKJACK_SUBCOMMAND:
         return _run_blackjack(args, remaining_argv[1:])

@@ -214,34 +214,14 @@ class TestBlackjackTwoPlayersThreeGamesBed(unittest.IsolatedAsyncioTestCase):
                 """
             )
 
-        suffix = uuid.uuid4().hex[:8]
-        self.moniker_a = f"bjbed_a_{suffix}"
-        self.password_a = "12345"
-        self.moniker_b = f"bjbed_b_{suffix}"
-        self.password_b = "12345"
-        for moniker, password in ((self.moniker_a, self.password_a), (self.moniker_b, self.password_b)):
-            with patch.object(con_member, "_edit") as mock_edit, \
-                 patch("bbsengine6.io.inputboolean", return_value=True):
-                mock_edit.return_value = {
-                    "moniker": moniker,
-                    "loginid": moniker,
-                    "email": f"{moniker}@test.local",
-                    "password": password,
-                    "credits": 100000,
-                    "ui": ["term"],
-                    "attrs": {},
-                    "flags": {
-                        "APPROVED": {"value": True, "description": "Approved"},
-                        "SYSOP": {"value": False, "description": "Sysop"},
-                    },
-                }
-                ok = con_member.add(args, pool=pool)
-                self.assertTrue(
-                    ok,
-                    f"bbsengine6.console.member.add returned False for {moniker}",
-                )
+        # Fixtures are installed once by `casino --install-test-data` (see casino.test_data). The
+        # test reads their fixed names and the 0600 password file, and creates no members or roles.
+        from casino import test_data
 
-        pool.close()
+        self.moniker_a, self.moniker_b = test_data.FIXTURE_MONIKERS
+        passwords = test_data.read_password_file(test_data.password_file_path())
+        self.password_a = passwords[self.moniker_a]
+        self.password_b = passwords[self.moniker_b]
 
         self.client_a: Optional[WebSocketTestClient] = None
         self.client_b: Optional[WebSocketTestClient] = None
