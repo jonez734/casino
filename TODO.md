@@ -3276,3 +3276,13 @@ So a seated human cannot be the dealer.
       than the automatic house draw. Keep the automatic dealer as the default.
 - [ ] Apply the play clock to a human dealer's turn, with the table's penalty.
 - [ ] Tests: a human dealer acts, the round settles once, and the automatic dealer is unchanged.
+
+## Bottom bar initialization
+
+The client bottom bar is drawn before its state is ready, so the first frame can show the wrong
+layout or missing fields. It needs to be initialized properly before the first redraw.
+
+- [ ] Initialize the bottom bar (provider, registry, and terminal width) before the first redraw,
+      so the first frame is correct.
+- [ ] Make a redraw before the bar is initialized a no-op rather than drawing partial state.
+- [ ] Test that the first frame after attach shows the balance and table fields.
