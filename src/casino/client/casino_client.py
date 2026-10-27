@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Callable
 
 import websockets
 from bbsengine6 import io, util
+from bbsengine6 import bottombar as screen_mod
 from bbsengine6.net.ping import PingUnavailable, connect as _net_connect
 
 from .menu import menu as _client_menu
@@ -36,6 +37,21 @@ def _clock_cell(table: dict) -> str:
         return "-"
     penalty = table.get("clock_penalty") or "skip"
     return f"{seconds}s {penalty}"
+
+
+_screen_ready = False
+
+
+def _ensure_client_screen() -> None:
+    """Initialize the terminal screen once per process, before any client output or prompt.
+
+    ``screen.init()`` sets the scroll region so the bottom bar stays on the last line. It has to run
+    before the moniker and password prompts, or the first output lands on an unconfigured screen.
+    """
+    global _screen_ready
+    if not _screen_ready:
+        screen_mod.init()
+        _screen_ready = True
 
 
 class CasinoClient:
@@ -1069,6 +1085,7 @@ class CasinoClient:
         from . import bottombar as _bar
 
         self._exit_reason = "quit"
+        _ensure_client_screen()
         try:
             token_path = getattr(self.args, "token_file", None)
             stored = auth._read_token_file(token_path) if token_path else ""
