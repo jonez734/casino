@@ -964,11 +964,12 @@ class GameServiceHandler(BaseService):
             return {"type": "error", "code": "not_at_table"}
 
         result = None
+        settled = None
         if action == "hit":
             result = self.game_service.hit(table_moniker, moniker)
         elif action == "stand":
             result = self.game_service.stand(table_moniker, moniker)
-            self.game_service.settle_game(table_moniker)
+            settled = self.game_service.settle_game(table_moniker)
         elif action == "double":
             hand_id = message.get("hand_id") if message else None
             result = self.game_service.double(table_moniker, moniker, hand_id)
@@ -987,6 +988,13 @@ class GameServiceHandler(BaseService):
         # Return game state directly to player
         game_state = self.game_service.get_game_state(table_moniker, moniker)
         game_state["type"] = "game_state"
+        if settled and settled.get("outcomes"):
+            # The round ended: tell the player each hand's result and the money that moved.
+            game_state["round_settled"] = {
+                "outcomes": settled["outcomes"],
+                "dealer_total": settled.get("dealer_total"),
+                "net": sum(o["net"] for o in settled["outcomes"] if o["player"] == moniker),
+            }
 
         # Broadcast game_state to all at the table (including spectators)
         if server and table_moniker:

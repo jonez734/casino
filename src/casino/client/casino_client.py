@@ -554,6 +554,21 @@ class CasinoClient:
             cards_str = " ".join(dealer_hand)
             io.echo(f"Dealer:    {cards_str} [{dealer_total}]{{f6}}")
 
+        settled = state.get("round_settled")
+        if settled:
+            # The round ended: say what happened to each hand and the money that moved.
+            for o in settled.get("outcomes", []):
+                net = int(o.get("net", 0))
+                sign = "+" if net > 0 else ""
+                io.echo(
+                    f"Result: {o.get('result', '?')} with {o.get('total', '?')} "
+                    f"(dealer {settled.get('dealer_total', '?')}), bet {o.get('bet', '?')}, "
+                    f"net {sign}{net}{{f6}}"
+                )
+            total = int(settled.get("net", 0))
+            sign = "+" if total > 0 else ""
+            io.echo(f"Round net: {sign}{total}{{f6}}")
+
         available_actions = state.get("available_actions", [])
         self.last_available_actions = available_actions
         if available_actions:

@@ -935,6 +935,7 @@ class GameService:
         dealer_cards = self._run_dealer_turn(game["id"], table_moniker)
         dealer_total = self._hand_value(dealer_cards)
         dealer_blackjack = self._is_blackjack(dealer_cards)
+        outcomes: list[dict[str, Any]] = []
 
         for hand in hands:
             hand_id = hand.get("id")
@@ -1016,6 +1017,14 @@ class GameService:
                 dal_player.increment_stat(self.args, player_moniker, "net", net_change)
 
             if outcome is not None:
+                outcomes.append({
+                    "hand_id": hand["id"],
+                    "player": player_moniker,
+                    "total": player_total,
+                    "result": outcome,
+                    "bet": int(bet["amount"]),
+                    "net": int(net_change),
+                })
                 dal_game.update_game_attrs(
                     self.args, game["id"],
                     {
@@ -1040,4 +1049,5 @@ class GameService:
             "message": "Game settled",
             "dealer_total": dealer_total,
             "dealer_cards": dealer_cards,
+            "outcomes": outcomes,
         }
