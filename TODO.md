@@ -3261,3 +3261,18 @@ package is only a loading convention, not a real startup module.
        `pyproject.toml`) or move into a versioned install directory.
 - [ ] Make each step idempotent and report which steps were skipped, so a
        second `casino --install` shows what changed.
+
+## Human dealer seat (deferred)
+
+The dealer is not a seat. `_run_dealer_turn` draws the house hand from the shoe and plays the
+hit-until-17 rule automatically. The dealer's hand is a `casino.__hand` row with `playermoniker`
+NULL and `attrs.is_dealer = true`. The table's `dealermodule` column exists but nothing reads it.
+So a seated human cannot be the dealer.
+
+- [ ] Decide what a human dealer does: which actions they take (hit/stand for the house), and
+      whether they take a bet and pay out, or only play the house hand.
+- [ ] Give a dealer seat a place in the seat registry (`casino/seats.py`) and in join/seat rules.
+- [ ] Read `dealermodule` when a round starts, and route the dealer turn to that module rather
+      than the automatic house draw. Keep the automatic dealer as the default.
+- [ ] Apply the play clock to a human dealer's turn, with the table's penalty.
+- [ ] Tests: a human dealer acts, the round settles once, and the automatic dealer is unchanged.
