@@ -420,3 +420,36 @@ def test_slot_history_self_check_is_case_insensitive():
     s = _session("Alice")
     msg = {"moniker": "ALICE"}
     assert casino_access(None, "slot_history", session=s, message=msg) is True
+
+
+# ---------- add_bot / remove_bot (owner-or-sysop, like update_table) ----------
+
+
+def test_add_bot_owner_allowed():
+    s = _session("alice")
+    msg = {"table_moniker": "t1", "owner": "alice"}
+    assert casino_access(None, "add_bot", session=s, message=msg) is True
+
+
+def test_add_bot_non_owner_denied():
+    s = _session("alice")
+    msg = {"table_moniker": "t1", "owner": "bob"}
+    assert casino_access(None, "add_bot", session=s, message=msg) is False
+
+
+def test_add_bot_sysop_allowed_regardless_of_owner():
+    s = _session("sysop", is_sysop=True)
+    msg = {"table_moniker": "t1", "owner": "bob"}
+    assert casino_access(None, "add_bot", session=s, message=msg) is True
+
+
+def test_remove_bot_non_owner_denied():
+    s = _session("alice")
+    msg = {"table_moniker": "t1", "owner": "bob"}
+    assert casino_access(None, "remove_bot", session=s, message=msg) is False
+
+
+def test_remove_bot_owner_allowed():
+    s = _session("alice")
+    msg = {"table_moniker": "t1", "owner": "alice"}
+    assert casino_access(None, "remove_bot", session=s, message=msg) is True

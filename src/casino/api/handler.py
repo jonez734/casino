@@ -310,6 +310,7 @@ class AuthService(BaseService):
 class TableServiceHandler(BaseService):
     """Handle table management messages."""
 
+    from casino.services.bots import BotService
     from casino.services.table import TableService
 
     def __init__(
@@ -333,6 +334,7 @@ class TableServiceHandler(BaseService):
             clock=clock,
         )
         self.table_service = self.TableService(args, pool=pool)
+        self.bot_service = self.BotService(args, pool=pool)
         self.channel_state = channel_state
         self._pool = pool
 
@@ -349,6 +351,10 @@ class TableServiceHandler(BaseService):
             return await self._handle_join_table(websocket, message)
         elif msg_type == "leave_table":
             return await self._handle_leave_table(websocket, message)
+        elif msg_type == "add_bot":
+            return await self._handle_add_bot(websocket, message)
+        elif msg_type == "remove_bot":
+            return await self._handle_remove_bot(websocket, message)
         elif msg_type == "watch_table":
             return await self._handle_watch_table(websocket, message)
         elif msg_type == "stop_watching":
@@ -591,6 +597,37 @@ class TableServiceHandler(BaseService):
             }
         else:
             return {"type": "error", "code": "join_failed", "message": result["message"]}
+
+    async def _handle_add_bot(
+        self, websocket: Any, message: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Seat one bot at a table. Owner or sysop only (see casino.access)."""
+        state, err = self._check_access(websocket, "add_bot", message)
+        if err is not None:
+            return err
+        table_moniker = message.get("moniker") or message.get("table_moniker")
+        if not table_moniker:
+            return {"type": "error", "code": "invalid_request", "message": "moniker required"}
+        result = self.bot_service.add_bot(table_moniker)
+        if not result["success"]:
+            return {"type": "error", "code": "bot_refused", "message": result["message"]}
+        return {"type": "bot_added", "moniker": table_moniker, "bot": result["bot"], "message": result["message"]}
+
+    async def _handle_remove_bot(
+        self, websocket: Any, message: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Unseat a bot from a table. Owner or sysop only (see casino.access)."""
+        state, err = self._check_access(websocket, "remove_bot", message)
+        if err is not None:
+            return err
+        table_moniker = message.get("moniker") or message.get("table_moniker")
+        bot = message.get("bot")
+        if not table_moniker or not bot:
+            return {"type": "error", "code": "invalid_request", "message": "moniker and bot required"}
+        result = self.bot_service.remove_bot(table_moniker, bot)
+        if not result["success"]:
+            return {"type": "error", "code": "bot_refused", "message": result["message"]}
+        return {"type": "bot_removed", "moniker": table_moniker, "bot": bot, "message": result["message"]}
 
     async def _handle_leave_table(
         self, websocket: Any, message: dict[str, Any]
@@ -1615,6 +1652,8 @@ class MessageRouter:
                 "update_table",
                 "join_table",
                 "leave_table",
+                "add_bot",
+                "remove_bot",
                 "watch_table",
                 "stop_watching",
             ],
