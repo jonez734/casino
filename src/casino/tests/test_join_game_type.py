@@ -27,6 +27,7 @@ def test_join_table_result_includes_the_game_type():
     svc = _service()
     table = {"moniker": "tictactoe-x", "type": "tictactoe"}
     with patch.object(dal_table, "get_table", return_value=table), \
+         patch.object(dal_table, "count_seated", return_value=0), \
          patch.object(dal_table, "add_player_to_table", return_value=True), \
          patch.object(table_mod, "tablegroups", create=True):
         result = svc.join_table("tictactoe-x", "player", is_sysop=False)

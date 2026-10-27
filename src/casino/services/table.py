@@ -3,6 +3,7 @@
 
 from typing import Any, Optional
 
+from casino import seats
 from casino.config import get_surrender_multiplier
 from casino.dal import table as dal_table
 
@@ -146,6 +147,16 @@ class TableService:
                 "success": False,
                 "message": "Table not found",
             }
+
+        # Phase 4: a table holds at most the seats its game's seat module declares.
+        game_type = table.get("type")
+        if seats.seat_module(game_type) is not None:
+            taken = dal_table.count_seated(self.args, moniker, pool=self._pool)
+            if not seats.has_room(game_type, taken):
+                return {
+                    "success": False,
+                    "message": f"Table {moniker} is full ({taken} seated)",
+                }
 
         seated = dal_table.add_player_to_table(self.args, moniker, player_moniker, pool=self._pool)
         if seated:

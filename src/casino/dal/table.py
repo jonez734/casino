@@ -309,6 +309,24 @@ def add_player_to_table(
             return cur.fetchone() is not None
 
 
+def count_seated(args: Any, moniker: str, *, pool: Any = None) -> int:
+    """Number of distinct players seated at a table (spectators are not seated).
+
+    Args:
+        pool: Optional connection pool (CONN_POOL_PATTERN)
+    """
+    with _connect_ctx(args, pool) as conn, database.cursor(conn) as cur:
+        cur.execute(
+            database.query(
+                "SELECT COUNT(DISTINCT playermoniker) AS n FROM $casino.map_cardtable_player "
+                "WHERE cardtablemoniker = :moniker AND role = 'player'",
+                moniker=moniker,
+            )
+        )
+        row = cur.fetchone()
+        return int(row["n"]) if row else 0
+
+
 def remove_player_from_table(args: Any, moniker: str, player_moniker: str, *, pool: Any = None) -> bool:
     """Remove player from table (standing up).
 
