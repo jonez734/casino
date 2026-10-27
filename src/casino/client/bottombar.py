@@ -54,6 +54,26 @@ def _table_left(**kwargs) -> str:
 
 _FRAGMENTS = (_moniker_fragment, _balance_fragment)
 
+# The renderer leaves a wide right side untrimmed, so a long moniker could push the line past the
+# terminal and wrap it. The right side is capped here so the balance always fits; the moniker
+# gives way first.
+_MIN_LEFT_COLUMNS = 12
+
+
+def _right_side(width: int) -> str:
+    """The right side of the bar, capped so the line fits ``width`` columns with some left room."""
+    moniker = _moniker_fragment()
+    balance = _balance_fragment()
+    parts = [p for p in (moniker, balance) if p]
+    text = " | ".join(parts)
+    budget = max(0, width - 2 - _MIN_LEFT_COLUMNS)
+    if len(text) <= budget:
+        return text
+    if balance and len(balance) <= budget:
+        # Keep the balance whole; drop the moniker, cut to fit what is left.
+        return balance
+    return balance[-budget:] if budget else ""
+
 
 def attach(provider: Callable[[], Any]) -> None:
     """Bind the bar to a client. ``provider`` returns the live client object."""
@@ -90,4 +110,5 @@ def redraw(args: Any = None) -> None:
     if _provider is None:
         return
     bottombar.set_context_for(REGISTRY_NAME, args=args)
-    bottombar._render_bottombar(_registry, _table_left, None)
+    width = bottombar.terminal.width()
+    bottombar._render_bottombar(_registry, _table_left, lambda **_: _right_side(width))

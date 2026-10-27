@@ -72,3 +72,59 @@ def test_menu_loop_attaches_the_bar_and_detaches_on_exit():
     assert "_bar.detach()" in src
     menu = inspect.getsource(cc.CasinoClient._run_menu_loop)
     assert "_bar.redraw()" in menu
+
+
+# Phase 6: the bar must fit the terminal. The right side (moniker and bank balance) was never
+# trimmed, so a long moniker or a large balance wrapped the bottom row on a narrow terminal.
+
+import re as _re
+from unittest.mock import patch as _patch
+
+from bbsengine6 import bottombar as _bb
+
+
+def _emitted_line(width, **kw):
+    captured = []
+
+    def fake_echo(text, **_):
+        captured.append(text)
+
+    c = _client(**kw)
+    with _patch.object(_bb, "echo", fake_echo), _patch.object(_bb.terminal, "width", lambda: width):
+        bar.attach(lambda: c)
+        try:
+            bar.redraw()
+        finally:
+            bar._provider = None
+    return captured[-1]
+
+
+def _visible(text):
+    # Strip markup tokens such as {savecursor} or {bottombarcolor}; what remains is what is drawn.
+    return _re.sub(r"\{[^}]*\}", "", text)
+
+
+def test_bar_never_wider_than_the_terminal_with_a_long_right_side():
+    for width in (30, 40, 60, 80):
+        line = _visible(_emitted_line(
+            width, moniker="a" * 40, balance=123456789, current_table_moniker="blackjack-x",
+            current_table_game_type="blackjack",
+        ))
+        assert len(line) <= width - 2, (width, len(line), line)
+
+
+def test_bar_keeps_the_balance_visible_when_it_must_trim():
+    line = _visible(_emitted_line(
+        40, moniker="a" * 35, balance=123456, current_table_moniker="blackjack-x",
+        current_table_game_type="blackjack",
+    ))
+    assert line.endswith("bank 123456")
+
+
+def test_bar_fits_at_normal_widths_with_a_long_table_name():
+    for width in (40, 60, 80, 120):
+        line = _visible(_emitted_line(
+            width, moniker="jam", balance=100, current_table_moniker="blackjack-" + "y" * 70,
+            current_table_game_type="blackjack",
+        ))
+        assert len(line) <= width - 2
