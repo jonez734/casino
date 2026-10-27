@@ -453,3 +453,15 @@ def test_remove_bot_owner_allowed():
     s = _session("alice")
     msg = {"table_moniker": "t1", "owner": "alice"}
     assert casino_access(None, "remove_bot", session=s, message=msg) is True
+
+
+def test_fill_bots_owner_allowed():
+    s = _session("alice")
+    msg = {"table_moniker": "t1", "owner": "alice"}
+    assert casino_access(None, "fill_bots", session=s, message=msg) is True
+
+
+def test_fill_bots_non_owner_denied():
+    s = _session("alice")
+    msg = {"table_moniker": "t1", "owner": "bob"}
+    assert casino_access(None, "fill_bots", session=s, message=msg) is False

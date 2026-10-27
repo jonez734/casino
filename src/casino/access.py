@@ -180,7 +180,7 @@ def access(args: argparse.Namespace, op: str, /, **kwargs: Any) -> bool:
     if op == "create_table":
         return bool(auth_moniker)
 
-    if op in ("update_table", "kick_player", "add_bot", "remove_bot"):
+    if op in ("update_table", "kick_player", "add_bot", "remove_bot", "fill_bots"):
         if auth_sysop:
             return True
         target = (_get_message(kwargs).get("table_moniker") or "").strip()

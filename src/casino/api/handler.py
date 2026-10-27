@@ -355,6 +355,8 @@ class TableServiceHandler(BaseService):
             return await self._handle_add_bot(websocket, message)
         elif msg_type == "remove_bot":
             return await self._handle_remove_bot(websocket, message)
+        elif msg_type == "fill_bots":
+            return await self._handle_fill_bots(websocket, message)
         elif msg_type == "watch_table":
             return await self._handle_watch_table(websocket, message)
         elif msg_type == "stop_watching":
@@ -628,6 +630,24 @@ class TableServiceHandler(BaseService):
         if not result["success"]:
             return {"type": "error", "code": "bot_refused", "message": result["message"]}
         return {"type": "bot_removed", "moniker": table_moniker, "bot": bot, "message": result["message"]}
+
+    async def _handle_fill_bots(
+        self, websocket: Any, message: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Seat bots in every empty seat, or ``count`` of them. Owner or sysop only."""
+        state, err = self._check_access(websocket, "fill_bots", message)
+        if err is not None:
+            return err
+        table_moniker = message.get("moniker") or message.get("table_moniker")
+        if not table_moniker:
+            return {"type": "error", "code": "invalid_request", "message": "moniker required"}
+        count = message.get("count")
+        if count is not None and not isinstance(count, int):
+            return {"type": "error", "code": "invalid_request", "message": "count must be an integer"}
+        result = self.bot_service.fill_bots(table_moniker, count=count)
+        if not result["success"]:
+            return {"type": "error", "code": "bot_refused", "message": result["message"]}
+        return {"type": "bots_filled", "moniker": table_moniker, "added": result["added"], "message": result["message"]}
 
     async def _handle_leave_table(
         self, websocket: Any, message: dict[str, Any]
@@ -1654,6 +1674,7 @@ class MessageRouter:
                 "leave_table",
                 "add_bot",
                 "remove_bot",
+                "fill_bots",
                 "watch_table",
                 "stop_watching",
             ],

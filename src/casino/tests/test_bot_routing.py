@@ -12,27 +12,28 @@ from casino.api import handler as handler_mod
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("op", ["add_bot", "remove_bot"])
+@pytest.mark.parametrize("op", ["add_bot", "remove_bot", "fill_bots"])
 def test_bot_op_is_mapped_to_an_access_op(op):
     assert _auth.TYPE_TO_OP.get(op) == op
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("op", ["add_bot", "remove_bot"])
+@pytest.mark.parametrize("op", ["add_bot", "remove_bot", "fill_bots"])
 def test_bot_op_requires_a_token_like_other_table_ops(op):
     src = inspect.getsource(_auth)
     assert f'"{op}"' in src
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("op", ["add_bot", "remove_bot"])
+@pytest.mark.parametrize("op", ["add_bot", "remove_bot", "fill_bots"])
 def test_bot_op_is_registered_with_the_table_service(op):
     src = inspect.getsource(handler_mod.TableServiceHandler)
     assert f'"{op}"' in src
 
 
 @pytest.mark.unit
-def test_dispatch_routes_both_bot_messages():
+def test_dispatch_routes_every_bot_message():
     src = inspect.getsource(handler_mod.TableServiceHandler)
     assert 'msg_type == "add_bot"' in src
     assert 'msg_type == "remove_bot"' in src
+    assert 'msg_type == "fill_bots"' in src
