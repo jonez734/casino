@@ -171,6 +171,13 @@ bed WebSocket server. The full surface:
 | `TicTacToeService`      | (per-game — see `tictactoe/README.md`)                                                            |
 | `PostOfficeService`     | IMAP polling, notification fan-out                                                                |
 
+**Join reply (Phase 3).** A successful `join_table` returns
+`{"type": "joined_table", "moniker": ..., "game_type": ..., "message": ...}`.
+`game_type` is the table's game (`blackjack`, `tictactoe`, ...). The
+service loads the table to join it, so the field costs no extra query. The
+client sets `current_table_game_type` from it, so the bottombar shows the
+game type as soon as the player sits down.
+
 Bank service is loaded by `bed.defaultrouter.DefaultRouter.register_all`
 (`bed/src/bed/defaultrouter.py:14`); not registered by
 `casino.api.handler.MessageRouter`. See `bed/SPEC.md:137`.
@@ -238,8 +245,31 @@ the interactive menu. Mirrors the pre-merge `casino` shim's behavior.
 
 `CasinoClient` authenticates with the BED server and exposes table
 management, blackjack, poker, tic-tac-toe, chat, and bank operations
-from the command line. Auth always prompts for password (commit
-`ec0138e`) and reports a specific failure reason (`Member not found`,
+from the command line.
+
+**Token startup (Phase 2c).** When `args.token_file` names a non-empty
+token file, the client reads the token's `expires_at` claim before it
+connects. The claim is read without checking the MAC; bed verifies the
+token on every use.
+
+- A token that has expired is not sent. The client prints
+  `stored token has expired; please log in again` and goes to the
+  password prompt.
+- A token that bed rejects (`token_expired`, `token_revoked`,
+  `token_invalid`, `bed_instance_mismatch`, `not_authenticated`) prints
+  `stored token was rejected; please log in again` and falls back to
+  the password prompt. The session no longer ends with `auth_failed`.
+- A token whose expiry cannot be read is sent to bed. Bed decides; a
+  rejection takes the fallback above.
+
+**Token refresh (Phase 2b).** Before each menu command, the client
+checks the token. A token that expires within 120 seconds is rotated with
+`auth_refresh` on the client's own websocket (bed binds refresh to the
+original socket). The rotated token replaces the old one in memory and
+in the token file. A failed refresh prints `token refresh failed; please
+log in again` and the next command goes through the login prompt.
+
+Auth reports a specific failure reason (`Member not found`,
 `Invalid moniker`, `Authentication service unavailable`).
 
 The legacy `casino-client` shell shim and console-script entry point
