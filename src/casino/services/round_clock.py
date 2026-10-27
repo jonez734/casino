@@ -7,7 +7,7 @@ each unfinished hand takes the table's penalty:
 - ``skip``: the hand stands on its current cards; the round settles as normal. No card is drawn.
 - ``remove``: the hand is removed from the round and its bet is returned in full.
 
-The clock is off when the table's turn_seconds is 0. Bots are never clocked. Expiry is applied by
+The clock is off when the table's turn_seconds is 0. Bots are clocked like humans. Expiry is applied by
 the engine, not the client, and every expiry is written to the round log.
 """
 
@@ -44,7 +44,7 @@ def penalty_for(table: dict[str, Any]) -> str:
 
 
 def is_bot_seat(seat: dict[str, Any]) -> bool:
-    """Bots are never clocked. Until the seat-module phase, every seat is human."""
+    """True for a bot seat. Bots are clocked like humans; this only identifies the seat."""
     return bool(seat.get("is_bot"))
 
 
@@ -96,8 +96,6 @@ def expire_round(game_service: Any, table_moniker: str, *, pool: Any = None) -> 
         player = hand.get("playermoniker")
         if not hand_id or not player:
             continue
-        if is_bot_seat(hand):
-            continue  # bots are never clocked
         bet = dal_bet.get_bet_for_hand(args, hand_id, pool=pool)
         if not bet or bet.get("status") != "pending":
             continue

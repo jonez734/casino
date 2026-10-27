@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # casino/tests/test_round_clock.py
 # The blackjack round clock (Phase 1a): one deadline per round, the skip and remove penalties,
-# bots are never clocked, and every expired action is refused before it is applied.
+# bots are clocked the same as humans, and every expired action is refused before it is applied.
 # Database access is stubbed; nothing connects.
 
 from datetime import datetime, timedelta, timezone
@@ -49,7 +49,8 @@ def test_penalty_is_skip_or_remove_with_skip_as_the_default(table, expected):
 
 
 @pytest.mark.unit
-def test_bots_are_never_clocked():
+def test_bot_seats_are_clocked_like_humans():
+    # The round clock applies to every seat. A bot that does not act in time gets the penalty.
     assert rc.is_bot_seat({"is_bot": True}) is True
     assert rc.is_bot_seat({"is_bot": False}) is False
     assert rc.is_bot_seat({}) is False
@@ -141,15 +142,19 @@ def test_expire_round_skip_leaves_the_hand_on_its_cards():
 
 
 @pytest.mark.unit
-def test_expire_round_never_touches_a_bot_hand():
+def test_expire_round_penalises_a_bot_hand_like_a_human_hand():
     svc = _service()
     hand = {"id": 11, "playermoniker": "botty", "is_bot": True}
+    bet = {"id": 3, "status": "pending", "amount": 50}
     with patch.object(dal_game_mod, "get_active_game", return_value={"id": 7}), \
          patch.object(dal_table_mod, "get_table", return_value={"clock_penalty": "remove"}), \
          patch.object(dal_game_mod, "get_game_hands", return_value=[hand]), \
-         patch.object(dal_bet_mod, "get_bet_for_hand") as get_bet, \
+         patch.object(dal_bet_mod, "get_bet_for_hand", return_value=bet), \
+         patch.object(dal_bet_mod, "settle_bet") as settle, \
+         patch.object(dal_game_mod, "update_hand_status") as status, \
          patch.object(rc, "log_expiry") as log:
         out = rc.expire_round(svc, "t1")
-    get_bet.assert_not_called()
-    log.assert_not_called()
-    assert out["expired"] == 0
+    assert out["expired"] == 1
+    settle.assert_called_once()  # remove: the stake is returned
+    status.assert_called_once_with(svc.args, 11, "removed", pool=None)
+    log.assert_called_once()

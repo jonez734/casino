@@ -7,7 +7,7 @@ turn_seconds (0 = off). If it passes before the seat acts, the penalty applies t
 - ``skip``: the seat checks if it can; otherwise it folds. The engine never bets for the player.
 - ``remove``: the seat folds out of the hand.
 
-Bots are never clocked. The table is not paused by another seat's clock. Every expiry is logged.
+Bots are clocked the same as humans, so a bot cannot hold the table. The table is not paused by another seat's clock. Every expiry is logged.
 Expiry is applied by the engine before any action is accepted, so a late action cannot beat it.
 """
 
@@ -40,8 +40,8 @@ def penalty_for(clock_penalty: Optional[str]) -> str:
 
 
 def clocked(seat: Any) -> bool:
-    """A seat is clocked only when it is human. Bots are never clocked."""
-    return not getattr(seat, "is_bot", False)
+    """Every seat is clocked, bots included. A bot gets the same penalty as a human seat."""
+    return True
 
 
 def apply_expiry(table: Any, seat: Any, *, facing_bet: bool) -> dict[str, Any]:

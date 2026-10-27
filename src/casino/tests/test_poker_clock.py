@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # casino/tests/test_poker_clock.py
 # Poker's per-seat play clock (Phase 1b): the clock belongs to the seat whose turn it is, expiry
-# applies to that seat only, bots are never clocked, and a late action is refused, not applied.
+# applies to that seat only, bots are clocked the same as humans, and a late action is refused, not applied.
 # Pure in-memory tests: no database, no daemon.
 
 from datetime import datetime, timedelta, timezone
@@ -33,8 +33,9 @@ def test_expires_at_the_deadline_not_before():
 
 
 @pytest.mark.unit
-def test_bots_are_never_clocked():
-    assert pc.clocked(_seat("botty", is_bot=True)) is False
+def test_bots_are_clocked_like_humans():
+    # A bot that camps on its turn must not hold the table past the deadline.
+    assert pc.clocked(_seat("botty", is_bot=True)) is True
     assert pc.clocked(_seat("alice")) is True
 
 
@@ -93,11 +94,11 @@ def test_turn_change_sets_a_deadline_for_the_new_human_seat():
 
 
 @pytest.mark.unit
-def test_turn_to_a_bot_has_no_deadline():
+def test_turn_to_a_bot_starts_the_clock():
     svc, table = _table(turn_seconds=20)
     table.players["alice"].is_bot = True
     svc._set_turn(table, "alice")
-    assert table.turn_deadline is None
+    assert table.turn_deadline is not None
 
 
 @pytest.mark.unit
