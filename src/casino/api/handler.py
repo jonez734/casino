@@ -1581,7 +1581,12 @@ class MessageRouter:
         token_store: Any = None,
         instance_id: Optional[str] = None,
         clock: Any = None,
+        config: Any = None,
     ):
+        # ``config`` is the module's config subtree, forwarded by the zoid6 router alongside the
+        # auth wiring. The casino router does not need it; accepting it keeps the auth wiring from
+        # being dropped by the caller's TypeError fallback, which would leave the gate in door mode.
+        self.config = config
         self.args = args
         self.session_registry = session_registry
         self._bootstrap_casino_config(args)
