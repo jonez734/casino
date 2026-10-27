@@ -272,6 +272,12 @@ log in again` and the next command goes through the login prompt.
 Auth reports a specific failure reason (`Member not found`,
 `Invalid moniker`, `Authentication service unavailable`).
 
+**Bottom bar (Phase 6).** The client bar has a left side (the seated table, its game type, and
+the play clock) and a right side (the moniker and the bank balance). The bar fits the terminal
+width. When the right side is too wide, the moniker is dropped first and the balance stays whole.
+The left side is trimmed by the renderer with `...`. The bar is 2 columns narrower than the
+terminal, so it never wraps.
+
 The legacy `casino-client` shell shim and console-script entry point
 were removed; `python -m casino.client_cli` still works for callers
 that imported the entry point directly.
