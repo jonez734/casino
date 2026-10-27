@@ -43,6 +43,11 @@ def penalty_for(table: dict[str, Any]) -> str:
     return value if value in PENALTIES else "skip"
 
 
+# Hand states that mean the seat has finished acting. Shared with GameService so the round and the
+# clock agree on what "acted" means.
+ACTED_STATUSES = ("standing", "surrendered", "bust", "charlie", "done", "split_1", "split_2")
+
+
 def is_bot_seat(seat: dict[str, Any]) -> bool:
     """True for a bot seat. Bots are clocked like humans; this only identifies the seat."""
     return bool(seat.get("is_bot"))
@@ -95,6 +100,9 @@ def expire_round(game_service: Any, table_moniker: str, *, pool: Any = None) -> 
         hand_id = hand.get("id")
         player = hand.get("playermoniker")
         if not hand_id or not player:
+            continue
+        # A seat that already acted is not late; only the seats still deciding are penalised.
+        if (hand.get("attrs") or {}).get("status") in ACTED_STATUSES:
             continue
         bet = dal_bet.get_bet_for_hand(args, hand_id, pool=pool)
         if not bet or bet.get("status") != "pending":

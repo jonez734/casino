@@ -13,6 +13,7 @@ from casino.dal import bet as dal_bet
 from casino.dal import game as dal_game
 from casino.dal import player as dal_player
 from casino.dal import table as dal_table
+from casino.services.round_clock import ACTED_STATUSES
 
 
 class GameService:
@@ -238,8 +239,22 @@ class GameService:
             "message": "5-card Charlie!" if status == "charlie" else ("Hit" if status != "bust" else "Bust!"),
         }
 
+    # Hand states that mean the seat has finished acting. Any other state, or none, is still open.
+    _ACTED_STATUSES = ACTED_STATUSES
+
+    def _all_hands_acted(self, game: dict[str, Any]) -> bool:
+        """True once every seated hand in the round has acted (simultaneous blackjack).
+
+        The round settles together, so one seat finishing must not end it for the others.
+        """
+        for hand in dal_game.get_game_hands(self.args, game["id"], pool=self._pool):
+            attrs = hand.get("attrs") or {}
+            if attrs.get("status") not in self._ACTED_STATUSES:
+                return False
+        return True
+
     def stand(self, table_moniker: str, player_moniker: str) -> dict[str, Any]:
-        """Player stands (ends turn)."""
+        """Player stands. The round settles once every seated hand has acted."""
         game = dal_game.get_active_game(self.args, table_moniker, pool=self._pool)
         if not game:
             return {"success": False, "message": "No active game"}
@@ -252,7 +267,10 @@ class GameService:
 
         total = self._hand_value(list(hand["cards"]))
 
-        self.settle_game(table_moniker)
+        # update_hand_status merges the status into attrs; update_hand_attrs would replace them all.
+        dal_game.update_hand_status(self.args, hand["id"], "standing", pool=self._pool)
+        if self._all_hands_acted(game):
+            self.settle_game(table_moniker)
 
         return {
             "success": True,
