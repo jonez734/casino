@@ -586,6 +586,7 @@ class TableServiceHandler(BaseService):
             return {
                 "type": "joined_table",
                 "moniker": result["moniker"],
+                "game_type": result.get("game_type"),
                 "message": result["message"],
             }
         else:

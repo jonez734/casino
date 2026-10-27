@@ -155,6 +155,7 @@ class TableService:
         return {
             "success": True,
             "moniker": moniker,
+            "game_type": table.get("type"),
             "message": f"Sat down at table {moniker}",
         }
 

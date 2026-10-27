@@ -323,6 +323,8 @@ class CasinoClient:
             message = msg.get("message", "")
             if moniker:
                 self.current_table_moniker = moniker
+            # The join reply names the table's game type, so the bottombar shows it at once.
+            self.current_table_game_type = msg.get("game_type") or self.current_table_game_type
             util.heading(f"Joined table: {moniker}")
             if message:
                 io.echo(f"{{var:labelcolor}}status:  {{var:valuecolor}}{message}")
