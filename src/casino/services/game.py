@@ -776,11 +776,24 @@ class GameService:
         player_hand_cards = player_hands[0]["cards"] if player_hands else []
         player_total = player_hands[0]["total"] if player_hands else 0
 
+        # Every seat in the round, so each player can see who is still deciding. The per-player
+        # "hands" above stay this player's own hands.
+        seats_view = [
+            {
+                "player": h.get("playermoniker"),
+                "hand_id": h.get("id"),
+                "status": (h.get("attrs") or {}).get("status"),
+                "acted": ((h.get("attrs") or {}).get("status") in ACTED_STATUSES),
+            }
+            for h in dal_game.get_game_hands(self.args, game["id"], pool=self._pool)
+        ]
+
         return {
             "table_moniker": table_moniker,
             "game_id": int(game["id"]),
             "phase": game["status"],
             "hands": player_hands,
+            "seats": seats_view,
             "player_hand": player_hand_cards,
             "player_total": player_total,
             "dealer_hand": dealer_hand_for_client,

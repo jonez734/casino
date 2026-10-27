@@ -69,7 +69,8 @@ def _state_with_table(attrs):
          patch.object(dal_game, "update_dealer_hand_cards"), \
          patch.object(dal_game, "set_dealer_hole_card", create=True), \
          patch.object(dal_bet, "get_insurance", return_value=None, create=True), \
-         patch.object(svc, "_hide_hole_card", return_value=[], create=True):
+         patch.object(svc, "_hide_hole_card", return_value=[], create=True), \
+         patch.object(dal_game, "get_game_hands", return_value=[]):
         return svc.get_game_state("blackjack-x", "player")
 
 
