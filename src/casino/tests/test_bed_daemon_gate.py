@@ -60,3 +60,23 @@ def test_every_bed_daemon_test_is_opt_in(name):
     assert "_probe_bed(" not in src and "probe_bed()" not in src, name
     assert "CASINO_TEST_BED_URI" in src, name
     assert "8765" not in src.split("BED_ENABLED")[0] or "opt-in" in src, name
+
+
+@pytest.mark.unit
+def test_bed_teardown_hands_role_removal_to_jam():
+    # opencode cannot drop roles another role created. Teardown records the names for the jam
+    # cleanup and does not issue DROP ROLE itself.
+    src = (Path(__file__).parent / "test_blackjack_two_players_three_games_bed.py").read_text()
+    teardown = src.split("async def asyncTearDown")[1]
+    assert "_record_leftover_roles" in teardown
+    assert 'DROP ROLE "' not in teardown and "DROP ROLE %" not in teardown
+
+@pytest.mark.unit
+def test_bed_test_client_attaches_the_login_token_to_every_message():
+    # The live bed gates ops on a verified token from auth_result. The test client must send that
+    # token with each message after login, as the casino client does; otherwise create_table is
+    # refused with not_authenticated.
+    src = (Path(__file__).parent / "test_blackjack_two_players_three_games_bed.py").read_text()
+    wrapper = src.split("class WebSocketTestClient")[1].split("\nclass ")[0]
+    assert "_token" in wrapper, "the wrapper must keep the token from auth_result"
+    assert '"token": self._token' in wrapper, "send must attach the token to each message"

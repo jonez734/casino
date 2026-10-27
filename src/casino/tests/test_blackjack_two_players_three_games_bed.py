@@ -79,6 +79,7 @@ class WebSocketTestClient:
         self.timeout = timeout
         self.ws: Optional[websockets.WebSocketClientProtocol] = None
         self._rx: asyncio.Queue = asyncio.Queue()
+        self._token: Optional[str] = None
         self._task: Optional[asyncio.Task] = None
         self._running = False
 
@@ -101,7 +102,11 @@ class WebSocketTestClient:
                 if not self._running:
                     break
                 try:
-                    await self._rx.put(json.loads(raw))
+                    msg = json.loads(raw)
+                    # Keep the login token from auth_result; the live bed requires it on each op.
+                    if msg.get("type") == "auth_result" and msg.get("token"):
+                        self._token = msg["token"]
+                    await self._rx.put(msg)
                 except json.JSONDecodeError:
                     pass
         except Exception:
@@ -112,6 +117,8 @@ class WebSocketTestClient:
     async def send(self, payload: dict) -> None:
         if not self.ws or not self._running:
             raise ConnectionError("not connected")
+        if getattr(self, "_token", None) and "token" not in payload:
+            payload = {**payload, "token": self._token}
         await self.ws.send(json.dumps(payload))
 
     async def recv(self, timeout: Optional[float] = None) -> dict:
@@ -152,6 +159,19 @@ class WebSocketTestClient:
 
 
 # ----- the test -------------------------------------------------------------
+
+
+LEFTOVER_ROLES_FILE = "/home/opencode/tmp/bjbed_leftover_roles.txt"
+
+
+def _record_leftover_roles(*names: str) -> None:
+    """Append fixture role names to a file that the jam cleanup reads. Never raises."""
+    try:
+        with open(LEFTOVER_ROLES_FILE, "a", encoding="utf-8") as f:
+            for name in names:
+                f.write(name + "\n")
+    except OSError:
+        pass
 
 
 @pytest.mark.integration
@@ -195,32 +215,32 @@ class TestBlackjackTwoPlayersThreeGamesBed(unittest.IsolatedAsyncioTestCase):
             )
 
         suffix = uuid.uuid4().hex[:8]
+        self.moniker_a = f"bjbed_a_{suffix}"
+        self.password_a = "12345"
         self.moniker_b = f"bjbed_b_{suffix}"
         self.password_b = "12345"
-        with patch.object(con_member, "_edit") as mock_edit, \
-             patch("bbsengine6.io.inputboolean", return_value=True):
-            mock_edit.return_value = {
-                "moniker": self.moniker_b,
-                "loginid": self.moniker_b,
-                "email": f"{self.moniker_b}@test.local",
-                "password": self.password_b,
-                "credits": 100000,
-                "ui": ["term"],
-                "attrs": {},
-                "flags": {
-                    "APPROVED": {"value": True, "description": "Approved"},
-                    "SYSOP": {"value": False, "description": "Sysop"},
-                },
-            }
-            ok = con_member.add(args, pool=pool)
-            self.assertTrue(
-                ok,
-                f"bbsengine6.console.member.add returned False for {self.moniker_b}",
-            )
+        for moniker, password in ((self.moniker_a, self.password_a), (self.moniker_b, self.password_b)):
+            with patch.object(con_member, "_edit") as mock_edit, \
+                 patch("bbsengine6.io.inputboolean", return_value=True):
+                mock_edit.return_value = {
+                    "moniker": moniker,
+                    "loginid": moniker,
+                    "email": f"{moniker}@test.local",
+                    "password": password,
+                    "credits": 100000,
+                    "ui": ["term"],
+                    "attrs": {},
+                    "flags": {
+                        "APPROVED": {"value": True, "description": "Approved"},
+                        "SYSOP": {"value": False, "description": "Sysop"},
+                    },
+                }
+                ok = con_member.add(args, pool=pool)
+                self.assertTrue(
+                    ok,
+                    f"bbsengine6.console.member.add returned False for {moniker}",
+                )
 
-        with database.connect(args, pool=pool) as conn, database.cursor(conn) as cur:
-            cur.execute(f'GRANT sysop TO "{self.moniker_b}"')
-        conn.commit()
         pool.close()
 
         self.client_a: Optional[WebSocketTestClient] = None
@@ -285,6 +305,21 @@ class TestBlackjackTwoPlayersThreeGamesBed(unittest.IsolatedAsyncioTestCase):
                 "DELETE FROM engine.__member WHERE moniker = %s",
                 (self.moniker_b,),
             )
+            for fixture in (self.moniker_a, self.moniker_b):
+                for table_sql in (
+                    "DELETE FROM casino.__bank_player WHERE player_moniker = %s",
+                    "DELETE FROM casino.__player WHERE moniker = %s",
+                    "DELETE FROM bank.__account WHERE moniker = %s",
+                    "DELETE FROM engine.__member WHERE moniker = %s",
+                ):
+                    cur.execute(table_sql, (fixture,))
+                # Member creation makes two roles: the OS login role <moniker>, a member of the
+                # data role m_<moniker>, and the tracking row. Drop them in dependency order:
+                # the login role first (it depends on the data role), then the data role.
+                # Member roles are removed by a jam-run cleanup, not here: opencode cannot drop a role
+                # another role created (DROP ROLE needs ADMIN OPTION on the target). Record the
+                # names so the cleanup can find them.
+                _record_leftover_roles(fixture, f"m_{fixture}")
         conn.commit()
         pool.close()
 
@@ -330,11 +365,11 @@ class TestBlackjackTwoPlayersThreeGamesBed(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(self.client_a._running, "jam failed to connect to bed")
         self.assertTrue(self.client_b._running, f"{self.moniker_b} failed to connect to bed")
 
-        await self.client_a.send({"type": "auth", "moniker": "jam", "password": "test"})
+        await self.client_a.send({"type": "auth", "moniker": self.moniker_a, "password": self.password_a})
         auth_a = await self.client_a.recv()
         self.assertEqual(auth_a.get("type"), "auth_result", f"jam auth reply: {auth_a}")
         self.assertTrue(auth_a.get("success"), f"jam auth success=False: {auth_a}")
-        self.assertEqual(auth_a.get("moniker"), "jam")
+        self.assertEqual(auth_a.get("moniker"), self.moniker_a)
 
         await self.client_b.send(
             {"type": "auth", "moniker": self.moniker_b, "password": self.password_b}
