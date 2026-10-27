@@ -3277,21 +3277,9 @@ So a seated human cannot be the dealer.
 - [ ] Apply the play clock to a human dealer's turn, with the table's penalty.
 - [ ] Tests: a human dealer acts, the round settles once, and the automatic dealer is unchanged.
 
-## Bottom bar initialization
+## Bottom bar initialization (DONE)
 
-The client bottom bar is never given its screen setup. The older path called `io.screen.init()`
-once (through `_ensure_screen_initialized()` in `casino/lib.py`, from `setbottombar()`). That sets
-the terminal scroll region, so the bar stays on the last line. The client path skips it:
-
-- `casino_client.py` `run()` calls `_bar.attach(lambda: self)` (line ~1104), then the menu loop
-  calls `_bar.redraw()` before each prompt.
-- Nothing in the client path calls `screen.init()`. `client/bottombar.py` only stores the provider.
-- So the first redraw draws on a screen with no scroll region, and the bar can scroll off the
-  visible area when output overflows.
-
-- [ ] Call `io.screen.init()` once, before the first `redraw()` in the client (for example in
-      `run()` before `attach`, using the same once-per-process guard as `lib._ensure_screen_initialized`).
-- [ ] Make `redraw()` a no-op until the screen is initialized, rather than drawing into an
-      unconfigured screen.
-- [ ] Test that the client initializes the screen before the first redraw, and that the bar stays
-      on the last line after output that overflows the screen.
+The client now calls `bbsengine6.bottombar.init` once, at the top of `run()`, before the moniker
+and password prompts and before the bar is attached (`_ensure_client_screen()` in
+`casino/client/casino_client.py`). The scroll region keeps the bar on the last line. Verified by the
+ordering tests in `casino/tests/test_client_screen_init_order.py`, and confirmed in the terminal.
