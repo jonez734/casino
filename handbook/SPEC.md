@@ -499,6 +499,44 @@ reference and open follow-ups.
   `tablegroups.reconcile`, which runs at startup and sets each table's group
   to exactly its seated members.
 
+### 8.3 Seat capacity, bots, and multi-seat rounds (Phase 4)
+
+**Capacity.** `casino/seats.py` is the one place that says how many seats a
+game has: blackjack 1 to 7, poker 2 to 10, slots 0 to 1, yahtzee 1 to 6,
+tictactoe 2. `join_table` refuses a join when the table is full, and games
+with no seat rule are not capacity-checked. Spectators do not count.
+
+**Bots.** A bot is a real member with its own bank account, the same as a
+human player. It is created by `casino/services/bots.py` and holds an
+approved `engine.__member` row with a random password nobody knows, so it
+cannot log in. Its `casino.__player` row carries `attrs.is_bot = true`. A bot
+moniker uses only letters, digits, and underscores, because
+`engine.__member` rejects other characters. The owner or a sysop can:
+
+- `add_bot` seats one bot, refused when the table is full.
+- `fill_bots` seats bots one at a time until the table is full, or until
+  `count` are added. A full table is not an error.
+- `remove_bot` unseats a bot. It refuses a human seat. The bot's member row
+  and bank account are kept, so no chips or history are lost.
+
+**Clocks.** Bots are clocked like humans. A bot that does not act before the
+table's deadline gets the same penalty (`skip` or `remove`) as a human, so a
+bot cannot hold the table. The play clock settings are in section 10
+(`casino.clock.max_turn_seconds`, `turn_seconds`, `clock_penalty`).
+
+**Multi-seat rounds (blackjack).** Hands are simultaneous. A round has one
+deadline and settles once:
+
+- A seat's `stand` marks its own hand. The round settles, and the dealer
+  plays, only when every seated hand has acted. One player standing does not
+  end the round for the others.
+- A second seat's bet joins the open round; it does not start a new one.
+- A hand is acted when its status is `standing`, `surrendered`, `bust`,
+  `charlie`, `done`, `split_1`, or `split_2`. The round clock penalises only
+  hands that have not acted, so a seat that already stood is never late.
+- `get_game_state` carries a `seats` list (each seated player, status, and
+  acted flag) alongside the player's own `hands`.
+
 Poker and tictactoe seats are not yet written to the database; their
 persistence is a separate phase. Until then their table groups are only
 correct while the process runs.
