@@ -141,6 +141,28 @@ def _run_blackjack(args: Namespace, remaining_argv: list) -> int:
     return 0
 
 
+def _run_opencode(args: Namespace) -> int:
+    """``casino --install-opencode`` / ``--uninstall-opencode``: opencode's own grants.
+
+    Defaults to zoid6test. A live database needs --allow-live and --confirm <name>.
+    """
+    from casino import opencode_grants as og
+
+    explicit = any(a == "--databasename" or a.startswith("--databasename=") for a in sys.argv)
+    database_name = args.databasename if explicit else og.DEFAULT_DATABASE
+    allow_live = bool(getattr(args, "allow_live", False))
+    confirmation = getattr(args, "confirm", None)
+    try:
+        if getattr(args, "install_opencode", False):
+            ok = og.install(args, database=database_name, allow_live=allow_live, confirmation=confirmation)
+        else:
+            ok = og.uninstall(args, database=database_name, allow_live=allow_live, confirmation=confirmation)
+    except og.LiveDatabaseRefused as e:
+        io.echo(f"{{level.error}}casino opencode grants: {e}", level="error")
+        return 1
+    return 0 if ok else 1
+
+
 def _run_cleanup_test_state(args: Namespace) -> int:
     """``casino --cleanup-test-state``: opencode cleans what it can; the rest goes to a jam file."""
     from casino import cleanup_test_state as cts
@@ -269,6 +291,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if getattr(args, "cleanup_test_state", False):
         return _run_cleanup_test_state(args)
+
+    if getattr(args, "install_opencode", False) or getattr(args, "uninstall_opencode", False):
+        return _run_opencode(args)
 
     if remaining_argv and remaining_argv[0] == _BLACKJACK_SUBCOMMAND:
         return _run_blackjack(args, remaining_argv[1:])

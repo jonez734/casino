@@ -763,6 +763,21 @@ def buildargs(args: Namespace | None = None, **kwargs: Any) -> argparse.Argument
         ),
     )
     parser.add_argument(
+        "--install-opencode",
+        action="store_true",
+        default=False,
+        help=(
+            "Grant the opencode role the rights the bed test flows need, verify each, and record only "
+            "the grants it newly made (~/.config/casino/opencode-grants.json). Defaults to zoid6test."
+        ),
+    )
+    parser.add_argument(
+        "--uninstall-opencode",
+        action="store_true",
+        default=False,
+        help="Revoke only the grants recorded by --install-opencode. Defaults to zoid6test.",
+    )
+    parser.add_argument(
         "--allow-live",
         action="store_true",
         default=False,
