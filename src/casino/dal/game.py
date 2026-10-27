@@ -316,7 +316,6 @@ def get_player_hands(
             return hands
 
 
-DEALER_MONIKER = "__dealer__"
 
 
 def get_dealer_hand(args: Any, game_id: int, *, pool: Any = None) -> Optional[dict[str, Any]]:
@@ -328,8 +327,8 @@ def get_dealer_hand(args: Any, game_id: int, *, pool: Any = None) -> Optional[di
     with _connect_ctx(args, pool) as conn, database.cursor(conn) as cur:
             cur.execute(
                 database.query(
-                    "SELECT id, gameid, playermoniker, cards, attrs FROM $casino.__hand WHERE gameid = :game_id AND playermoniker = :dealer_moniker",
-                    game_id=game_id, dealer_moniker=DEALER_MONIKER
+                    "SELECT id, gameid, playermoniker, cards, attrs FROM $casino.__hand WHERE gameid = :game_id AND attrs->>'is_dealer' = 'true'",
+                    game_id=game_id
                 )
             )
             row = cur.fetchone()
@@ -353,8 +352,8 @@ def create_dealer_hand(args: Any, game_id: int, *, pool: Any = None) -> dict[str
     with _connect_ctx(args, pool) as conn, database.cursor(conn) as cur:
             cur.execute(
                 database.query(
-                    "INSERT INTO $casino.__hand (gameid, playermoniker, cards, attrs) VALUES (:game_id, :dealer_moniker, :cards, :attrs) RETURNING id, gameid, playermoniker, cards, attrs",
-                    game_id=game_id, dealer_moniker=DEALER_MONIKER, cards=[], attrs=Jsonb({"is_dealer": True})
+                    "INSERT INTO $casino.__hand (gameid, playermoniker, cards, attrs) VALUES (:game_id, NULL, :cards, :attrs) RETURNING id, gameid, playermoniker, cards, attrs",
+                    game_id=game_id, cards=[], attrs=Jsonb({"is_dealer": True})
                 )
             )
             row = cur.fetchone()
@@ -376,8 +375,8 @@ def update_dealer_hand_cards(args: Any, game_id: int, cards: list[str], *, pool:
     with _connect_ctx(args, pool) as conn, database.cursor(conn) as cur:
         cur.execute(
             database.query(
-                "UPDATE $casino.__hand SET cards = :cards WHERE gameid = :game_id AND playermoniker = :dealer_moniker",
-                cards=Jsonb(cards), game_id=game_id, dealer_moniker=DEALER_MONIKER
+                "UPDATE $casino.__hand SET cards = :cards WHERE gameid = :game_id AND attrs->>'is_dealer' = 'true'",
+                cards=Jsonb(cards), game_id=game_id
             )
         )
 
@@ -404,8 +403,8 @@ def set_dealer_hole_card(args: Any, game_id: int, card: str, *, pool: Any = None
     with _connect_ctx(args, pool) as conn, database.cursor(conn) as cur:
             cur.execute(
                 database.query(
-                    "UPDATE $casino.__hand SET attrs = jsonb_set(coalesce(attrs, '{}'::jsonb), '{hole_card}', to_jsonb(:card::text)) WHERE gameid = :game_id AND playermoniker = :dealer_moniker",
-                    card=card, game_id=game_id, dealer_moniker=DEALER_MONIKER
+                    "UPDATE $casino.__hand SET attrs = jsonb_set(coalesce(attrs, '{}'::jsonb), '{hole_card}', to_jsonb(:card::text)) WHERE gameid = :game_id AND attrs->>'is_dealer' = 'true'",
+                    card=card, game_id=game_id
                 )
             )
 
@@ -431,8 +430,8 @@ def reveal_dealer_hole_card(args: Any, game_id: int, *, pool: Any = None) -> Opt
     with _connect_ctx(args, pool) as conn, database.cursor(conn) as cur:
             cur.execute(
                 database.query(
-                    "UPDATE $casino.__hand SET cards = :cards, attrs = attrs - 'hole_card' WHERE gameid = :game_id AND playermoniker = :dealer_moniker",
-                    cards=Jsonb(cards), game_id=game_id, dealer_moniker=DEALER_MONIKER
+                    "UPDATE $casino.__hand SET cards = :cards, attrs = attrs - 'hole_card' WHERE gameid = :game_id AND attrs->>'is_dealer' = 'true'",
+                    cards=Jsonb(cards), game_id=game_id
                 )
             )
 
