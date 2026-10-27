@@ -231,3 +231,61 @@ def uninstall(args: Any, *, database: str, allow_live: bool = False, confirmatio
         return True
     finally:
         pool.close()
+
+
+def ensure_opencode_member(args: Any, *, database: str, allow_live: bool = False,
+                           confirmation: Optional[str] = None) -> bool:
+    """Make ``opencode`` a casino member, the same way a test fixture is made.
+
+    The live daemon logs a player in as a member and switches into that member's login and data
+    roles. opencode needs the same member row, bank account, player row, and bed SET grant, or it
+    cannot play. Idempotent: an existing opencode member is left as it is.
+    """
+    from bbsengine6 import database as dbmod
+    from bbsengine6 import io
+    from bbsengine6 import pgrole
+    from bbsengine6.console import member as con_member
+    from unittest.mock import patch
+
+    check_target(database, allow_live=allow_live, confirmation=confirmation)
+    pool = dbmod.getpool(args, dbname=database)
+    try:
+        with dbmod.connect(args, pool=pool) as conn, dbmod.cursor(conn) as cur:
+            cur.execute("SELECT 1 FROM engine.__member WHERE moniker = 'opencode'")
+            already = cur.fetchone() is not None
+        if not already:
+            # opencode logs in with its OS login, not a password the bed server checks, so the
+            # stored password is random and never shown.
+            record = _member_record("opencode", new_password())
+            with patch.object(con_member, "_edit") as edit, \
+                 patch("bbsengine6.io.inputboolean", return_value=True):
+                edit.return_value = record
+                if con_member.add(args, pool=pool) is not True:
+                    io.echo("ensure-opencode: member.add failed for opencode", level="error")
+                    return False
+        with dbmod.connect(args, pool=pool) as conn, dbmod.cursor(conn) as cur:
+            cur.execute("INSERT INTO bank.__account (moniker, balance) VALUES ('opencode', 0) "
+                        "ON CONFLICT (moniker) DO NOTHING")
+            cur.execute("INSERT INTO casino.__player (membermoniker, moniker, location, attrs) "
+                        "VALUES ('opencode', 'opencode', 'casino', '{\"is_bot\": false}') "
+                        "ON CONFLICT (moniker) DO NOTHING")
+        pgrole.ensure_login_role(args, "opencode", pool=pool)
+        role = pgrole.role_name_for("opencode")
+        # The data role is made by the engine, so opencode can grant it. The login role "opencode"
+        # itself is not: granting it needs ADMIN OPTION on opencode, which opencode does not hold.
+        # That grant is printed for jam rather than attempted.
+        with dbmod.connect(args, pool=pool) as conn, dbmod.cursor(conn) as cur:
+            cur.execute("SAVEPOINT grant_data_role")
+            try:
+                cur.execute(f'GRANT "{role}" TO bed WITH SET TRUE, INHERIT FALSE')
+                cur.execute("RELEASE SAVEPOINT grant_data_role")
+                io.echo(f"ensure-opencode: granted bed SET on {role}", level="ok")
+            except Exception as e:
+                cur.execute("ROLLBACK TO SAVEPOINT grant_data_role")
+                io.echo(f"ensure-opencode: refused: bed SET on {role}: {str(e).splitlines()[0]}", level="warning")
+                io.echo(f'  for jam: GRANT "{role}" TO bed WITH SET TRUE, INHERIT FALSE;', level="warning")
+                return False
+        io.echo(f"ensure-opencode: {database}: opencode is a casino member", level="ok")
+        return True
+    finally:
+        pool.close()

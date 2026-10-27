@@ -133,3 +133,12 @@ def test_uninstall_reports_roles_it_cannot_drop_instead_of_failing_midway():
     src = inspect.getsource(test_data.uninstall)
     assert "InsufficientPrivilege" in src or "except" in src, "uninstall must handle the drop refusal"
     assert "left for jam" in src or "for jam" in src, "uninstall must name the roles left for jam"
+
+
+@pytest.mark.unit
+def test_opencode_is_a_casino_member_for_live_play():
+    # The live daemon logs a player in as a member and switches into the member's roles. opencode
+    # needs the same member row and bed grant a fixture gets, so it can play.
+    from casino import test_data
+
+    assert hasattr(test_data, "ensure_opencode_member"), "test_data must provide the opencode member setup"
