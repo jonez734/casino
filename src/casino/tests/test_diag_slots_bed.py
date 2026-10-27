@@ -17,6 +17,7 @@ from casino.tests import _dbname
 import argparse
 import asyncio
 import json
+import os
 import sys
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -30,27 +31,15 @@ from bbsengine6 import io
 from casino.api._auth import check_access
 
 
-BED_URL = "ws://localhost:8765/"
+# Opt-in only. The port 8765 daemon is the live zoid6 bed; this sends a slot_spin with no auth.
+# Set CASINO_TEST_BED_URI to a bed started against zoid6test to run it.
+BED_URL = os.environ.get("CASINO_TEST_BED_URI", "")
+BED_ENABLED = bool(BED_URL)
 BED_HOST = "localhost"
 BED_PORT = 8765
 
 
 # ----- bed probe -----------------------------------------------------------
-
-
-async def _probe_bed_async() -> bool:
-    try:
-        async with websockets.connect(BED_URL, open_timeout=3) as ws:
-            await ws.send(json.dumps({"type": "ping"}))
-            msg = await asyncio.wait_for(ws.recv(), timeout=3)
-            return "pong" in msg
-    except Exception as e:
-        io.echo(f"[diag] bed probe failed: {type(e).__name__}: {e}", level="warning")
-        return False
-
-
-def probe_bed() -> bool:
-    return asyncio.run(_probe_bed_async())
 
 
 def build_args() -> argparse.Namespace:
@@ -278,7 +267,8 @@ def _scenario_live_bed_no_auth() -> str:
 
 
 @pytest.mark.skipif(
-    sys.platform == "win32", reason="POSIX-only websockets probe"
+    sys.platform == "win32" or not BED_ENABLED,
+    reason="diag bed test is opt-in: set CASINO_TEST_BED_URI to a bed started against zoid6test",
 )
 def test_diag_slots_bed_diagnostics_via_localhost_8765():
     """Drive the three check_access scenarios + the slot CLI path,
@@ -309,17 +299,14 @@ def test_diag_slots_bed_diagnostics_via_localhost_8765():
         sent = _scenario_slot_cli()
         cap.lines.append(f"[scenario-slot-cli] wire messages sent={sent}")
 
-        if probe_bed():
-            cap.header("scenario: live bed at localhost:8765 (no auth)")
-            try:
-                reply = _scenario_live_bed_no_auth()
-                cap.lines.append(f"[scenario-live-bed] reply={reply[:160]}")
-            except Exception as e:
-                cap.lines.append(
-                    f"[scenario-live-bed] failed: {type(e).__name__}: {e}"
-                )
-        else:
-            cap.lines.append("[scenario-live-bed] SKIPPED (bed unreachable)")
+        cap.header("scenario: live bed at localhost:8765 (no auth)")
+        try:
+            reply = _scenario_live_bed_no_auth()
+            cap.lines.append(f"[scenario-live-bed] reply={reply[:160]}")
+        except Exception as e:
+            cap.lines.append(
+                f"[scenario-live-bed] failed: {type(e).__name__}: {e}"
+            )
     finally:
         # Emit the captured transcript via the REAL io.echo (not
         # print) so it goes through the echo pipeline.

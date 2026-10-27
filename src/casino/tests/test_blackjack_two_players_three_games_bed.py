@@ -47,10 +47,12 @@ sys.path.insert(0, "/home/opencode/data/work/bed/src")
 
 from casino.tests import _dbname
 
-BED_URI = os.environ.get("CASINO_TEST_BED_URI", "ws://127.0.0.1:8765/")
+# Opt-in only. The port 8765 daemon is the live zoid6 bed; these tests log in and bet through it.
+# Set CASINO_TEST_BED_URI to a bed started against zoid6test to run them. Reachability is not enough.
+BED_URI = os.environ.get("CASINO_TEST_BED_URI", "")
+BED_ENABLED = bool(BED_URI)
 BED_DATABASE = _dbname.current_dbname()
 TEST_TABLE_PREFIX = "blackjack-bed-2p-"
-PROBE_TIMEOUT_S = 2.0
 DEFAULT_TIMEOUT_S = 10.0
 PING_INTERVAL = 30.0
 BET_AMOUNT = 10
@@ -60,24 +62,9 @@ NUM_HANDS = 3
 # ----- bed probe ------------------------------------------------------------
 
 
-async def _probe_bed_async(uri: str) -> bool:
-    try:
-        async with websockets.connect(uri, open_timeout=PROBE_TIMEOUT_S) as ws:
-            await ws.send(json.dumps({"type": "ping"}))
-            raw = await asyncio.wait_for(ws.recv(), timeout=PROBE_TIMEOUT_S)
-            return "pong" in raw
-    except Exception:
-        return False
 
-
-def _probe_bed(uri: str) -> bool:
-    return asyncio.run(_probe_bed_async(uri))
-
-
-_BED_REACHABLE = _probe_bed(BED_URI)
 _SKIP_REASON = (
-    f"bed is not reachable at {BED_URI}; "
-    "start the daemon or set CASINO_TEST_BED_URI to override"
+    "bed-daemon test is opt-in: set CASINO_TEST_BED_URI to a bed started against zoid6test"
 )
 
 
@@ -168,7 +155,7 @@ class WebSocketTestClient:
 
 
 @pytest.mark.integration
-@unittest.skipUnless(_BED_REACHABLE, _SKIP_REASON)
+@unittest.skipUnless(BED_ENABLED, _SKIP_REASON)
 class TestBlackjackTwoPlayersThreeGamesBed(unittest.IsolatedAsyncioTestCase):
     """``jam`` plus a freshly-created second member play 3 hands of
     blackjack through a running bed daemon.
