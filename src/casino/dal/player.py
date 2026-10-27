@@ -87,6 +87,34 @@ def get_player_by_moniker(args: Any, moniker: str) -> Optional[dict[str, Any]]:
         return None
 
 
+def get_player_attrs(args: Any, moniker: str, *, pool: Any = None) -> dict[str, Any]:
+    """The casino player's attrs (e.g. ``{"is_bot": true}``); empty when there is no player."""
+    with database.connect(args, pool=pool) if pool is not None else database.connect(args) as conn, \
+            database.cursor(conn) as cur:
+        cur.execute(
+            database.query(
+                "SELECT attrs FROM $casino.__player WHERE moniker = :moniker",
+                moniker=moniker,
+            )
+        )
+        row = cur.fetchone()
+        return dict(row["attrs"] or {}) if row else {}
+
+
+def set_player_attrs(args: Any, moniker: str, attrs: dict[str, Any], *, pool: Any = None) -> None:
+    """Merge ``attrs`` into the casino player's attrs, keeping keys not named here."""
+    with database.connect(args, pool=pool) if pool is not None else database.connect(args) as conn, \
+            database.cursor(conn) as cur:
+        cur.execute(
+            database.query(
+                "UPDATE $casino.__player SET attrs = COALESCE(attrs, '{}'::jsonb) || CAST(:attrs AS jsonb) "
+                "WHERE moniker = :moniker",
+                moniker=moniker,
+                attrs=Jsonb(attrs),
+            )
+        )
+
+
 def get_player_balance(args: Any, moniker: str) -> int:
     """Get player's casino balance (from member.credits)."""
     with database.connect(args) as conn, database.cursor(conn) as cur:
