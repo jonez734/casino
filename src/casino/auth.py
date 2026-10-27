@@ -252,6 +252,47 @@ def _read_token_file(path: str) -> str:
     return ""
 
 
+def token_expires_at(token) -> float | None:
+    """Return the ``expires_at`` claim of a bed token, or ``None`` if unreadable.
+
+    The token is ``<urlsafe-b64 JSON payload>.<hmac>``. This reads the payload only; it does not
+    check the MAC, because the client does not hold bed's secret. bed verifies the token on every
+    use, so a forged expiry gains nothing here.
+    """
+    import base64
+    import json
+
+    if not isinstance(token, str) or "." not in token:
+        return None
+    body = token.rsplit(".", 1)[0]
+    if not body:
+        return None
+    try:
+        claims = json.loads(base64.urlsafe_b64decode(body + "=" * (-len(body) % 4)).decode("utf-8"))
+    except (ValueError, UnicodeDecodeError):
+        return None
+    if not isinstance(claims, dict):
+        return None
+    try:
+        return float(claims["expires_at"])
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def _stored_token_is_usable(token: str, *, now: float | None = None) -> bool:
+    """False only when a stored token is readable and has expired (Phase 2c).
+
+    A token whose expiry cannot be read is sent to bed anyway: bed is the authority on whether it
+    is valid, and a rejection falls back to the login prompt.
+    """
+    import time
+
+    expires = token_expires_at(token)
+    if expires is None:
+        return True
+    return expires > (time.time() if now is None else now)
+
+
 def _resolve_token_file(args) -> None:
     """Resolve ``args.token_file`` to a usable state.
 

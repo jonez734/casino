@@ -1056,13 +1056,24 @@ class CasinoClient:
         self._exit_reason = "quit"
         try:
             token_path = getattr(self.args, "token_file", None)
-            if token_path:
+            stored = auth._read_token_file(token_path) if token_path else ""
+            token_ok = False
+            if stored and not auth._stored_token_is_usable(stored):
+                # Phase 2c: a stored token that has run out is not sent; ask for a login instead.
+                io.echo(
+                    "stored token has expired; please log in again",
+                    level="warning",
+                )
+            elif stored:
                 host = getattr(self.args, "bed_host", "127.0.0.1")
                 port = int(getattr(self.args, "bed_port", 8765))
-                if not auth._connect_with_token(self.args, host, port, client=self):
-                    self._exit_reason = "auth_failed"
-                    return
-            else:
+                token_ok = bool(auth._connect_with_token(self.args, host, port, client=self))
+                if not token_ok:
+                    # Phase 2c: the server rejected the stored token; fall back to a login prompt.
+                    io.echo("stored token was rejected; please log in again", level="warning")
+
+            if not token_ok:
+                # A failed token connect has already closed its loop, so start a fresh one.
                 self._loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(self._loop)
 
