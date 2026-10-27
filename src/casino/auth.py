@@ -252,6 +252,10 @@ def _read_token_file(path: str) -> str:
     return ""
 
 
+# A token this close to its expiry is refreshed before it is used (Phase 2b).
+REFRESH_MARGIN_SECONDS = 120.0
+
+
 def token_expires_at(token) -> float | None:
     """Return the ``expires_at`` claim of a bed token, or ``None`` if unreadable.
 
@@ -291,6 +295,42 @@ def _stored_token_is_usable(token: str, *, now: float | None = None) -> bool:
     if expires is None:
         return True
     return expires > (time.time() if now is None else now)
+
+
+def _token_needs_refresh(token: str, *, now: float | None = None) -> bool:
+    """True when a token expires within the refresh margin (Phase 2b).
+
+    An unreadable token is not refreshed here; the expiry check at startup handles it.
+    """
+    import time
+
+    expires = token_expires_at(token)
+    if expires is None:
+        return False
+    current = time.time() if now is None else now
+    return expires - current <= REFRESH_MARGIN_SECONDS
+
+
+def _apply_refreshed_token(client, reply: dict, token_path: str) -> bool:
+    """Store the token from a successful ``auth_refresh`` reply (Phase 2b).
+
+    The new token replaces the old one on the client and in the token file. A failed refresh
+    leaves the client's token untouched, and the caller falls back to the login prompt.
+    """
+    if not reply or not reply.get("ok"):
+        return False
+    new_token = reply.get("token") or ""
+    if not new_token:
+        return False
+    client._bearer_token = new_token
+    if token_path:
+        try:
+            from bed.tools.auth import _write_token_file
+
+            _write_token_file(token_path, new_token)
+        except (OSError, PermissionError) as e:
+            io.echo(f"could not write refreshed token to {token_path}: {e}", level="error")
+    return True
 
 
 def _resolve_token_file(args) -> None:

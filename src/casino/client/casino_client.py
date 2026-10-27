@@ -1164,12 +1164,47 @@ class CasinoClient:
             if msg.get("type") == "client_exit_result":
                 return msg
 
+    def time_now(self) -> float:
+        """Wall-clock seconds; a seam so tests can set the clock."""
+        return time.time()
+
+    def _run_loop(self, coro):
+        """Run a coroutine on the client's loop and return its result."""
+        return self._loop.run_until_complete(coro)
+
+    def _refresh_token_if_due(self) -> None:
+        """Phase 2b: rotate the bearer token before it expires.
+
+        Runs before each menu command. A token inside the refresh margin is rotated over this
+        client's own websocket (bed binds refresh to the socket). On failure the client records
+        it and the menu loop falls back to the login prompt.
+        """
+        from .. import auth
+        from bed.client import get_bed_connection
+        from bed.client.authservice import BedAuthServiceClient
+
+        token = (self._bearer_token or "").strip()
+        if not token or not auth._token_needs_refresh(token, now=self.time_now()):
+            return
+        bed_conn = get_bed_connection(self.args)
+        bed_conn._ws = self.ws
+        reply = self._run_loop(BedAuthServiceClient(bed_conn).refresh(token))
+        token_path = getattr(self.args, "token_file", None) or ""
+        if auth._apply_refreshed_token(self, reply, token_path):
+            self._refresh_failed = False
+            return
+        self._refresh_failed = True
+        io.echo("token refresh failed; please log in again", level="warning")
+
     def _run_menu_loop(self) -> None:
         """Menu loop. The bottom bar is redrawn before each prompt, so it reflects the
         latest state (table, moniker, balance) after every command and reply."""
         from . import bottombar as _bar
 
         while self.connected and self.authenticated:
+            # Phase 2b: rotate a token nearing expiry before the next command.
+            with contextlib.suppress(Exception):
+                self._refresh_token_if_due()
             _bar.redraw()
             cmd = _client_menu(self)
 
