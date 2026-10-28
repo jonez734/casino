@@ -77,11 +77,14 @@ def _seed_quick_play(s):
     p1 = patch("casino.yahtzee.service.dal_bet", db)
     p2 = patch("casino.yahtzee.service.dal_game", dg)
     p3 = patch("casino.yahtzee.service.database", dbconn)
+    # The service opens its connections through casino's login-role wrapper.
+    p4 = patch("casino.yahtzee.service.casino_conn", dbconn)
     p1.start()
     p2.start()
     p3.start()
+    p4.start()
     s.quick_play("alice")
-    s._patch_handles = (p1, p2, p3)
+    s._patch_handles = (p1, p2, p3, p4)
     s._db_mocks = (db, dg, dbconn)
     return db, dg, dbconn
 
