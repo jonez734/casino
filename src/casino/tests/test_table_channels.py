@@ -232,3 +232,27 @@ def test_watcher_check_prefers_a_store_that_provides_is_watching():
     check = _watching_check(Store())
     assert check("t", "m") is True
     assert check("t", "x") is False
+
+
+# ---------------------------------------------------------------- seats come from the owning store (unit)
+
+
+@pytest.mark.unit
+def test_poker_table_seats_come_from_the_poker_service():
+    """A poker seat is in the poker service, not casino.map_cardtable_player, so the authority asks it."""
+    with patch.object(tc, "_require_args", return_value=ARGS), \
+         patch.object(tc, "_table_type", return_value="poker"), \
+         patch("casino.services.poker.PokerService.seated_monikers", return_value=["bjbed_a"]), \
+         patch.object(tc, "_is_watching", return_value=False):
+        assert tc._authority("casino:table:poker-1:chat", "bjbed_a") is True
+        assert tc._authority("casino:table:poker-1:chat", "outsider") is False
+
+
+@pytest.mark.unit
+def test_cash_table_seats_still_come_from_the_seat_table():
+    with patch.object(tc, "_require_args", return_value=ARGS), \
+         patch.object(tc, "_table_type", return_value="blackjack"), \
+         patch.object(tc.dal_table, "seated_monikers", return_value=["alice"]), \
+         patch.object(tc, "_is_watching", return_value=False):
+        assert tc._authority("casino:table:t1:chat", "alice") is True
+        assert tc._authority("casino:table:t1:chat", "mallory") is False

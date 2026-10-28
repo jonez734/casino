@@ -134,11 +134,32 @@ def _authority(channel_name: str, moniker: str) -> Optional[bool]:
     table = table_moniker_of(channel_name)
     if table is None:
         return None
-    if moniker in dal_table.seated_monikers(_require_args(), table):
+    if moniker in seated_at(table):
         return True
     if _is_watching(table, moniker):
         return True
     return False
+
+
+def seated_at(table_moniker: str) -> list[str]:
+    """Everyone seated at a table, from the store that owns its seats.
+
+    Poker seats live in the poker service (in memory, persisted per table), so a poker table is
+    asked there. A cash table's seats are in casino.map_cardtable_player.
+    """
+    args = _require_args()
+    if _table_type(args, table_moniker) == "poker":
+        from casino.services.poker import PokerService
+
+        return PokerService(args).seated_monikers(table_moniker)
+    return dal_table.seated_monikers(args, table_moniker)
+
+
+def _table_type(args: Any, table_moniker: str) -> Optional[str]:
+    from casino.dal import table as _dal
+
+    row = _dal.get_table(args, table_moniker) or {}
+    return row.get("type")
 
 
 _registered_args: Any = None

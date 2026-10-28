@@ -768,6 +768,13 @@ class PokerService:
         table = self._table(table_moniker)
         return table.last_result if table is not None else None
 
+    def seated_monikers(self, table_moniker: str) -> list[str]:
+        """Everyone seated at a poker table (humans and bots), from the table's in-memory seats."""
+        table = self._table(table_moniker)
+        if table is None:
+            return []
+        return sorted(table.players.keys())
+
     def get_table_state(self, table_moniker: str, player_moniker: str) -> dict[str, Any]:
         """Get current state of a poker table for a player."""
         table = self._table(table_moniker)
