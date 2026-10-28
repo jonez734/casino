@@ -42,3 +42,9 @@ grant all on casino.__shoe_event_id_seq to term, sysop;
 
 -- bed updates shoe state on casino.__table for poker tables too.
 grant select, update on casino.__table to bed;
+
+-- The developer test role (opencode and its m_ data role) gets the same full DML on the new
+-- tables that it already has on casino.__table and casino.__game, so the test suites can run.
+grant select, insert, update, delete on casino.__poker_state to opencode, m_opencode;
+grant select, insert, update, delete on casino.__shoe_event to opencode, m_opencode;
+grant usage, select on casino.__shoe_event_id_seq to opencode, m_opencode;
