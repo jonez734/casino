@@ -385,6 +385,30 @@ def update_shoe(args: Any, moniker: str, cards: list[str], uses: int, *, pool: A
         )
 
 
+def insert_shoe_event(
+    args: Any,
+    moniker: str,
+    *,
+    hand_id: Optional[int],
+    kind: str,
+    card: Optional[str],
+    draw_count: int,
+    shoe_size: int,
+    pool: Any = None,
+) -> None:
+    """Append one row to the shoe audit log (casino.__shoe_event). Only called with --audit."""
+    with _connect_ctx(args, pool) as conn, database.cursor(conn) as cur:
+        cur.execute(
+            database.query(
+                "INSERT INTO $casino.__shoe_event "
+                "(tablemoniker, handid, kind, card, draw_count, shoe_size) "
+                "VALUES (:moniker, :hand_id, :kind, :card, :draw_count, :shoe_size)",
+                moniker=moniker, hand_id=hand_id, kind=kind, card=card,
+                draw_count=draw_count, shoe_size=shoe_size,
+            )
+        )
+
+
 def update_table(args: Any, moniker: str, *, pool: Any = None, **updates) -> Optional[dict[str, Any]]:
     """Update table fields (moniker, minimumbet, maximumbet, status, hidden).
 
