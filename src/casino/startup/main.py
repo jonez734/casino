@@ -173,12 +173,27 @@ def main(args, **kwargs):
             io.echo("fail", level="error")
             return False
         io.echo(" ok ", level="ok")
-
-        # 4a0. Poker table state and the shoe audit log (casino.__poker_state, casino.__shoe_event),
-        #      with the grants bed needs on them and on casino.__table. Idempotent.
+        # 4b1. Poker table state and the shoe audit log (casino.__poker_state, casino.__shoe_event),
+        #      with the grants bed needs on them and on casino.__table. Runs after the owner move
+        #      above, and then the objects it creates are moved to zoid6 by a second owner pass.
         io.echo("{var:labelcolor}migration {var:valuecolor}shoe_audit{var:labelcolor}: ", end="")
         if (
             database.importsql(args, "shoe_audit_migration.sql", conn=conn, package="casino.sql")
+            is False
+        ):
+            io.echo("fail", level="error")
+            return False
+        io.echo(" ok ", level="ok")
+
+        # 4b2. Second owner pass: objects created by the shoe migration above belong to zoid6 too.
+        io.echo(
+            f"{{var:labelcolor}}owner migration {{var:valuecolor}}casino -> zoid6 (again){{var:labelcolor}}: ",
+            end="",
+        )
+        if (
+            database.importsql(
+                args, "owner_zoid6_migration.sql", conn=conn, package="casino.sql"
+            )
             is False
         ):
             io.echo("fail", level="error")

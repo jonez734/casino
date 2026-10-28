@@ -48,3 +48,13 @@ def test_bed_can_write_poker_state_and_the_shoe_log():
     for priv in ("select", "insert", "update", "delete"):
         assert ("casino.__poker_state", priv) in granted
     assert ("casino.__shoe_event", "insert") in granted
+
+
+def test_the_owner_move_runs_again_after_the_shoe_migration():
+    """The shoe migration creates tables. They must be moved to zoid6 by a later owner pass, or they
+    stay owned by the login role that ran the migration and bed's grants on the schema do not reach
+    them as zoid6 expects."""
+    text = STARTUP.read_text(encoding="utf-8")
+    shoe = text.index('"shoe_audit_migration.sql"')
+    owner_passes = [m.start() for m in re.finditer(r'"owner_zoid6_migration.sql"', text)]
+    assert any(p > shoe for p in owner_passes), "no owner pass after the shoe migration"
