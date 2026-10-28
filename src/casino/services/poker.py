@@ -7,9 +7,10 @@ from bbsengine6 import io
 from casino.poker import (
     BaseVariant,
     BettingStructure,
-    PokerDeck,
     get_variant,
 )
+from casino.dal import poker_state
+from casino.shoe import Shoe
 from casino.poker.variant import evaluator
 
 
@@ -66,9 +67,11 @@ class PokerTableState:
     pot: int = 0
     side_pots: list[PokerPot] = field(default_factory=list)
     community_cards: list[str] = field(default_factory=list)
-    deck: Optional[PokerDeck] = None
+    deck: Optional[Shoe] = None
     game_stage: str = "waiting"  # waiting, preflop, flop, turn, river, showdown
     last_aggressor: Optional[str] = None
+    # Outcome of the most recent hand (set at showdown or fold), so a player's reply can show it.
+    last_result: Optional[dict[str, Any]] = None
 
     def get_active_players(self) -> list[PokerPlayer]:
         return [p for p in self.players.values() if not p.has_folded]
@@ -99,10 +102,36 @@ class PokerTableState:
 class PokerService:
     """Service for poker game management."""
 
+    # Every card game draws from a shoe (casino.shoe), even with one deck. Reshuffle once this
+    # fraction of the shoe has been drawn, the same rule blackjack uses.
+    SHOE_DECKS = 1
+    SHOE_THRESHOLD = 0.8
+
     def __init__(self, args: Any):
         self.args = args
         self._tables: dict[str, PokerTableState] = {}
-        self._decks: dict[str, PokerDeck] = {}
+        self._decks: dict[str, Shoe] = {}
+
+    def _table(self, table_moniker: str) -> Optional[PokerTableState]:
+        """The table in memory, or restored from casino.__poker_state after a restart."""
+        table = self._tables.get(table_moniker)
+        if table is not None:
+            return table
+        doc = poker_state.load(self.args, table_moniker)
+        if doc is None:
+            return None
+        table, shoe = poker_state.state_to_table(doc)
+        self._tables[table_moniker] = table
+        if shoe is not None:
+            self._decks[table_moniker] = shoe
+        return table
+
+    def _save(self, table_moniker: str) -> None:
+        """Persist the whole table (and its shoe) after a change, so a restart resumes the game."""
+        table = self._tables.get(table_moniker)
+        if table is None:
+            return
+        poker_state.save(self.args, table_moniker, table, self._decks.get(table_moniker))
 
     def create_table(
         self,
@@ -146,10 +175,11 @@ class PokerService:
         )
 
         self._tables[table_moniker] = table
-        self._decks[table_moniker] = PokerDeck()
+        self._decks[table_moniker] = Shoe(decks=self.SHOE_DECKS, threshold=self.SHOE_THRESHOLD)
 
         io.echo(f"Created poker table {table_moniker}: {variant_name} {betting_structure} ${small_blind}/${big_blind}")
 
+        self._save(table.moniker)
         return {
             "success": True,
             "table_moniker": table_moniker,
@@ -162,10 +192,9 @@ class PokerService:
         self, table_moniker: str, player_moniker: str, buy_in: int
     ) -> dict[str, Any]:
         """Player joins a poker table."""
-        if table_moniker not in self._tables:
+        table = self._table(table_moniker)
+        if table is None:
             return {"success": False, "message": "Table not found"}
-
-        table = self._tables[table_moniker]
 
         if player_moniker in table.players:
             return {"success": False, "message": "Already at table"}
@@ -192,6 +221,7 @@ class PokerService:
 
         io.echo(f"{player_moniker} joined table {table_moniker} with ${buy_in}")
 
+        self._save(table.moniker)
         return {
             "success": True,
             "seat": seat,
@@ -201,10 +231,9 @@ class PokerService:
 
     def leave_table(self, table_moniker: str, player_moniker: str) -> dict[str, Any]:
         """Player leaves a poker table."""
-        if table_moniker not in self._tables:
+        table = self._table(table_moniker)
+        if table is None:
             return {"success": False, "message": "Table not found"}
-
-        table = self._tables[table_moniker]
 
         if player_moniker not in table.players:
             return {"success": False, "message": "Not at table"}
@@ -214,6 +243,7 @@ class PokerService:
 
         del table.players[player_moniker]
 
+        self._save(table.moniker)
         return {"success": True, "message": "Left table"}
 
     def _get_next_seat(self, table: PokerTableState) -> int:
@@ -226,19 +256,17 @@ class PokerService:
 
     def start_hand(self, table_moniker: str) -> dict[str, Any]:
         """Start a new hand at the table."""
-        if table_moniker not in self._tables:
+        table = self._table(table_moniker)
+        if table is None:
             return {"success": False, "message": "Table not found"}
-
-        table = self._tables[table_moniker]
 
         if len(table.players) < table.min_players:
             return {"success": False, "message": f"Need at least {table.min_players} players"}
 
-        deck = self._decks.get(table_moniker)
-        if deck is None:
-            deck = PokerDeck()
-            self._decks[table_moniker] = deck
-        deck.shuffle()
+        shoe = self._decks.get(table_moniker)
+        if shoe is None:
+            shoe = Shoe(decks=self.SHOE_DECKS, threshold=self.SHOE_THRESHOLD)
+            self._decks[table_moniker] = shoe
 
         for player in table.players.values():
             player.hole_cards = []
@@ -260,7 +288,7 @@ class PokerService:
 
         self._post_blinds(table)
 
-        self._deal_hole_cards(table, deck)
+        self._deal_hole_cards(table, shoe)
 
         table.dealer_position = (table.dealer_position + 1) % len(table.players)
 
@@ -274,6 +302,7 @@ class PokerService:
 
         io.echo(f"Started hand at {table_moniker}")
 
+        self._save(table.moniker)
         return {
             "success": True,
             "message": "Hand started",
@@ -309,7 +338,7 @@ class PokerService:
 
         io.echo(f"Blinds: {sb_player.moniker} posts ${sb_amount} SB, {bb_player.moniker} posts ${bb_amount} BB")
 
-    def _deal_hole_cards(self, table: PokerTableState, deck: PokerDeck):
+    def _deal_hole_cards(self, table: PokerTableState, deck: Shoe):
         """Deal hole cards to all players based on variant rules and current street."""
         variant = table.variant
         street = table.current_street
@@ -322,13 +351,11 @@ class PokerService:
 
         for _ in range(cards_for_street):
             for player in table.players.values():
-                if deck.remaining() > 0:
-                    card = deck.deal(1)[0]
-                    player.hole_cards.append(card.to_string())
+                player.hole_cards.append(deck.draw())
 
         io.echo(f"Dealt {cards_for_street} hole cards to {len(table.players)} players")
 
-    def _deal_street_cards(self, table: PokerTableState, deck: PokerDeck):
+    def _deal_street_cards(self, table: PokerTableState, deck: Shoe):
         """Deal cards for the current street (community cards or additional hole cards)."""
         variant = table.variant
         street = table.current_street
@@ -341,27 +368,24 @@ class PokerService:
 
         if comm_cards > 0:
             for _ in range(comm_cards):
-                if deck.remaining() > 0:
-                    card = deck.deal(1)[0]
-                    table.community_cards.append(card.to_string())
+                deck.burn()
+                table.community_cards.append(deck.draw())
             io.echo(f"Dealt {comm_cards} community cards: {table.community_cards}")
 
         if hole_cards > 0:
             for _ in range(hole_cards):
                 for player in table.players.values():
-                    if not player.has_folded and deck.remaining() > 0:
-                        card = deck.deal(1)[0]
-                        player.hole_cards.append(card.to_string())
+                    if not player.has_folded:
+                        player.hole_cards.append(deck.draw())
             io.echo(f"Dealt {hole_cards} hole cards to active players")
 
     def player_action(
         self, table_moniker: str, player_moniker: str, action: str, amount: int = 0
     ) -> dict[str, Any]:
         """Process a player's action."""
-        if table_moniker not in self._tables:
+        table = self._table(table_moniker)
+        if table is None:
             return {"success": False, "message": "Table not found"}
-
-        table = self._tables[table_moniker]
 
         if player_moniker not in table.players:
             return {"success": False, "message": "Not at table"}
@@ -382,18 +406,24 @@ class PokerService:
 
         action = action.lower()
 
-        if action == "fold":
-            return self._handle_fold(table, player)
-        elif action == "check":
-            return self._handle_check(table, player)
-        elif action == "call":
-            return self._handle_call(table, player)
-        elif action in ("bet", "raise"):
-            return self._handle_bet_raise(table, player, action, amount)
-        elif action == "all_in":
-            return self._handle_all_in(table, player)
+        handlers = {
+            "fold": lambda: self._handle_fold(table, player),
+            "check": lambda: self._handle_check(table, player),
+            "call": lambda: self._handle_call(table, player),
+            "all_in": lambda: self._handle_all_in(table, player),
+        }
+        if action in ("bet", "raise"):
+            result = self._handle_bet_raise(table, player, action, amount)
+        elif action in handlers:
+            result = handlers[action]()
         else:
             return {"success": False, "message": f"Unknown action: {action}"}
+
+        # Persist the result of the action only once it has happened. A refused action changes
+        # nothing, so there is nothing to save.
+        if result.get("success"):
+            self._save(table.moniker)
+        return result
 
     def _handle_fold(self, table: PokerTableState, player: PokerPlayer) -> dict[str, Any]:
         """Handle fold action."""
@@ -403,11 +433,21 @@ class PokerService:
         active = table.get_active_players()
         if len(active) == 1:
             winner = active[0]
-            winner.credits += table.pot
+            won = table.pot
+            winner.credits += won
             table.pot = 0
             table.game_stage = "showdown"
-            io.echo(f"{player.moniker} folds. {winner.moniker} wins ${table.pot}")
-            return {"success": True, "action": "fold", "winner": winner.moniker, "pot": 0}
+            io.echo(f"{player.moniker} folds. {winner.moniker} wins ${won}")
+            table.last_result = {
+                "kind": "uncontested",
+                "winners": [winner.moniker],
+                "pot": won,
+                "shares": {winner.moniker: won},
+                "hand_name": None,
+                "hands": {},
+                "community_cards": list(table.community_cards),
+            }
+            return {"success": True, "action": "fold", "winner": winner.moniker, "pot": won}
 
         self._advance_to_next_player(table)
 
@@ -454,17 +494,23 @@ class PokerService:
         self, table: PokerTableState, player: PokerPlayer, action: str, amount: int
     ) -> dict[str, Any]:
         """Handle bet or raise action."""
-        min_bet = table.big_blind if table.current_bet == 0 else table.current_bet
+        # ``amount`` is the total this player has in on the street ("raise to"). The chips they
+        # already put in count toward it, so only the difference is charged.
+        if table.current_bet == 0:
+            min_total = table.big_blind
+        else:
+            min_total = table.current_bet + table.big_blind
 
-        if amount < min_bet:
-            return {"success": False, "message": f"Minimum bet is ${min_bet}"}
+        if amount < min_total:
+            return {"success": False, "message": f"Minimum {action} is ${min_total} total"}
 
-        if amount > player.credits:
+        delta = amount - player.current_bet
+        if delta > player.credits:
             return {"success": False, "message": "Not enough credits"}
 
-        player.credits -= amount
+        player.credits -= delta
         player.current_bet = amount
-        player.total_in_pot += amount
+        player.total_in_pot += delta
         player.has_acted = True
 
         if amount > table.current_bet:
@@ -475,7 +521,7 @@ class PokerService:
             if p.moniker != player.moniker:
                 p.has_acted = False
 
-        table.pot += amount
+        table.pot += delta
 
         self._advance_to_next_player(table)
 
@@ -589,9 +635,26 @@ class PokerService:
             player.current_bet = 0
 
         table.current_bet = 0
-        self._set_turn(table, None)
 
         io.echo(f"Community cards ({next_street}): {table.community_cards}")
+
+        # Postflop action opens with the first live seat after the button. If nobody can act
+        # (everyone left is all-in), run the remaining streets out to showdown.
+        ordered = table.get_players_in_order()
+        button_idx = table.dealer_position % len(ordered)
+        first = None
+        for step in range(1, len(ordered) + 1):
+            candidate = ordered[(button_idx + step) % len(ordered)]
+            if not candidate.has_folded and not candidate.is_all_in:
+                first = candidate
+                break
+
+        if first is None:
+            self._set_turn(table, None)
+            self._end_street(table)
+            return
+
+        self._set_turn(table, first.moniker)
 
     def _deal_community_cards(self, table: PokerTableState, count: int):
         """Deal community cards."""
@@ -600,19 +663,27 @@ class PokerService:
             return
 
         for _ in range(count):
-            if deck.remaining() > 0:
-                card = deck.deal(1)[0]
-                table.community_cards.append(card.to_string())
+            deck.burn()
+            table.community_cards.append(deck.draw())
 
     def _showdown(self, table: PokerTableState):
         """Resolve hand at showdown."""
         table.game_stage = "showdown"
 
         active = table.get_active_players()
+        pot = table.pot
         if len(active) == 1:
             winner = active[0]
-            winner.credits += table.pot
-            io.echo(f"{winner.moniker} wins ${table.pot} (uncontested)")
+            winner.credits += pot
+            io.echo(f"{winner.moniker} wins ${pot} (uncontested)")
+            table.last_result = {
+                "kind": "uncontested",
+                "winners": [winner.moniker],
+                "pot": pot,
+                "hand_name": None,
+                "hands": {},
+                "community_cards": list(table.community_cards),
+            }
             table.pot = 0
             return
 
@@ -623,36 +694,64 @@ class PokerService:
             )
             best_hands[player.moniker] = (rank, best_cards, player.hole_cards)
 
-        sorted_players = sorted(
-            best_hands.items(),
-            key=lambda x: (x[1][0], x[1][1]),
-            reverse=True
-        )
-
-        winning_rank = sorted_players[0][1][0]
-        winners = [m for m, (r, _, _) in sorted_players if r == winning_rank]
+        # Rank each contender by the full evaluator tiebreak (pair value, kickers, ...), not by the
+        # hand category alone. Two pairs are only equal when their pair values and kickers match.
+        scored = {
+            m: evaluator.get_hand_rank(best) for m, (_, best, _) in best_hands.items()
+        }
+        top = None
+        for m, score in scored.items():
+            if top is None or evaluator.compare_hands(score, scored[top]) > 0:
+                top = m
+        winners = [m for m, score in scored.items() if evaluator.compare_hands(score, scored[top]) == 0]
+        winning_rank = scored[top][0]
+        hand_name = evaluator.get_hand_name(winning_rank)
+        # Hole cards and best five for every contender, so the table can show the showdown.
+        hands = {
+            m: {"hole_cards": list(hole), "best": list(best), "rank": evaluator.get_hand_name(r)}
+            for m, (r, best, hole) in best_hands.items()
+        }
 
         if len(winners) == 1:
             winner_moniker = winners[0]
             winner_player = table.players[winner_moniker]
-            winner_player.credits += table.pot
-            io.echo(f"{winner_moniker} wins ${table.pot} with {evaluator.get_hand_name(winning_rank)}")
+            winner_player.credits += pot
+            io.echo(f"{winner_moniker} wins ${pot} with {hand_name}")
             rank, best, _ = best_hands[winner_moniker]
             io.echo(f"Best hand: {best}")
+            shares = {winner_moniker: pot}
         else:
-            split_amount = table.pot // len(winners)
+            # Split evenly; the odd chip(s) go to the first winner in seat order.
+            ordered = [p.moniker for p in table.get_players_in_order() if p.moniker in winners]
+            split_amount = pot // len(winners)
+            remainder = pot - split_amount * len(winners)
+            shares = {w: split_amount for w in winners}
+            shares[ordered[0]] += remainder
             for w in winners:
-                table.players[w].credits += split_amount
+                table.players[w].credits += shares[w]
             io.echo(f"Split pot between {len(winners)} players: {winners} - ${split_amount} each")
 
+        table.last_result = {
+            "kind": "showdown",
+            "winners": list(winners),
+            "pot": pot,
+            "shares": shares,
+            "hand_name": hand_name,
+            "hands": hands,
+            "community_cards": list(table.community_cards),
+        }
         table.pot = 0
+
+    def last_result(self, table_moniker: str) -> Optional[dict[str, Any]]:
+        """Outcome of the most recent hand at ``table_moniker``, or None before any hand ends."""
+        table = self._table(table_moniker)
+        return table.last_result if table is not None else None
 
     def get_table_state(self, table_moniker: str, player_moniker: str) -> dict[str, Any]:
         """Get current state of a poker table for a player."""
-        if table_moniker not in self._tables:
+        table = self._table(table_moniker)
+        if table is None:
             return {"error": "Table not found"}
-
-        table = self._tables[table_moniker]
 
         player = table.players.get(player_moniker)
         player_hand = player.hole_cards if player else []
