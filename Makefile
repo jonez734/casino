@@ -296,7 +296,7 @@ venv:
 	whl="$$(ls "$$wheels"/*.whl)" && \
 	want="$$(unzip -p "$$whl" '*/METADATA' | sed -n 's/^Version: //p' | head -1)" && \
 	"$(VENV_DIR)/bin/python" -m pip install --upgrade --force-reinstall --no-deps "$$whl" && \
-	have="$$("$(VENV_DIR)/bin/python" -m pip show casino | sed -n 's/^Version: //p')" && \
+	have="$$("$(VENV_DIR)/bin/python" -c 'from casino._version import __version__ as v; print(v)')" && \
 	if [ "$$have" != "$$want" ]; then echo "venv: installed casino $$have, but the wheel is $$want" >&2; exit 1; fi && \
 	echo "casino $$want installed into $(VENV_DIR)"
 
