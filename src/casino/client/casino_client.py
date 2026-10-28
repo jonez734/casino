@@ -882,6 +882,11 @@ class CasinoClient:
             for name in spectators:
                 io.echo(f"  {'':<4}{name:<24}{'[HUMAN]':<9}spectator")
 
+    def cmd_watch_table(self) -> None:
+        """Spectate a table: receive its events and chat without taking a seat."""
+        from casino.commands.admin import lib as _admin
+        _admin.watch_table(None, client=self)
+
     def cmd_join_table(self) -> None:
         """Handle join_table command."""
         moniker = io.inputstring("{var:promptcolor}Table moniker: {var:inputcolor}")
@@ -1348,6 +1353,9 @@ class CasinoClient:
             elif cmd == "P":
                 io.echo("Players")
                 self.cmd_list_players()
+            elif cmd == "W":
+                io.echo("Watch")
+                self.cmd_watch_table()
             elif cmd == "L":
                 io.echo("Leave")
                 self.cmd_leave_table()

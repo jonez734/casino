@@ -41,21 +41,21 @@ def _registered_types(tree):
 
 
 def test_handler_registrations_are_answered_by_a_branch_or_a_game_handler():
-    tree = ast.parse(HANDLER.read_text())
+    tree = ast.parse(HANDLER.read_text(encoding="utf-8"))
     registered = _registered_types(tree)
     assert registered, "no register_service calls found"
     answered = _literals(tree)
     for game, path in GAME_HANDLERS.items():
-        answered |= _literals(ast.parse(path.read_text()))
+        answered |= _literals(ast.parse(path.read_text(encoding="utf-8")))
     unanswered = sorted(t for t in registered if t not in answered)
     assert not unanswered, f"registered but never answered (silent drop): {unanswered}"
 
 
 def test_each_game_answers_the_types_it_is_registered_for():
-    tree = ast.parse(HANDLER.read_text())
+    tree = ast.parse(HANDLER.read_text(encoding="utf-8"))
     registered = _registered_types(tree)
     for game, path in GAME_HANDLERS.items():
         mine = {t for t in registered if t.startswith(game + "_")}
-        answered = _literals(ast.parse(path.read_text()))
+        answered = _literals(ast.parse(path.read_text(encoding="utf-8")))
         missing = sorted(mine - answered)
         assert not missing, f"{game} registers {missing} but its api_handler does not answer them"
