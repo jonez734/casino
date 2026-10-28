@@ -60,13 +60,21 @@ def _service(game=None, hands=None, deadline=None, table=None):
     svc = gamemod.GameService.__new__(gamemod.GameService)
     svc.args = SimpleNamespace()
     svc._pool = None
+    svc._known_rounds = set()
     svc.settle_game = MagicMock(return_value={"success": True})
+    return svc
+
+
+def _service_known(game_id=7):
+    """A service in which the round is already known to this process: a normal running round."""
+    svc = _service()
+    svc._known_rounds.add(game_id)
     return svc
 
 
 @pytest.mark.unit
 def test_expired_round_refuses_hit_before_any_card_is_drawn():
-    svc = _service()
+    svc = _service_known()
     game = {"id": 7}
     with patch.object(gamemod.dal_game, "get_active_game", return_value=game), \
          patch.object(gamemod.dal_game, "get_action_deadline", return_value=NOW - timedelta(seconds=1)), \
@@ -81,7 +89,7 @@ def test_expired_round_refuses_hit_before_any_card_is_drawn():
 @pytest.mark.unit
 @pytest.mark.parametrize("action", ["stand", "double", "split", "surrender"])
 def test_every_action_is_refused_after_the_clock_runs_out(action):
-    svc = _service()
+    svc = _service_known()
     game = {"id": 7}
     with patch.object(gamemod.dal_game, "get_active_game", return_value=game), \
          patch.object(gamemod.dal_game, "get_action_deadline", return_value=NOW - timedelta(seconds=1)), \
@@ -93,7 +101,7 @@ def test_every_action_is_refused_after_the_clock_runs_out(action):
 
 @pytest.mark.unit
 def test_a_running_clock_does_not_block_an_action():
-    svc = _service()
+    svc = _service_known()
     game = {"id": 7}
     real_now = datetime.now(timezone.utc)
     with patch.object(gamemod.dal_game, "get_active_game", return_value=game), \
@@ -158,3 +166,52 @@ def test_expire_round_penalises_a_bot_hand_like_a_human_hand():
     settle.assert_called_once()  # remove: the stake is returned
     status.assert_called_once_with(svc.args, 11, "removed", pool=None)
     log.assert_called_once()
+
+
+@pytest.mark.unit
+def test_a_round_left_from_before_a_restart_is_resumed_not_penalised():
+    """A round this process has never seen may carry a deadline from before a restart. Its clock
+    restarts from the table's turn_seconds; the action is not refused for the old deadline."""
+    svc = _service()
+    game = {"id": 9}
+    with patch.object(gamemod.dal_game, "get_active_game", return_value=game), \
+         patch.object(gamemod.dal_game, "get_action_deadline", return_value=NOW - timedelta(hours=3)), \
+         patch.object(gamemod.dal_game, "set_action_deadline") as set_deadline, \
+         patch.object(dal_table_mod, "get_table", return_value={"turn_seconds": 60}), \
+         patch.object(gamemod.dal_game, "get_player_hand", return_value=None), \
+         patch.object(rc, "expire_round") as expire:
+        svc.hit("t1", "alice")
+    expire.assert_not_called()
+    set_deadline.assert_called_once()
+    _, deadline = set_deadline.call_args.args[1], set_deadline.call_args.args[2]
+    assert deadline is not None and deadline > datetime.now(timezone.utc)
+
+
+@pytest.mark.unit
+def test_a_resumed_round_with_the_clock_off_stays_off():
+    svc = _service()
+    game = {"id": 10}
+    with patch.object(gamemod.dal_game, "get_active_game", return_value=game), \
+         patch.object(gamemod.dal_game, "get_action_deadline", return_value=NOW - timedelta(hours=3)), \
+         patch.object(gamemod.dal_game, "set_action_deadline") as set_deadline, \
+         patch.object(dal_table_mod, "get_table", return_value={"turn_seconds": 0}), \
+         patch.object(gamemod.dal_game, "get_player_hand", return_value=None), \
+         patch.object(rc, "expire_round") as expire:
+        svc.hit("t1", "alice")
+    expire.assert_not_called()
+    assert set_deadline.call_args.args[2] is None
+
+
+@pytest.mark.unit
+def test_a_round_started_here_is_never_treated_as_a_reload():
+    svc = _service()
+    svc._known_rounds.add(11)
+    game = {"id": 11}
+    with patch.object(gamemod.dal_game, "get_active_game", return_value=game), \
+         patch.object(gamemod.dal_game, "get_action_deadline", return_value=NOW - timedelta(seconds=1)), \
+         patch.object(gamemod.dal_game, "set_action_deadline") as set_deadline, \
+         patch.object(rc, "expire_round", return_value={"success": True}) as expire:
+        out = svc.hit("t1", "alice")
+    expire.assert_called_once()
+    set_deadline.assert_not_called()
+    assert out == {"success": False, "message": "The round clock expired"}

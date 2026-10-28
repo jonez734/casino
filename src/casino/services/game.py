@@ -28,6 +28,7 @@ class GameService:
         self.args = args
         self._pool = pool
         self._shoes: dict[str, Shoe] = {}  # table_moniker -> shoe (persisted on the table row)
+        self._known_rounds: set[int] = set()  # game ids this process started or has checked
 
     def _create_shoe(self, decks: int = 6) -> list[str]:
         """Create a shuffled shoe of ``decks`` decks, from the shared shoe definition."""
@@ -90,6 +91,7 @@ class GameService:
             return {"success": False, "message": "Table not found"}
 
         game = dal_game.create_game(self.args, table_moniker, game_type, pool=self._pool)
+        self._known_rounds.add(game["id"])
 
         # Round clock: one deadline for every open hand, from the table's turn_seconds. 0 = off.
         from casino.services import round_clock as _rc
@@ -166,9 +168,16 @@ class GameService:
         Checked before any action is applied, so a late hit, stand, or double cannot beat the
         clock. An expired round takes the table's penalty for every unfinished hand.
         """
+        from casino.services import clock as _clock
         from casino.services import round_clock as _rc
+        # The first time this process sees the round, its stored clock may predate a restart.
+        # Resume it from the table's turn_seconds rather than expire a turn the restart cost.
+        if game["id"] not in self._known_rounds:
+            self._known_rounds.add(game["id"])
+            _clock.resume_round_clock(self, table_moniker, game)
+            return False
         deadline = dal_game.get_action_deadline(self.args, game["id"], pool=self._pool)
-        if not _rc.is_expired(deadline):
+        if not _clock.is_expired(deadline):
             return False
         _rc.expire_round(self, table_moniker, pool=self._pool)
         return True

@@ -584,7 +584,8 @@ class PokerService:
         table.current_player = moniker
         seat = table.players.get(moniker) if moniker else None
         if seat is not None and _pc.clocked(seat):
-            table.turn_deadline = _pc.deadline_for(table.turn_seconds)
+            from casino.services import clock as _clock
+            table.turn_deadline = _clock.reload_deadline(table.turn_seconds)
         else:
             table.turn_deadline = None
 
@@ -595,7 +596,8 @@ class PokerService:
         the expiry summary when a penalty was applied, else None.
         """
         from casino.services import poker_clock as _pc
-        if not table.current_player or not _pc.is_expired(table.turn_deadline):
+        from casino.services import clock as _clock
+        if not table.current_player or not _clock.is_expired(table.turn_deadline):
             return None
         seat = table.players.get(table.current_player)
         if seat is None:
