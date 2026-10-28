@@ -9,6 +9,7 @@ keeps its member row and bank account, so the chips and history are never lost.
 """
 
 from __future__ import annotations
+from casino.dal import conn as casino_conn
 
 import secrets
 from typing import Any, Optional
@@ -45,7 +46,7 @@ def _set_password(args: Any, password: str, moniker: str, *, pool: Any = None) -
 
 def _create_bot_member(args: Any, moniker: str, *, pool: Any = None) -> None:
     """Create the member row for a bot, approved, with a password nobody knows."""
-    with database.connect(args, pool=pool) if pool is not None else database.connect(args) as conn, \
+    with casino_conn.connect(args, pool=pool) if pool is not None else casino_conn.connect(args) as conn, \
             database.cursor(conn) as cur:
         cur.execute(
             "INSERT INTO engine.__member (moniker, email, approved, loginid) "
@@ -65,7 +66,7 @@ def _table_seat_rule(args: Any, table_moniker: str, *, pool: Any = None):
 
 def _moniker_taken(args: Any, moniker: str, *, pool: Any = None) -> bool:
     """True when a member already has this moniker, so a new bot must pick another."""
-    with database.connect(args, pool=pool) if pool is not None else database.connect(args) as conn, \
+    with casino_conn.connect(args, pool=pool) if pool is not None else casino_conn.connect(args) as conn, \
             database.cursor(conn) as cur:
         cur.execute("SELECT 1 FROM engine.__member WHERE moniker = %s", (moniker,))
         return cur.fetchone() is not None
@@ -87,7 +88,7 @@ def _next_bot_moniker(args: Any, table_moniker: str, *, pool: Any = None) -> str
 
 def _open_bank_account(args: Any, moniker: str, *, pool: Any = None) -> None:
     """Open the bot's bank account, as a human player gets one."""
-    with database.connect(args, pool=pool) if pool is not None else database.connect(args) as conn, \
+    with casino_conn.connect(args, pool=pool) if pool is not None else casino_conn.connect(args) as conn, \
             database.cursor(conn) as cur:
         cur.execute(
             "INSERT INTO bank.__account (moniker, balance) VALUES (%s, 0) ON CONFLICT (moniker) DO NOTHING",

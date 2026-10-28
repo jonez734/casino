@@ -5,6 +5,7 @@ import logging
 from typing import Any, Optional
 
 from bbsengine6 import database
+from casino.dal import conn as casino_conn
 from bbsengine6.bank import BankService as BankModule
 from bbsengine6.message import MessageUrgency as NotificationUrgency
 from bbsengine6.message import send as notify_send
@@ -28,7 +29,7 @@ class BankService:
 
     def _get_bank_account_id(self, table_moniker: str) -> Optional[int]:
         """Get the bank account ID for a table from casino.__bank_table mapping."""
-        connect_cm = database.connect(self.args, pool=self._pool) if self._pool is not None else database.connect(self.args)
+        connect_cm = casino_conn.connect(self.args, pool=self._pool) if self._pool is not None else casino_conn.connect(self.args)
         with connect_cm as conn, database.cursor(conn) as cur:
             cur.execute(
                 "SELECT bank_account_id FROM casino.__bank_table WHERE table_moniker = %s",
@@ -51,7 +52,7 @@ class BankService:
         if not owner_moniker:
             return None
 
-        connect_cm = database.connect(self.args, pool=self._pool) if self._pool is not None else database.connect(self.args)
+        connect_cm = casino_conn.connect(self.args, pool=self._pool) if self._pool is not None else casino_conn.connect(self.args)
         with connect_cm as conn, database.cursor(conn) as cur:
             cur.execute(
                 "SELECT id FROM bank.__account WHERE moniker = %s",
@@ -81,7 +82,7 @@ class BankService:
 
     def _get_house_account_id(self) -> int:
         """Get or create the house bank account ID."""
-        connect_cm = database.connect(self.args, pool=self._pool) if self._pool is not None else database.connect(self.args)
+        connect_cm = casino_conn.connect(self.args, pool=self._pool) if self._pool is not None else casino_conn.connect(self.args)
         with connect_cm as conn, database.cursor(conn) as cur:
             cur.execute("SELECT id FROM bank.__account WHERE moniker = %s", (HOUSE_MONIKER,))
             row = cur.fetchone()
@@ -129,7 +130,7 @@ class BankService:
             if from_account["balance"] < amount:
                 return {"success": False, "message": f"Insufficient funds. Balance: {from_account['balance']}"}
 
-        connect_cm = database.connect(self.args, pool=self._pool) if self._pool is not None else database.connect(self.args)
+        connect_cm = casino_conn.connect(self.args, pool=self._pool) if self._pool is not None else casino_conn.connect(self.args)
         with connect_cm as conn, database.cursor(conn) as cur:
             cur.execute(
                 "UPDATE bank.__account SET balance = balance - %s WHERE moniker = %s",
@@ -168,7 +169,7 @@ class BankService:
         description: str,
     ) -> None:
         """Record a casino bank transaction."""
-        connect_cm = database.connect(self.args, pool=self._pool) if self._pool is not None else database.connect(self.args)
+        connect_cm = casino_conn.connect(self.args, pool=self._pool) if self._pool is not None else casino_conn.connect(self.args)
         with connect_cm as conn, database.cursor(conn) as cur:
                 cur.execute(
                     """INSERT INTO casino.__banktransaction

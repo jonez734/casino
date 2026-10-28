@@ -2,6 +2,7 @@
 # Game service - blackjack game logic
 
 import random
+from casino.dal import conn as casino_conn
 from decimal import Decimal
 from typing import Any, Optional
 
@@ -467,7 +468,7 @@ class GameService:
         bet_amount = player_bet["amount"]
 
         from bbsengine6 import database
-        connect_cm = database.connect(self.args, pool=self._pool) if self._pool is not None else database.connect(self.args)
+        connect_cm = casino_conn.connect(self.args, pool=self._pool) if self._pool is not None else casino_conn.connect(self.args)
         with connect_cm as conn, database.cursor(conn) as cur:
             cur.execute(
                 database.query(
@@ -588,7 +589,7 @@ class GameService:
     def _get_player_balance(self, player_moniker: str) -> int:
         """Get player's credit balance."""
         from bbsengine6 import database
-        connect_cm = database.connect(self.args, pool=self._pool) if self._pool is not None else database.connect(self.args)
+        connect_cm = casino_conn.connect(self.args, pool=self._pool) if self._pool is not None else casino_conn.connect(self.args)
         with connect_cm as conn, database.cursor(conn) as cur:
             cur.execute(
                 database.query(
@@ -637,7 +638,7 @@ class GameService:
         bet_amount = player_bet["amount"]
 
         from bbsengine6 import database
-        connect_cm = database.connect(self.args, pool=self._pool) if self._pool is not None else database.connect(self.args)
+        connect_cm = casino_conn.connect(self.args, pool=self._pool) if self._pool is not None else casino_conn.connect(self.args)
         with connect_cm as conn, database.cursor(conn) as cur:
             cur.execute(
                 database.query(

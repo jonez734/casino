@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from bbsengine6 import database
+from casino.dal import conn as casino_conn
 from bbsengine6.database import Jsonb
 
 from casino.dal import bet as dal_bet
@@ -34,7 +35,7 @@ def _default_find_table(args: Any, player_moniker: str, *, pool: Any = None) -> 
     Args:
         pool: Optional connection pool (CONN_POOL_PATTERN)
     """
-    connect_cm = database.connect(args, pool=pool) if pool is not None else database.connect(args)
+    connect_cm = casino_conn.connect(args, pool=pool) if pool is not None else casino_conn.connect(args)
     with connect_cm as conn, database.cursor(conn) as cur:
         cur.execute(
             database.query(
@@ -344,7 +345,7 @@ class YahtzeeService:
             "net": net,
             "rake": 0,
         }
-        connect_cm = database.connect(self.args, pool=self._pool) if self._pool is not None else database.connect(self.args)
+        connect_cm = casino_conn.connect(self.args, pool=self._pool) if self._pool is not None else casino_conn.connect(self.args)
         with connect_cm as conn, database.cursor(conn) as cur:
             cur.execute(
                 database.query(

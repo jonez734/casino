@@ -3,13 +3,14 @@
 #
 # All public functions in this module accept an optional ``pool`` keyword
 # argument (CONN_POOL_PATTERN). When supplied, the function threads it into
-# ``database.connect(args, pool=pool)`` so the caller owns the pool. When
-# absent, the legacy ``database.connect(args)`` shape is used as a
+# ``casino_conn.connect(args, pool=pool)`` so the caller owns the pool. When
+# absent, the legacy ``casino_conn.connect(args)`` shape is used as a
 # backward-compat fallback.
 
 from typing import Any, Optional
 
 from bbsengine6 import database
+from casino.dal import conn as casino_conn
 
 
 def _connect_ctx(args: Any, pool: Any):
@@ -17,11 +18,11 @@ def _connect_ctx(args: Any, pool: Any):
 
     CONN_POOL_PATTERN helper: when ``pool`` is supplied the connection is
     borrowed from the caller's pool; otherwise the legacy
-    ``database.connect(args)`` fallback is used.
+    ``casino_conn.connect(args)`` fallback is used.
     """
     if pool is None:
-        return database.connect(args)
-    return database.connect(args, pool=pool)
+        return casino_conn.connect(args)
+    return casino_conn.connect(args, pool=pool)
 
 
 def place_bet(

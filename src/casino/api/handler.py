@@ -2,6 +2,7 @@
 # WebSocket message handler - routes messages to services using bbsengine6.net service registry
 
 import json
+from casino.dal import conn as casino_conn
 from datetime import datetime, timezone
 from typing import Any, Optional
 
@@ -593,7 +594,7 @@ class TableServiceHandler(BaseService):
         table = dal_table_join.get_table(self.args, table_moniker, pool=self._pool)
         if table and table.get("type") == "slots":
             try:
-                connect_cm = database.connect(self.args, pool=self._pool) if self._pool is not None else database.connect(self.args)
+                connect_cm = casino_conn.connect(self.args, pool=self._pool) if self._pool is not None else casino_conn.connect(self.args)
                 with connect_cm as conn, database.cursor(conn) as cur:
                     cur.execute(
                         database.query(

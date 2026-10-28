@@ -38,6 +38,7 @@
 # access policy.
 
 from __future__ import annotations
+from casino.dal import conn as casino_conn
 
 import uuid
 from typing import Any, Dict, Optional
@@ -156,7 +157,7 @@ def invalidate_dealer(table_moniker: str) -> None:
 
 
 def _get_player_credits(args: Any, moniker: str) -> int:
-    with database.connect(args) as conn, database.cursor(conn) as cur:
+    with casino_conn.connect(args) as conn, database.cursor(conn) as cur:
         cur.execute(database.query("SELECT balance FROM bank.__account WHERE moniker = :moniker", moniker=moniker))
         row = cur.fetchone()
         return int(row["balance"]) if row else 0
@@ -274,7 +275,7 @@ def handle_spin(
     try:
         from bbsengine6.bank import BankService as _BankService
 
-        with database.connect(args) as conn:
+        with casino_conn.connect(args) as conn:
             # Route the bank move through bbsengine6.bank.BankService so
             # the SQL is atomic (no read-then-write TOCTOU) and the
             # bank.__transaction audit row is written next to the

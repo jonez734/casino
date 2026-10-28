@@ -6,6 +6,7 @@ from __future__ import annotations
 from typing import Any
 
 from bbsengine6 import database
+from casino.dal import conn as casino_conn
 from bbsengine6.database import Jsonb
 
 
@@ -38,7 +39,7 @@ def record_spin(
     wins_json: list[dict[str, Any]],
 ) -> int:
     """Record a slot spin. Returns the new spin id."""
-    with database.connect(args) as conn, database.cursor(conn) as cur:
+    with casino_conn.connect(args) as conn, database.cursor(conn) as cur:
         cur.execute(
             database.query(
                 """INSERT INTO $casino.__slot_spin
@@ -65,7 +66,7 @@ def get_spin_history(
     """Return the most recent spins for a player, newest first."""
     if limit <= 0:
         return []
-    with database.connect(args) as conn, database.cursor(conn) as cur:
+    with casino_conn.connect(args) as conn, database.cursor(conn) as cur:
         cur.execute(
             database.query(
                 """SELECT id, table_moniker, player_moniker, bet, payout, reels, wins, spun_at
@@ -88,7 +89,7 @@ def get_table_history(
     """Return the most recent spins at a table, newest first."""
     if limit <= 0:
         return []
-    with database.connect(args) as conn, database.cursor(conn) as cur:
+    with casino_conn.connect(args) as conn, database.cursor(conn) as cur:
         cur.execute(
             database.query(
                 """SELECT id, table_moniker, player_moniker, bet, payout, reels, wins, spun_at
