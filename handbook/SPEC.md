@@ -1,6 +1,6 @@
 # casino — Specification
 
-> **Last updated:** 2026-08-21.
+> **Last updated:** 2026-10-27.
 > **Status:** Alpha (`Development Status :: 3 - Alpha`); production
 > wiring (MessageRouter + CasinoSessionManager + bed-native auth)
 > in place; games are feature-complete per their READMEs.
@@ -393,13 +393,20 @@ Flush, Straight, Three of a Kind, Two Pair, Pair, High Card.
 
 | Class              | File                          | Role                                |
 |--------------------|-------------------------------|-------------------------------------|
-| `PokerDeck`        | `poker/lib.py`                | Deck management                     |
+| `Shoe`             | `shoe.py`                     | Shared card shoe: decks, reshuffle at threshold, burns (all card games) |
+| `PokerDeck`        | `poker/lib.py`                | Legacy single-deck helper (used by `PokerDealer` only) |
 | `PokerCard`        | `poker/lib.py`                | Card dataclass                      |
 | `HandRank`         | `poker/lib.py`                | Hand rank + tie-breaker             |
 | `BettingStructure` | `poker/lib.py`                | No-Limit / Pot-Limit / Fixed-Limit  |
 | `PokerDealer`      | `poker/dealer.py`             | Shuffle / deal / burn / reset       |
 | `PokerPlayer`      | `poker/player.py`             | Player state + action validation    |
-| `PokerService`     | `services/poker.py`           | Betting state machine + showdown     |
+| `PokerService`     | `services/poker.py`           | Betting state machine, showdown, persisted table state |
+| `poker_state`      | `dal/poker_state.py`          | Save/load a whole poker table to `casino.__poker_state` |
+| `shoe` (store)     | `dal/shoe.py`                 | Load/save a table's shoe; write `--audit` events |
+
+Poker state, the shoe, and the audit log are described in
+[`POKER_PERSISTENCE.md`](POKER_PERSISTENCE.md). Tournament play is planned in
+[`TOURNAMENTS.md`](TOURNAMENTS.md).
 
 ## 8. SQL schema
 
@@ -412,7 +419,8 @@ Two schema locations exist:
   `game_view`, `hand`, `hand_view`, `hidden_table_migration`,
   `log`, `log_view`, `map_cardtable_player`, `map_game_player`,
   `player`, `player_view`, `slot_spin_view`, `slots`, `table_shoe_migration`,
-  `table`, `table_view`, `test_data`.
+  `table`, `table_view`, `test_data`, `shoe_audit_migration` (poker state and
+  the shoe audit log; see `POKER_PERSISTENCE.md` §7).
 - `scripts/poker.sql` — older poker-only migration set with
   `casino.__poker_table`, `casino.__poker_hand`,
   `casino.__poker_player_hand`, `casino.__poker_bet`,
@@ -658,6 +666,22 @@ database state: the bed casino service refuses a `casino_create_table` or
 `casino_update_table` whose `turn_seconds` is not an integer, is negative, or is above
 `get_max_turn_seconds`, before any write. The database stores what it is given.
 
+### 10.1 Shoe settings and the audit flag
+
+Per-table shoe settings are stored in the table's `attrs` (jsonb), not in `bed.json`:
+
+| Attribute        | Default | Meaning                                                              |
+|------------------|---------|----------------------------------------------------------------------|
+| `shoe_decks`     | `1`     | Number of 52-card decks in the table's shoe.                         |
+| `shoe_threshold` | `0.8`   | Fraction of the shoe that may be drawn before it reshuffles (`0 < x <= 1`). |
+
+The reshuffle rule is in `POKER_PERSISTENCE.md` §2.1.
+
+The `casino` command takes `--audit`. It is off by default. When set, every card drawn or burned
+is recorded in `casino.__shoe_event` with its card, draw count and shoe size. Table state is saved
+whether or not the flag is set. `--audit` is read from the command line into `args.audit`
+(`src/casino/lib.py`, `buildargs`) and checked by `dal/shoe.py::audit_enabled`.
+
 `MessageRouter.__init__` calls `_bootstrap_casino_config(args)`,
 which auto-discovers the `casino` section from `args.config_file`
 when bed has not wired it explicitly. This keeps door-mode and
@@ -713,7 +737,10 @@ a bed wiring change. When bed later wires the section explicitly
 | `src/casino/__main__.py`                          | `python -m casino` entry              |
 | `src/casino/main.py`                              | Door-mode menu                        |
 | `src/casino/auth.py`                              | BED auth + BBS entry                  |
-| `src/casino/lib.py`                               | Card / Hand / Shoe / CasinoPlayer + bottombar |
+| `src/casino/lib.py`                               | Card / Hand / CasinoPlayer + bottombar; `buildargs` (incl. `--audit`) |
+| `src/casino/shoe.py`                              | Shared card shoe (`Shoe`, `build_cards`) |
+| `src/casino/dal/shoe.py`                          | Shoe load/save and `--audit` event writes |
+| `src/casino/dal/poker_state.py`                   | Poker table state document (`casino.__poker_state`) |
 | `src/casino/config.py`                            | Env-var config loader + bed.json `casino` block helpers (`get_casino_config`, `get_surrender_multiplier`) |
 | `src/casino/client_cli.py`                        | legacy `python -m casino.client_cli` entry |
 | `src/casino/_routing.py`                          | bed / direct backend selector         |
@@ -726,7 +753,8 @@ a bed wiring change. When bed later wires the section explicitly
 | `src/casino/dal/*` + `dal/aiosql/*`               | Data access                           |
 | `src/casino/games/base.py`                        | GameType / GameAction enums + BaseGame |
 | `src/casino/cards/__init__.py`                    | Card dataclass + png loader           |
-| `src/casino/poker/lib.py`                         | HandRank, BettingStructure, PokerDeck |
+| `src/casino/poker/lib.py`                         | HandRank, BettingStructure, PokerDeck (legacy) |
+| `src/casino/poker/api_handler.py`                 | `poker_*` message dispatch (`PokerServiceHandler`) |
 | `src/casino/poker/variant/{base,evaluator,texas_hold_em,omaha,seven_card_stud}.py` | Poker variants |
 | `src/casino/tictactoe/{api_handler,dealer,lib,service}.py` | Tic-tac-toe                  |
 | `src/casino/yahtzee/{api_handler,dealer,lib,service}.py`   | Yahtzee                      |
@@ -734,7 +762,7 @@ a bed wiring change. When bed later wires the section explicitly
 | `src/casino/blackjack/{game,hand,lib,play}.py`    | Blackjack                             |
 | `src/casino/maint/__main__.py`                    | Sysop maintenance menu                |
 | `src/casino/commands/{admin,bank,chat,game,poker,table}/` | BBS CLI subcommands         |
-| `src/casino/sql/`                                 | Current canonical schema              |
+| `src/casino/sql/`                                 | Current canonical schema; `shoe_audit_migration.sql` is the poker-state and audit migration |
 | `src/casino/tests/`                               | pytest (~50 modules)                  |
 | `src/casino/tests/test_blackjack_three_hands.py`  | Self-contained WS auth + create + join + 3 hands + duplicate-table scenario |
 | `src/casino/tests/test_blackjack_three_hands_bed.py` | Bed-targeted companion; skips when bed unreachable at `ws://127.0.0.1:8765/` |
