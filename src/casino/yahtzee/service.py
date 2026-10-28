@@ -151,6 +151,9 @@ class YahtzeeService:
         )
         if not result.get("success"):
             raise RuntimeError(f"failed to create yahtzee table: {result.get('message')}")
+        # Every table has an events channel and a chat channel, the same as blackjack and poker.
+        from casino.services import table_channels as _tc
+        _tc.create_table_channels(self.args, result["table"]["moniker"], owner=player_moniker)
         return result["table"]
 
     def get_game(self, table_moniker: str) -> YahtzeeGame | None:

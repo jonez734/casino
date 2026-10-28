@@ -35,6 +35,13 @@ def _mock_table_service(table_moniker="yahtzee-alice"):
     return ts
 
 
+@pytest.fixture(autouse=True)
+def _no_channel_registry():
+    """Table channels are created in the database; these unit tests mock the database out."""
+    with patch("casino.services.table_channels.create_table_channels", return_value={}):
+        yield
+
+
 def _make_service(find_returns=None):
     """Build a YahtzeeService with all DB-touching deps mocked out.
 
