@@ -727,6 +727,16 @@ def buildargs(args: Namespace | None = None, **kwargs: Any) -> argparse.Argument
     parser.add_argument("--verbose", action="store_true", dest="verbose")
     parser.add_argument("--debug", action="store_true", dest="debug")
     parser.add_argument(
+        "--audit",
+        action="store_true",
+        default=False,
+        dest="audit",
+        help=(
+            "Log every shoe draw to casino.__shoe_event (card, draw count, shoe size). "
+            "Off by default; table state is saved either way."
+        ),
+    )
+    parser.add_argument(
         "--install",
         action="store_true",
         default=False,
