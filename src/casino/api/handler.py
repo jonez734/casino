@@ -41,6 +41,15 @@ def _resolve_pool(args: Any) -> Any:
     return database.getpool(args)
 
 
+async def _resolve_async_pool(args: Any) -> Any:
+    """The async connection pool for awaited DAL calls (aiosql).
+
+    The sync pool from ``_resolve_pool`` is a context manager; passing it to an awaited query
+    raises "can't be used in 'await' expression". This returns the AsyncConnectionPool.
+    """
+    return await database.get_async_pool(args)
+
+
 class CasinoSessionManager(SessionManager):
     """Extends base SessionManager with table/spectator tracking.
 
@@ -732,13 +741,13 @@ class TableServiceHandler(BaseService):
             return {"type": "error", "code": "invalid_request", "message": "table_monikers required"}
 
         if "all" in [t.lower() for t in table_monikers]:
-            table_monikers = await async_dal_table.get_player_tables(self.args, player_moniker, pool=self._pool)
+            table_monikers = await async_dal_table.get_player_tables(self.args, player_moniker, pool=await _resolve_async_pool(self.args))
 
         kicked_tables = []
         errors = []
 
         for table_moniker in table_monikers:
-            table = await async_dal_table.get_table(self.args, table_moniker, pool=self._pool)
+            table = await async_dal_table.get_table(self.args, table_moniker, pool=await _resolve_async_pool(self.args))
             if not table:
                 errors.append(f"Table not found: {table_moniker}")
                 continue
@@ -753,7 +762,7 @@ class TableServiceHandler(BaseService):
                 errors.append(f"Permission denied for table: {table_moniker}")
                 continue
 
-            removed = await async_dal_table.remove_player_from_table(self.args, table_moniker, player_moniker, pool=self._pool)
+            removed = await async_dal_table.remove_player_from_table(self.args, table_moniker, player_moniker, pool=await _resolve_async_pool(self.args))
             if removed:
                 kicked_tables.append(table_moniker)
                 try:
@@ -797,7 +806,7 @@ class TableServiceHandler(BaseService):
             return {"type": "error", "code": "invalid_request", "message": "moniker required"}
 
         try:
-            table = await async_dal_table.get_table(self.args, table_moniker, pool=self._pool)
+            table = await async_dal_table.get_table(self.args, table_moniker, pool=await _resolve_async_pool(self.args))
         except Exception as e:
             io.echo(f"_handle_watch_table error: {e}", level="error")
             return {"type": "error", "code": "service_error", "message": str(e)}
