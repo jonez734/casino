@@ -64,14 +64,14 @@ def table_moniker_of(channel_name: str) -> Optional[str]:
 def create_table_channels(args: Any, table_moniker: str, *, owner: str) -> dict[str, Any]:
     """Create the events and chat channels for a table. Idempotent: an existing channel is kept.
 
-    The events channel is announce-only; its announcers are kept in step with the seats by
-    sync_announcers. The chat channel is subscribe-restricted and needs a subscription to publish.
+    The events channel is announce-only and subscribe-restricted (seated players, spectators and sysop
+    may subscribe); its announcers are kept in step with the seats by sync_announcers. The chat channel is subscribe-restricted and needs a subscription to publish.
     """
     svc = ChannelService(args)
     events, chat = table_channels(table_moniker)
     results = {}
     for name, flags in (
-        (events, {"announce_only": True}),
+        (events, {"announce_only": True, "subscribe_restricted": True}),
         (chat, {"subscribe_restricted": True, "publish_requires_subscription": True}),
     ):
         if svc.get_channel(name) is not None:
