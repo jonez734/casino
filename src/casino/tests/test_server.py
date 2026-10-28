@@ -101,9 +101,11 @@ class TestServerMocked(unittest.IsolatedAsyncioTestCase):
             # Receive response
             response = json.loads(await ws.recv())
 
+            # The server lists only in-memory poker tables. Database tables come from bed's
+            # casino_list_tables (engine.casino_read), so a bare lobby request returns no
+            # database rows here.
             self.assertEqual(response["type"], "table_list")
-            self.assertEqual(len(response["tables"]), 1)
-            self.assertEqual(response["tables"][0]["id"], 1)
+            self.assertEqual(response["tables"], [])
 
     async def test_invalid_message(self):
         """Test handling invalid message."""

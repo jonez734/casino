@@ -21,6 +21,7 @@ from casino.api._auth import (
     check_access as _check_access_pipeline,
 )
 from casino.dal.aiosql import table as async_dal_table
+from casino.poker.api_handler import PokerServiceHandler
 from casino.tictactoe.api_handler import TictactoeServiceHandler
 from casino.yahtzee.api_handler import YahtzeeServiceHandler
 
@@ -324,6 +325,7 @@ class TableServiceHandler(BaseService):
         instance_id: Optional[str] = None,
         clock: Any = None,
         pool: Any = None,
+        poker_service_handler: Any = None,
     ) -> None:
         super().__init__(
             args,
@@ -337,6 +339,8 @@ class TableServiceHandler(BaseService):
         self.bot_service = self.BotService(args, pool=pool)
         self.channel_state = channel_state
         self._pool = pool
+        # In-memory poker tables are listed through the same lobby message.
+        self.poker_service_handler = poker_service_handler
 
     async def handle_message(
         self, server: Any, websocket: Any, path: str, message: dict[str, Any]
@@ -400,8 +404,13 @@ class TableServiceHandler(BaseService):
         if err is not None:
             return err
         game_type = message.get("game_type")
-        is_sysop = bool(getattr(state, "is_sysop", False))
-        tables = self.table_service.list_tables(game_type, is_sysop=is_sysop)
+        # This process lists only the in-memory poker tables. The database tables (blackjack,
+        # tictactoe, ...) are listed by bed's casino_list_tables, which runs engine.casino_read as
+        # bed and applies the hidden-table rule in the database. This handler never reads
+        # casino.__table for the lobby.
+        tables = []
+        if game_type in (None, "", "poker") and self.poker_service_handler is not None:
+            tables.extend(self.poker_service_handler.list_tables())
         return {"type": "table_list", "tables": tables}
 
     async def _handle_create_table(
@@ -1626,8 +1635,12 @@ class MessageRouter:
 
         # Create services
         self.auth_service = AuthService(args, self.sessions, self.channel_state)
+        self.poker_service_handler = PokerServiceHandler(
+            args, self.sessions, **token_kwargs
+        )
         self.table_service = TableServiceHandler(
-            args, self.sessions, self.channel_state, **token_kwargs
+            args, self.sessions, self.channel_state,
+            poker_service_handler=self.poker_service_handler, **token_kwargs
         )
         self.game_service = GameServiceHandler(args, self.sessions, **token_kwargs)
         self.bet_service = BetServiceHandler(args, self.sessions, **token_kwargs)
@@ -1708,6 +1721,12 @@ class MessageRouter:
         server.register_service(
             self.tictactoe_service_handler,
             list(self.tictactoe_service_handler.TICTACTOE_MSG_TYPES),
+        )
+
+        # Register poker service for hold'em table play (in-memory PokerService)
+        server.register_service(
+            self.poker_service_handler,
+            list(self.poker_service_handler.POKER_MSG_TYPES),
         )
 
     async def handle_broadcast(self, server: Any, websocket: Any, path: str, message: dict[str, Any]) -> None:

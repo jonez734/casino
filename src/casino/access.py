@@ -34,6 +34,11 @@
 #                      -- yahtzee hand actions
 #   "tictactoe_quick_play"/"tictactoe_move"/"tictactoe_resign"/"tictactoe_join"
 #                      -- tic-tac-toe actions
+#   "poker_create_table"/"poker_join_table"/"poker_leave_table"
+#   "poker_get_state"  -- poker table management and reads (any authenticated player)
+#   (lobby listing is the shared "list_tables" message, filtered by game_type)
+#   "poker_start_hand"/"poker_check"/"poker_call"/"poker_fold"/"poker_all_in"
+#   "poker_bet"/"poker_raise"  -- poker hand actions (seated at the table)
 #   "whoami"          -- read the authenticated casino player record
 #   "player_balance"  -- read casino.player balance (self or sysop)
 #   "player_profile"  -- read casino.player row (self or sysop)
@@ -230,6 +235,20 @@ def access(args: argparse.Namespace, op: str, /, **kwargs: Any) -> bool:
         # quick_play creates a fresh table, so no seat-at check.
         if op.endswith("quick_play"):
             return True
+        return _at_table(kwargs, target)
+
+    if op in ("poker_create_table", "poker_join_table", "poker_leave_table",
+              "poker_get_state"):
+        # Table management and reads: any authenticated player. The service enforces seat rules
+        # (leave/join are refused mid-hand; get_state shows only the caller's own hand).
+        return bool(auth_moniker)
+
+    if op in ("poker_start_hand", "poker_check", "poker_call", "poker_fold", "poker_all_in",
+              "poker_bet", "poker_raise"):
+        # Hand actions: the caller must be seated at the table named in the message.
+        target = (_get_message(kwargs).get("table_moniker") or "").strip()
+        if not auth_moniker:
+            return False
         return _at_table(kwargs, target)
 
     if op == "whoami":
