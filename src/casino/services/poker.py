@@ -10,6 +10,8 @@ from casino.poker import (
     get_variant,
 )
 from casino.dal import poker_state
+from casino.dal import shoe as shoe_store
+from casino.dal import table as dal_table
 from casino.shoe import Shoe
 from casino.poker.variant import evaluator
 
@@ -126,6 +128,20 @@ class PokerService:
             self._decks[table_moniker] = shoe
         return table
 
+    def _draw(self, table: PokerTableState, shoe: Shoe, *, burn: bool = False) -> str:
+        """Draw one card from the table's shoe, audit it when --audit is set.
+
+        A burn is recorded as kind 'burn'; a dealt card as 'draw'. A reshuffle is recorded
+        before the card that triggered it.
+        """
+        reshuffles = shoe.reshuffles
+        card = shoe.draw()
+        if shoe.reshuffles != reshuffles:
+            shoe_store.record_event(self.args, table.moniker, kind="reshuffle", shoe=shoe)
+        kind = "burn" if burn else "draw"
+        shoe_store.record_event(self.args, table.moniker, kind=kind, shoe=shoe, card=card)
+        return card
+
     def _save(self, table_moniker: str) -> None:
         """Persist the whole table (and its shoe) after a change, so a restart resumes the game."""
         table = self._tables.get(table_moniker)
@@ -174,6 +190,9 @@ class PokerService:
             max_players=max_players,
         )
 
+        dal_table.ensure_poker_table_row(
+            self.args, table_moniker, min_bet=small_blind, max_bet=big_blind * 100, pool=None,
+        )
         self._tables[table_moniker] = table
         self._decks[table_moniker] = Shoe(decks=self.SHOE_DECKS, threshold=self.SHOE_THRESHOLD)
 
@@ -351,7 +370,7 @@ class PokerService:
 
         for _ in range(cards_for_street):
             for player in table.players.values():
-                player.hole_cards.append(deck.draw())
+                player.hole_cards.append(self._draw(table, deck))
 
         io.echo(f"Dealt {cards_for_street} hole cards to {len(table.players)} players")
 
@@ -368,15 +387,15 @@ class PokerService:
 
         if comm_cards > 0:
             for _ in range(comm_cards):
-                deck.burn()
-                table.community_cards.append(deck.draw())
+                self._draw(table, deck, burn=True)
+                table.community_cards.append(self._draw(table, deck))
             io.echo(f"Dealt {comm_cards} community cards: {table.community_cards}")
 
         if hole_cards > 0:
             for _ in range(hole_cards):
                 for player in table.players.values():
                     if not player.has_folded:
-                        player.hole_cards.append(deck.draw())
+                        player.hole_cards.append(self._draw(table, deck))
             io.echo(f"Dealt {hole_cards} hole cards to active players")
 
     def player_action(
@@ -663,8 +682,8 @@ class PokerService:
             return
 
         for _ in range(count):
-            deck.burn()
-            table.community_cards.append(deck.draw())
+            self._draw(table, deck, burn=True)
+            table.community_cards.append(self._draw(table, deck))
 
     def _showdown(self, table: PokerTableState):
         """Resolve hand at showdown."""

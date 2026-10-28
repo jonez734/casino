@@ -643,3 +643,21 @@ def get_table_stats(
     if game_type == "poker":
         return _stats_from_poker_games(args, moniker, pool=pool)
     return {}
+
+
+def ensure_poker_table_row(args: Any, moniker: str, *, min_bet: int, max_bet: int,
+                           owner_moniker: Optional[str] = None, pool: Any = None) -> None:
+    """Create the casino.__table row for a poker table (type 'poker'), if it does not exist.
+
+    Poker state is saved against this row (casino.__poker_state references it), so the row must
+    exist before the table is saved. Existing rows are left alone.
+    """
+    with _connect_ctx(args, pool) as conn, database.cursor(conn) as cur:
+        cur.execute(
+            database.query(
+                "INSERT INTO $casino.__table (moniker, type, minimumbet, maximumbet, ownermoniker, ownersince, status) "
+                "VALUES (:moniker, 'poker', :min_bet, :max_bet, :owner, NOW(), 'open') "
+                "ON CONFLICT (moniker) DO NOTHING",
+                moniker=moniker, min_bet=min_bet, max_bet=max_bet, owner=owner_moniker,
+            )
+        )
