@@ -125,3 +125,16 @@ def test_empty_subscriptions_reply_says_none():
         import asyncio
         asyncio.run(client.handle_message({"type": "subscriptions", "channels": []}))
     assert any("No channel subscriptions" in e for e in echoes)
+
+
+@pytest.mark.unit
+def test_watching_table_reply_is_printed_not_debug():
+    """The server answers a watch with watching_table; it must print, not fall through to debug."""
+    import asyncio
+
+    client = _client()
+    echoes = []
+    with patch.object(cc.io, "echo", side_effect=lambda *a, **k: echoes.append((str(a[0]), k.get("level")))):
+        asyncio.run(client.handle_message({"type": "watching_table", "moniker": "poker-1", "message": "Now watching table poker-1"}))
+    assert ("Now watching table poker-1", None) in echoes
+    assert not any(level == "debug" for _text, level in echoes)

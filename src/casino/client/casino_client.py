@@ -390,6 +390,9 @@ class CasinoClient:
                 for name in sorted(channels):
                     io.echo(f"  {name}")
 
+        elif msg_type == "watching_table":
+            io.echo(msg.get("message") or f"Now watching table {msg.get('moniker')}")
+
         elif msg_type == "pong":
             io.echo("Pong")
 
