@@ -70,7 +70,7 @@ push:
 # version via setuptools dynamic attr `casino._version.__version__`
 # (see [tool.setuptools.dynamic] in pyproject.toml).
 version:
-	@echo '__version__ = "0.0.3.dev'`date +%Y%m%d%H%M`'"' > src/casino/_version.py
+	@echo '__version__ = "0.4.0.dev'`date +%Y%m%d%H%M`'"' > src/casino/_version.py
 	@echo 'githash = "'`git log -1 --format='%H' 2>/dev/null | cut -c 1-16`'"' >> src/casino/_version.py
 	@echo 'datestamp = "'`date +%Y%m%d%H%M`'"' >> src/casino/_version.py
 
