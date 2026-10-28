@@ -13,9 +13,9 @@ def get_client():
     return _get_client()
 
 
-def send_action(action: str, data: dict = None):
-    """Send an action to the poker service."""
-    client = get_client()
+def send_action(action: str, data: dict = None, client=None):
+    """Send an action to the poker service, on ``client`` (or the connected client)."""
+    client = client or get_client()
     if client is None:
         io.echo("Not connected. Use Connect first.", level="error")
         return None
@@ -39,7 +39,7 @@ def check(args, client=None, **kwargs) -> bool:
     if client is None:
         io.echo("Not connected. Use Connect first.", level="error")
         return False
-    return send_action("poker_check")
+    return send_action("poker_check", client=client)
 
 
 def call(args, client=None, **kwargs) -> bool:
@@ -48,7 +48,7 @@ def call(args, client=None, **kwargs) -> bool:
     if client is None:
         io.echo("Not connected. Use Connect first.", level="error")
         return False
-    return send_action("poker_call")
+    return send_action("poker_call", client=client)
 
 
 def bet(args, client=None, **kwargs) -> bool:
@@ -63,7 +63,7 @@ def bet(args, client=None, **kwargs) -> bool:
         io.echo("Invalid bet amount.")
         return False
 
-    return send_action("poker_bet", {"amount": amount})
+    return send_action("poker_bet", {"amount": amount}, client=client)
 
 
 def raise_bet(args, client=None, **kwargs) -> bool:
@@ -78,7 +78,7 @@ def raise_bet(args, client=None, **kwargs) -> bool:
         io.echo("Invalid raise amount.")
         return False
 
-    return send_action("poker_raise", {"amount": amount})
+    return send_action("poker_raise", {"amount": amount}, client=client)
 
 
 def fold(args, client=None, **kwargs) -> bool:
@@ -87,7 +87,7 @@ def fold(args, client=None, **kwargs) -> bool:
     if client is None:
         io.echo("Not connected. Use Connect first.", level="error")
         return False
-    return send_action("poker_fold")
+    return send_action("poker_fold", client=client)
 
 
 def all_in(args, client=None, **kwargs) -> bool:
@@ -96,37 +96,10 @@ def all_in(args, client=None, **kwargs) -> bool:
     if client is None:
         io.echo("Not connected. Use Connect first.", level="error")
         return False
-    return send_action("poker_all_in")
+    return send_action("poker_all_in", client=client)
 
 
-def show_hand(args, client=None, **kwargs) -> bool:
-    """Show your hand at showdown."""
-    client = client or get_client()
-    if client is None:
-        io.echo("Not connected. Use Connect first.", level="error")
-        return False
-    return send_action("poker_show_hand")
 
-
-def muck_hand(args, client=None, **kwargs) -> bool:
-    """Muck (don't show) your hand."""
-    client = client or get_client()
-    if client is None:
-        io.echo("Not connected. Use Connect first.", level="error")
-        return False
-    return send_action("poker_muck_hand")
-
-
-def show_my_hand(args, client=None, **kwargs) -> bool:
-    """Show your current hand."""
-    client = client or get_client()
-    if client is None:
-        io.echo("Not connected. Use Connect first.", level="error")
-        return False
-
-    client._loop.run_until_complete(client.send({"type": "poker_get_hand"}))
-    client._loop.run_until_complete(asyncio.sleep(0.1))
-    return True
 
 
 def show_table(args, client=None, **kwargs) -> bool:
@@ -141,28 +114,6 @@ def show_table(args, client=None, **kwargs) -> bool:
     return True
 
 
-def list_players(args, client=None, **kwargs) -> bool:
-    """List players at the table."""
-    client = client or get_client()
-    if client is None:
-        io.echo("Not connected. Use Connect first.", level="error")
-        return False
-
-    client._loop.run_until_complete(client.send({"type": "poker_list_players"}))
-    client._loop.run_until_complete(asyncio.sleep(0.1))
-    return True
-
-
-def show_deck(args, client=None, **kwargs) -> bool:
-    """Show deck status."""
-    client = client or get_client()
-    if client is None:
-        io.echo("Not connected. Use Connect first.", level="error")
-        return False
-
-    client._loop.run_until_complete(client.send({"type": "poker_get_deck"}))
-    client._loop.run_until_complete(asyncio.sleep(0.1))
-    return True
 
 
 def create_table(args, client=None, **kwargs) -> bool:
@@ -220,7 +171,7 @@ def leave_table(args, client=None, **kwargs) -> bool:
     if client is None:
         io.echo("Not connected. Use Connect first.", level="error")
         return False
-    return send_action("poker_leave_table")
+    return send_action("poker_leave_table", client=client)
 
 
 def list_tables(args, client=None, **kwargs) -> bool:
@@ -230,7 +181,7 @@ def list_tables(args, client=None, **kwargs) -> bool:
         io.echo("Not connected. Use Connect first.", level="error")
         return False
 
-    client._loop.run_until_complete(client.send({"type": "poker_list_tables"}))
+    client._loop.run_until_complete(client.send({"type": "list_tables", "game_type": "poker"}))
     client._loop.run_until_complete(asyncio.sleep(0.1))
     return True
 
@@ -241,7 +192,48 @@ def start_hand(args, client=None, **kwargs) -> bool:
     if client is None:
         io.echo("Not connected. Use Connect first.", level="error")
         return False
-    return send_action("poker_start_hand")
+    return send_action("poker_start_hand", client=client)
+
+
+def play(args, client=None, **kwargs) -> bool:
+    """Sit down at a poker table and play.
+
+    Creates a fresh holdem table with $1/$2 blinds, seats the player with a default buy-in,
+    and opens the poker menu on that table. Other players can join the table by moniker
+    through the menu's Join command.
+    """
+    client = client or get_client()
+    if client is None:
+        io.echo("Not connected. Use Connect first.", level="error")
+        return False
+
+    buy_in = io.inputinteger("{var:promptcolor}Buy-in: {var:inputcolor}", 100)
+    if buy_in <= 0:
+        io.echo("Invalid buy-in.")
+        return False
+
+    client._loop.run_until_complete(client.send({
+        "type": "poker_create_table",
+        "variant": "holdem",
+        "betting_structure": "no_limit",
+        "small_blind": 1,
+        "big_blind": 2,
+    }))
+    client._loop.run_until_complete(asyncio.sleep(0.1))
+    table = getattr(client, "last_poker_table", None)
+    if not table:
+        io.echo("{errorcolor}Could not create a table.{/all}")
+        return False
+
+    client._loop.run_until_complete(client.send({
+        "type": "poker_join_table",
+        "table_moniker": table,
+        "buy_in": buy_in,
+    }))
+    client._loop.run_until_complete(asyncio.sleep(0.1))
+    client.current_table_moniker = table
+    io.echo(f"{{title}}Playing at {table}. Use [S]tart to deal the first hand once others join.{{normal}}")
+    return menu(args, client=client, **kwargs)
 
 
 def menu(args, client=None, **kwargs):
@@ -253,28 +245,28 @@ def menu(args, client=None, **kwargs):
 
     while True:
         cmd = io.inputchoice(
-            "{var:promptcolor}[C]heck  [A]ll  [B]et  [R]aise  [F]old  "
-            "[H]and  [T]able  [L]ist  [Q]uit: {var:inputcolor}",
-            "c,a,b,r,f,h,t,l,q",
+            "{var:promptcolor}[S]tart  [C]heck  [L]call  [B]et  [R]aise  [A]ll-in  [F]old  "
+            "[T]able  [Q]uit: {var:inputcolor}",
+            "s,c,l,b,r,a,f,t,q",
             default="q"
         )
 
-        if cmd == "C":
+        if cmd == "S":
+            start_hand(args, client=client, **kwargs)
+        elif cmd == "C":
             check(args, client=client, **kwargs)
-        elif cmd == "A":
-            all_in(args, client=client, **kwargs)
+        elif cmd == "L":
+            call(args, client=client, **kwargs)
         elif cmd == "B":
             bet(args, client=client, **kwargs)
         elif cmd == "R":
             raise_bet(args, client=client, **kwargs)
+        elif cmd == "A":
+            all_in(args, client=client, **kwargs)
         elif cmd == "F":
             fold(args, client=client, **kwargs)
-        elif cmd == "H":
-            show_my_hand(args, client=client, **kwargs)
         elif cmd == "T":
             show_table(args, client=client, **kwargs)
-        elif cmd == "L":
-            list_tables(args, client=client, **kwargs)
         elif cmd == "Q":
             break
 

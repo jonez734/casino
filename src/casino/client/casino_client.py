@@ -21,6 +21,16 @@ from .table_render import _safe_int_str, _signed_str, render_table
 if TYPE_CHECKING:
     from bbsengine6 import WebSocketClientProtocol
 
+# Poker replies the client renders (see poker/api_handler.py). Anything else falls through.
+POKER_REPLY_TYPES = frozenset({
+    "poker_table_created",
+    "poker_joined_table",
+    "poker_left_table",
+    "poker_hand_started",
+    "poker_state",
+    "poker_action_result",
+})
+
 
 def _clock_cell(table: dict) -> str:
     """The table's clock: its live countdown when a round is open, else the turn length and penalty.
@@ -359,6 +369,9 @@ class CasinoClient:
             prefix = f"[{scope}]" if scope == "table" else "[global]"
             io.echo(f"{prefix} {from_moniker}: {message}")
 
+        elif msg_type in POKER_REPLY_TYPES:
+            self._render_poker(msg_type, msg)
+
         elif msg_type == "error":
             io.echo(f"Error: {msg.get('message')}")
 
@@ -547,6 +560,86 @@ class CasinoClient:
 
         else:
             io.echo(f"Unknown message type: {msg_type}: {msg}", level="debug")
+
+    def _render_poker(self, msg_type: str, msg: dict) -> None:
+        """Show a poker reply to the human: table, hole cards, pot, whose turn, and the last hand."""
+        if msg_type == "poker_table_created":
+            self.last_poker_table = msg.get("table_moniker")
+            io.echo(f"Created poker table {msg.get('table_moniker')} ({msg.get('stakes')}).")
+            return
+
+        if msg_type == "poker_joined_table":
+            io.echo(f"{msg.get('message') or 'Joined the table.'}")
+            return
+
+        if msg_type == "poker_left_table":
+            io.echo("Left the poker table.")
+            return
+
+        if msg_type == "poker_hand_started":
+            if msg.get("success"):
+                io.echo("New hand started.")
+            else:
+                io.echo(f"{{errorcolor}}Cannot start the hand: {msg.get('message')}{{/all}}")
+            return
+
+        if msg_type == "poker_action_result":
+            if not msg.get("success"):
+                io.echo(f"{{errorcolor}}{msg.get('message') or 'Action refused.'}{{/all}}")
+                return
+            action = msg.get("action", "")
+            if action == "fold" and msg.get("winner"):
+                io.echo(f"You folded. {msg.get('winner')} wins ${msg.get('pot', 0)}.")
+            elif msg.get("message"):
+                io.echo(str(msg.get("message")))
+            self._render_last_result(msg.get("last_result"))
+            return
+
+        if msg_type == "poker_state":
+            self._render_poker_state(msg)
+
+    def _render_poker_state(self, state: dict) -> None:
+        if state.get("error"):
+            io.echo(f"{{errorcolor}}{state['error']}{{/all}}")
+            return
+        stage = state.get("game_stage", "waiting")
+        io.echo(f"Table {state.get('table_moniker')} ({state.get('stakes')}), {state.get('variant')}: {stage}")
+        board = " ".join(state.get("community_cards") or []) or "-"
+        io.echo(f"Board: {board}    Pot: ${state.get('pot', 0)}    To call: ${state.get('current_bet', 0)}")
+        for p in state.get("players") or []:
+            tags = []
+            if p.get("has_folded"):
+                tags.append("folded")
+            if p.get("is_all_in"):
+                tags.append("all-in")
+            if state.get("current_player") == p.get("moniker"):
+                tags.append("to act")
+            suffix = f" ({', '.join(tags)})" if tags else ""
+            io.echo(f"  seat {p.get('seat')}: {p.get('moniker')} ${p.get('credits')} bet ${p.get('current_bet', 0)}{suffix}")
+        hand = state.get("player_hand") or []
+        if hand:
+            io.echo(f"Your cards: {' '.join(hand)}")
+        if state.get("player_can_act"):
+            io.echo("{var:promptcolor}It is your turn.{/all}")
+        self._render_last_result(state.get("last_result"))
+
+    def _render_last_result(self, result: dict | None) -> None:
+        if not result:
+            return
+        winners = result.get("winners") or []
+        if result.get("kind") == "uncontested":
+            io.echo(f"Hand over: {winners[0]} wins ${result.get('pot', 0)} (everyone else folded).")
+            return
+        board = " ".join(result.get("community_cards") or []) or "-"
+        io.echo(f"Showdown. Board: {board}")
+        for m, h in (result.get("hands") or {}).items():
+            io.echo(f"  {m}: {' '.join(h.get('hole_cards') or [])} -> {h.get('rank')}")
+        shares = result.get("shares") or {}
+        if len(winners) == 1:
+            io.echo(f"{winners[0]} wins ${result.get('pot', 0)} with {result.get('hand_name')}.")
+        else:
+            parts = ", ".join(f"{m} ${shares.get(m, 0)}" for m in winners)
+            io.echo(f"Split pot ({result.get('hand_name')}): {parts}.")
 
     async def display_game_state(self, state: dict) -> None:
         """Display game state to user."""
