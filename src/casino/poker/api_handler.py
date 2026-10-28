@@ -205,7 +205,8 @@ class PokerServiceHandler:
                 events_channel(table_moniker),
                 payload,
                 server=server,
-                sender_moniker=actor,
+                # No sender: game events are published by the server, so the announce-only
+                # check (which is for player-originated publishes) does not refuse a seated player.
                 args=self.args,
             )
         except Exception as e:

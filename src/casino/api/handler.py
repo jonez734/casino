@@ -218,7 +218,8 @@ class BaseService:
             events_channel(table_moniker),
             message,
             server=server,
-            sender_moniker=sender_moniker,
+            # No sender: table events are published by the server. The announce-only check is for
+            # player-originated publishes, and must not refuse a seated player's table events.
             args=self.args,
         )
 
