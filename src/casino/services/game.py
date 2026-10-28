@@ -14,6 +14,8 @@ from casino.dal import game as dal_game
 from casino.dal import player as dal_player
 from casino.dal import table as dal_table
 from casino.services.round_clock import ACTED_STATUSES
+from casino.dal import shoe as shoe_store
+from casino.shoe import Shoe, build_cards
 
 
 class GameService:
@@ -25,67 +27,37 @@ class GameService:
     def __init__(self, args: Any, *, pool: Any = None):
         self.args = args
         self._pool = pool
-        self._shoes: dict[str, dict[str, Any]] = {}  # table_moniker -> shoe state
+        self._shoes: dict[str, Shoe] = {}  # table_moniker -> shoe (persisted on the table row)
 
     def _create_shoe(self, decks: int = 6) -> list[str]:
-        """Create a shoe with multiple decks."""
-        shoe = []
-        for _ in range(decks):
-            for suit in self.SUITS:
-                for pips in self.PIPS:
-                    shoe.append(pips + suit)
-        random.shuffle(shoe)
-        return shoe
+        """Create a shuffled shoe of ``decks`` decks, from the shared shoe definition."""
+        cards = build_cards(decks)
+        random.shuffle(cards)
+        return cards
 
-    def _get_shoe(self, table_moniker: str) -> dict[str, Any]:
-        """Get or create shoe for a specific table."""
-        if table_moniker in self._shoes:
-            shoe = self._shoes[table_moniker]
-            total_cards = len(shoe["cards"])
-            if shoe["uses"] <= total_cards * shoe["threshold"]:
-                return shoe
-
-        # Load from database or create new
-        table = dal_table.get_table(self.args, table_moniker, pool=self._pool)
-        if not table:
-            raise ValueError(f"Table {table_moniker} not found")
-
-        attrs = table.get("attrs", {}) or {}
-        shoe_cards = table.get("shoe_cards", []) or []
-        shoe_uses = table.get("shoe_uses", 0) or 0
-
-        if not shoe_cards:
-            shoe_cards = self._create_shoe(decks=attrs.get("shoe_decks", 6))
-            shoe_uses = 0
-
-        shoe = {
-            "cards": shoe_cards,
-            "uses": shoe_uses,
-            "decks": attrs.get("shoe_decks", 6),
-            "threshold": attrs.get("shoe_threshold", 0.8),
-        }
-        self._shoes[table_moniker] = shoe
+    def _get_shoe(self, table_moniker: str) -> Shoe:
+        """The table's shoe: cached per table, otherwise loaded from its row (or created)."""
+        shoe = self._shoes.get(table_moniker)
+        if shoe is None:
+            shoe = shoe_store.load(self.args, table_moniker, pool=self._pool)
+            self._shoes[table_moniker] = shoe
         return shoe
 
     def _save_shoe(self, table_moniker: str) -> None:
-        """Save shoe state to database."""
-        if table_moniker not in self._shoes:
+        """Save the table's shoe to its row."""
+        shoe = self._shoes.get(table_moniker)
+        if shoe is None:
             return
-        shoe = self._shoes[table_moniker]
-        dal_table.update_shoe(self.args, table_moniker, shoe["cards"], shoe["uses"], pool=self._pool)
+        shoe_store.save(self.args, table_moniker, shoe, pool=self._pool)
 
     def _draw_card(self, table_moniker: str) -> str:
-        """Draw a card from the table's shoe."""
+        """Draw a card from the table's shoe, save the shoe, and audit the draw when --audit is set."""
         shoe = self._get_shoe(table_moniker)
-
-        # Check if shoe needs replacement
-        total_cards = len(shoe["cards"])
-        if shoe["uses"] > total_cards * shoe["threshold"]:
-            shoe["cards"] = self._create_shoe(decks=shoe["decks"])
-            shoe["uses"] = 0
-
-        card = shoe["cards"].pop()
-        shoe["uses"] += 1
+        reshuffles = shoe.reshuffles
+        card = shoe.draw()
+        if shoe.reshuffles != reshuffles:
+            shoe_store.record_event(self.args, table_moniker, kind="reshuffle", shoe=shoe, pool=self._pool)
+        shoe_store.record_event(self.args, table_moniker, kind="draw", shoe=shoe, card=card, pool=self._pool)
         self._save_shoe(table_moniker)
         return card
 
