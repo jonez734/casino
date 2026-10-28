@@ -138,3 +138,64 @@ def test_watching_table_reply_is_printed_not_debug():
         asyncio.run(client.handle_message({"type": "watching_table", "moniker": "poker-1", "message": "Now watching table poker-1"}))
     assert ("Now watching table poker-1", None) in echoes
     assert not any(level == "debug" for _text, level in echoes)
+
+
+def _poker_client():
+    client = cc.CasinoClient.__new__(cc.CasinoClient)
+    client.current_table_moniker = None
+    client.current_table_game_type = None
+    return client
+
+
+@pytest.mark.unit
+def test_poker_join_reply_seats_the_client():
+    """A poker join must set the seat, or the seated menu (leave, bet) never appears."""
+    client = _poker_client()
+    with patch.object(cc.io, "echo"):
+        client._render_poker("poker_joined_table", {"success": True, "table_moniker": "poker-1", "message": "Joined."})
+    assert client.current_table_moniker == "poker-1"
+    assert client.current_table_game_type == "poker"
+
+
+@pytest.mark.unit
+def test_failed_poker_join_does_not_seat_the_client():
+    client = _poker_client()
+    with patch.object(cc.io, "echo"):
+        client._render_poker("poker_joined_table", {"success": False, "table_moniker": "poker-1", "message": "Full."})
+    assert client.current_table_moniker is None
+
+
+@pytest.mark.unit
+def test_poker_state_seats_the_client_on_login():
+    """A reconnecting seated player receives poker_state; that must restore the seat."""
+    client = _poker_client()
+    with patch.object(cc.io, "echo"):
+        client._render_poker("poker_state", {"table_moniker": "poker-1", "game_stage": "preflop", "players": []})
+    assert client.current_table_moniker == "poker-1"
+    assert client.current_table_game_type == "poker"
+
+
+@pytest.mark.unit
+def test_poker_leave_clears_the_seat():
+    client = _poker_client()
+    client.current_table_moniker = "poker-1"
+    client.current_table_game_type = "poker"
+    with patch.object(cc.io, "echo"):
+        client._render_poker("poker_left_table", {"success": True})
+    assert client.current_table_moniker is None
+    assert client.current_table_game_type is None
+
+
+@pytest.mark.unit
+def test_seated_poker_menu_offers_leave_and_bet():
+    """With a poker seat recorded, the menu shows leave (l) and bet (b)."""
+    from types import SimpleNamespace
+    client = _poker_client()
+    client._render_poker("poker_joined_table", {"success": True, "table_moniker": "poker-1"})
+    state = SimpleNamespace(
+        current_table_moniker=client.current_table_moniker,
+        current_table_game_type=client.current_table_game_type,
+        connected=True,
+    )
+    letters = [letter for letter, _label in menu._visible_options(state)]
+    assert "l" in letters and "b" in letters

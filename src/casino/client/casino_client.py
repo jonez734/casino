@@ -587,10 +587,14 @@ class CasinoClient:
             return
 
         if msg_type == "poker_joined_table":
+            if msg.get("success") and msg.get("table_moniker"):
+                self._seat_at_poker(msg["table_moniker"])
             io.echo(f"{msg.get('message') or 'Joined the table.'}")
             return
 
         if msg_type == "poker_left_table":
+            self.current_table_moniker = None
+            self.current_table_game_type = None
             io.echo("Left the poker table.")
             return
 
@@ -616,10 +620,18 @@ class CasinoClient:
         if msg_type == "poker_state":
             self._render_poker_state(msg)
 
+    def _seat_at_poker(self, table_moniker: str) -> None:
+        """Record the poker seat so the seated menu options (leave, bet) appear."""
+        self.current_table_moniker = table_moniker
+        self.current_table_game_type = "poker"
+
     def _render_poker_state(self, state: dict) -> None:
         if state.get("error"):
             io.echo(f"{{errorcolor}}{state['error']}{{/all}}")
             return
+        # A poker_state reply is only sent to a seated player, so it confirms the seat.
+        if state.get("table_moniker"):
+            self._seat_at_poker(state["table_moniker"])
         stage = state.get("game_stage", "waiting")
         io.echo(f"Table {state.get('table_moniker')} ({state.get('stakes')}), {state.get('variant')}: {stage}")
         board = " ".join(state.get("community_cards") or []) or "-"
