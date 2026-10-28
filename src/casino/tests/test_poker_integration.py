@@ -13,9 +13,14 @@ from casino.services.poker import PokerService
 
 
 class MockArgs:
-    """Mock args for testing."""
+    """Args for the poker service in tests.
+
+    Poker tables are persisted (casino.__table and casino.__poker_state), so the tests run
+    against the test database, never the live one.
+    """
     def __init__(self):
         self.debug = False
+        self.databasename = "zoid6test"
 
 
 class TestPokerServiceCreateTable:
