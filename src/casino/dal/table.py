@@ -309,6 +309,24 @@ def add_player_to_table(
             return cur.fetchone() is not None
 
 
+def seated_monikers(args: Any, moniker: str, *, pool: Any = None) -> list[str]:
+    """Monikers of everyone seated at a table, humans and bots alike (spectators are not seated).
+
+    This is the single source for who may subscribe to the table's channels, and for the events
+    channel's announcers. Args:
+        pool: Optional connection pool (CONN_POOL_PATTERN)
+    """
+    with _connect_ctx(args, pool) as conn, database.cursor(conn) as cur:
+        cur.execute(
+            database.query(
+                "SELECT DISTINCT playermoniker FROM $casino.map_cardtable_player "
+                "WHERE cardtablemoniker = :moniker AND role = 'player' ORDER BY playermoniker",
+                moniker=moniker,
+            )
+        )
+        return [row["playermoniker"] for row in cur.fetchall()]
+
+
 def count_seated(args: Any, moniker: str, *, pool: Any = None) -> int:
     """Number of distinct players seated at a table (spectators are not seated).
 
