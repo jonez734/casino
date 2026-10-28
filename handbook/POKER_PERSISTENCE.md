@@ -86,12 +86,33 @@ refused rather than guessed at.
   `casino.__poker_state` (`PokerService._table`). The table stays open and play continues.
 - On reload the **turn deadline is cleared**. The turn clock is paused, so a restart never
   costs a player their turn. The deadline is set again when the next turn starts.
-- Blackjack needs no reload step: its shoe is read from the table row on demand.
+- Blackjack's shoe is read from the table row on demand. Its round clock is paused the same
+  way: on reload the round's `action_deadline` is cleared, and the deadline is set again at
+  the next turn, so a restart never ends a player's turn.
 
 ### 4.1 What a restart does not preserve
 
 - Open websocket sessions. Clients reconnect and authenticate again.
 - Anything held only in the process: client-side prompts, unsent messages.
+
+### 4.2 Channels
+
+Each table has two channels, built on bbsengine6's channel API (`casino/services/table_channels.py`):
+
+| Channel                       | Publish                                   | Subscribe                                             |
+|-------------------------------|-------------------------------------------|-------------------------------------------------------|
+| `casino:table:<m>:events`     | Server only; announce-only                | Seated players, bots, spectators, sysop               |
+| `casino:table:<m>:chat`       | Subscribers only                          | Seated players, spectators, sysop                     |
+
+- Both channels are created with the table (poker, blackjack, tictactoe, yahtzee).
+- Join subscribes the seat to both channels and syncs the events announcers to the seats.
+  Leave unsubscribes and resyncs. Watching subscribes a spectator to both.
+- Game events (poker state and results, blackjack settlements, tictactoe and yahtzee events)
+  publish to `events`. Table chat publishes to `chat`.
+- bbsengine6 enforces the subscribe rule through a registered authority. Casino's authority
+  answers only for table channels and returns no opinion for any other channel.
+- Watcher lookups work with bed's `SessionRegistry` (`get_table_observers` and `get_by_session`),
+  the store zoid6 wires into the casino router.
 
 ## 5. Hand results
 
@@ -150,7 +171,9 @@ by a role that owns, or can grant on, the `casino` schema.
 
 ## 8. Operational notes
 
-- Run the migration on each database before deploying code that uses it. Until it has run,
+- Startup (`startup/main.py`) runs `shoe_audit_migration.sql`, so a fresh install gets the
+  poker state and shoe audit tables and bed's grants on them, including INSERT and DELETE on
+  `casino.__table`. On an existing install, run the migration as jam before deploying. Until it has run,
   poker actions fail with `relation "casino.__poker_state" does not exist`.
 - Turn `--audit` on for a session that needs a record of every card. It adds one insert per
   card. Leave it off otherwise.

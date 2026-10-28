@@ -166,10 +166,16 @@ bed WebSocket server. The full surface:
 | `BetServiceHandler`     | `bet`                                                                                             |
 | `ChatServiceHandler`    | `chat_table`, `chat_global`, `emote`                                                              |
 | `BankServiceHandler` *(bed; from `bbsengine6.bank.api.handler`)* | `bank_balance`, `bank_add`, `bank_remove`, `bank_transfer_request`, `bank_transfer_approve`, `bank_transfer_reject`, `bank_pending`, `bank_history`, `bank_list_all` |
-| `PokerServiceHandler`   | `poker_create_table`, `poker_join_table`, `poker_leave_table`, `poker_start_hand`, `poker_action`, `poker_fold`, `poker_check`, `poker_call`, `poker_bet`, `poker_raise`, `poker_all_in`, `poker_get_state`, `poker_list_tables` |
+| `PokerServiceHandler`   | `poker_create_table`, `poker_join_table`, `poker_leave_table`, `poker_start_hand`, `poker_fold`, `poker_check`, `poker_call`, `poker_bet`, `poker_raise`, `poker_all_in`, `poker_get_state` (the lobby is the shared `list_tables` with `game_type: poker`) |
 | `YahtzeeService`        | (per-game — see `yahtzee/README.md`)                                                              |
 | `TicTacToeService`      | (per-game — see `tictactoe/README.md`)                                                            |
 | `PostOfficeService`     | IMAP polling, notification fan-out                                                                |
+
+**Table channels.** Every table has an `events` channel (announce-only, published by the server) and
+a `chat` channel (publishing needs a subscription). Only seated players, bots (through the seat list),
+spectators, and sysop may subscribe, and spectators may read both. The rules are in
+`casino/services/table_channels.py`; the subscribe gate and publish rule are bbsengine6's
+(`ChannelService.can_subscribe`, `publish_requires_subscription`). Details: `POKER_PERSISTENCE.md` §4.2.
 
 **Join reply (Phase 3).** A successful `join_table` returns
 `{"type": "joined_table", "moniker": ..., "game_type": ..., "message": ...}`.
@@ -218,8 +224,12 @@ The door-mode entry is `python -m casino` (`__main__.py`). It:
    - Slots
    - Connect-to-BED
    - Table list / join / view
-   - Watch / unwatch tables
+   - Watch / unwatch tables (the member menu's `W` spectates a table's events and chat)
    - Bet / hit / stand
+   - Poker: `poker play` seats a new table and opens the poker menu (start, check, call,
+     bet, raise, all-in, fold, table). Replies render the board, pot, turn, your cards, and each
+     hand's result, including every showdown hand and split share.
+   - Table chat (`M`) posts to the table's chat channel
    - Global chat
    - Bank
    - Maintenance (sysop only)
