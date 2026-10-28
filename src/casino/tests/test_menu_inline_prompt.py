@@ -67,13 +67,17 @@ class TestClientMenuInlinePrompt(unittest.TestCase):
         self.assertEqual(mock_ic.call_count, 1)
         prompt = mock_ic.call_args[0][0]
 
-        # 9 visible options + 2 boundary seams = 10 ``{f6}`` markers
+        # N visible options + 2 boundary seams = N + 1 ``{f6}`` markers
+        # (N-1 between options, plus balance-tail and prompt-head seams).
+        from casino.client.menu import _visible_options
+
+        visible = len(_visible_options(client))
         f6_count = prompt.count("{f6}")
         self.assertEqual(
             f6_count,
-            10,
-            f"expected 10 {{f6}} separators (9 visible options "
-            f"plus balance-tail and prompt-head seams), got "
+            visible + 1,
+            f"expected {visible + 1} {{f6}} separators ({visible} visible "
+            f"options plus balance-tail and prompt-head seams), got "
             f"{f6_count} in: {prompt!r}",
         )
 

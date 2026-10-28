@@ -375,6 +375,21 @@ class CasinoClient:
         elif msg_type == "error":
             io.echo(f"Error: {msg.get('message')}")
 
+        elif msg_type == "subscribed":
+            io.echo(f"Subscribed: {msg.get('channel')}")
+
+        elif msg_type == "unsubscribed":
+            io.echo(f"Unsubscribed: {msg.get('channel')}")
+
+        elif msg_type == "subscriptions":
+            channels = msg.get("channels") or []
+            if not channels:
+                io.echo("No channel subscriptions.")
+            else:
+                io.echo("Subscriptions:")
+                for name in sorted(channels):
+                    io.echo(f"  {name}")
+
         elif msg_type == "pong":
             io.echo("Pong")
 
@@ -1132,6 +1147,51 @@ class CasinoClient:
             )
         )
 
+    def cmd_channels_menu(self) -> None:
+        """Channel subscription submenu: subscribe, unsubscribe, list."""
+        while True:
+            cmd = io.inputchoice(
+                "{var:promptcolor}{var:optioncolor}[S]{var:labelcolor}ubscribe{/all}{f6}{var:optioncolor}[U]{var:labelcolor}nsubscribe{/all}{f6}{var:optioncolor}[L]{var:labelcolor}ist subscriptions{/all}{f6}{var:optioncolor}[Q]{var:labelcolor}uit{/all}{var:promptcolor}: {var:inputcolor}",
+                "s,u,l,q",
+                default="q",
+            )
+
+            if cmd == "s":
+                io.echo("Subscribe")
+                self.cmd_channel_subscribe()
+            elif cmd == "u":
+                io.echo("Unsubscribe")
+                self.cmd_channel_unsubscribe()
+            elif cmd == "l":
+                io.echo("Subscriptions")
+                self._loop.run_until_complete(
+                    self.send({"type": "get_subscriptions"})
+                )
+            elif cmd == "q":
+                break
+
+            self._loop.run_until_complete(asyncio.sleep(0.1))
+
+    def cmd_channel_subscribe(self) -> None:
+        """Ask for a channel name and send subscribe_channel."""
+        channel = io.inputstring("{var:promptcolor}Channel name: {var:inputcolor}")
+        if not channel:
+            io.echo("{errorcolor}channel name required{/all}", level="error")
+            return
+        self._loop.run_until_complete(
+            self.send({"type": "subscribe_channel", "channel": channel})
+        )
+
+    def cmd_channel_unsubscribe(self) -> None:
+        """Ask for a channel name and send unsubscribe_channel."""
+        channel = io.inputstring("{var:promptcolor}Channel name: {var:inputcolor}")
+        if not channel:
+            io.echo("{errorcolor}channel name required{/all}", level="error")
+            return
+        self._loop.run_until_complete(
+            self.send({"type": "unsubscribe_channel", "channel": channel})
+        )
+
     def cmd_bank_menu(self) -> None:
         """Bank management submenu."""
         while True:
@@ -1377,6 +1437,9 @@ class CasinoClient:
             elif cmd == "K":
                 io.echo("Bank")
                 self.cmd_bank_menu()
+            elif cmd == "E":
+                io.echo("Channels")
+                self.cmd_channels_menu()
             elif cmd == "X":
                 io.echo("Tic Tac Toe")
                 self.cmd_tictactoe_quick_play()
