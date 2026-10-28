@@ -1567,6 +1567,31 @@ class SlotServiceHandler(BaseService):
         }
 
 
+def _watching_check(sessions: Any):
+    """Return ``is_watching(table_moniker, moniker)`` built from whatever session store is wired.
+
+    zoid6 passes bed's ``SessionRegistry``, which exposes ``get_table_observers`` (session ids)
+    and ``get_by_session`` (the session's moniker and spectator set). The casino session manager
+    may also provide ``is_watching`` directly; that is used when present.
+    """
+    direct = getattr(sessions, "is_watching", None)
+    if callable(direct):
+        return direct
+
+    def is_watching(table_moniker: str, moniker: str) -> bool:
+        get_observers = getattr(sessions, "get_table_observers", None)
+        get_by_session = getattr(sessions, "get_by_session", None)
+        if not callable(get_observers) or not callable(get_by_session):
+            return False
+        for session_id in get_observers(table_moniker) or ():
+            state = get_by_session(str(session_id))
+            if state is not None and getattr(state, "moniker", None) == moniker:
+                return True
+        return False
+
+    return is_watching
+
+
 class MessageRouter:
     """
     Main message handler that coordinates all services.
@@ -1667,7 +1692,7 @@ class MessageRouter:
         # The casino subscribe rule for table channels: seated players, bots and spectators.
         from casino.services import table_channels as _table_channels
         _table_channels.register_table_channels(
-            args, session_is_watching=self.sessions.is_watching,
+            args, session_is_watching=_watching_check(self.sessions),
         )
         self.poker_service_handler = PokerServiceHandler(
             args, self.sessions, channel_state=self.channel_state, **token_kwargs

@@ -200,3 +200,35 @@ def test_quick_play_creates_the_table_channels(module_path, cls_name, game):
         svc._find_table_fn = lambda *a, **k: None
         svc._ensure_table("alice")
     make.assert_called_once_with(ARGS, created["moniker"], owner="alice")
+
+
+# ---------------------------------------------------------------- session stores (unit)
+
+
+@pytest.mark.unit
+def test_watcher_check_works_with_bed_session_registry():
+    """zoid6 wires bed's SessionRegistry, which has no is_watching. The check must still answer."""
+    from bed.api.session import SessionRegistry
+    from casino.api.handler import _watching_check
+
+    reg = SessionRegistry()
+    reg.bind(session_id="s1", websocket_id="w1", moniker="watcher", is_sysop=False)
+    reg.bind(session_id="s2", websocket_id="w2", moniker="other", is_sysop=False)
+    reg.add_spectator("s1", "tbl-1")
+    check = _watching_check(reg)
+    assert check("tbl-1", "watcher") is True
+    assert check("tbl-1", "other") is False
+    assert check("tbl-2", "watcher") is False
+
+
+@pytest.mark.unit
+def test_watcher_check_prefers_a_store_that_provides_is_watching():
+    from casino.api.handler import _watching_check
+
+    class Store:
+        def is_watching(self, table_moniker, moniker):
+            return (table_moniker, moniker) == ("t", "m")
+
+    check = _watching_check(Store())
+    assert check("t", "m") is True
+    assert check("t", "x") is False
