@@ -92,7 +92,7 @@ class TestCheckCasinoContract(unittest.TestCase):
             os.path.dirname(__file__),
             "../../../../bbsengine6/py/src/bbsengine6/backend/checkengine.py",
         )
-        with open(checkengine_path) as fh:
+        with open(checkengine_path, encoding="utf-8") as fh:
             src = fh.read()
         expected = {
             "public.manage_schema_priv",

@@ -174,6 +174,17 @@ def main(args, **kwargs):
             return False
         io.echo(" ok ", level="ok")
 
+        # 4a0. Poker table state and the shoe audit log (casino.__poker_state, casino.__shoe_event),
+        #      with the grants bed needs on them and on casino.__table. Idempotent.
+        io.echo("{var:labelcolor}migration {var:valuecolor}shoe_audit{var:labelcolor}: ", end="")
+        if (
+            database.importsql(args, "shoe_audit_migration.sql", conn=conn, package="casino.sql")
+            is False
+        ):
+            io.echo("fail", level="error")
+            return False
+        io.echo(" ok ", level="ok")
+
         # 4a. Play clock column on casino.__table (turn_seconds, default 0 = off). Before the
         #     table functions, which read it.
         io.echo("{var:labelcolor}migration {var:valuecolor}table.turn_seconds{var:labelcolor}: ", end="")

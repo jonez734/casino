@@ -11,13 +11,13 @@ STARTUP = CASINO / "startup" / "main.py"
 
 
 def _sql():
-    return SQL.read_text()
+    return SQL.read_text(encoding="utf-8")
 
 
 def test_migration_file_exists_and_is_packaged():
     assert SQL.is_file()
     # pyproject ships sql/*.sql, so the file is included in the installed build.
-    text = (CASINO.parents[1] / "pyproject.toml").read_text()
+    text = (CASINO.parents[1] / "pyproject.toml").read_text(encoding="utf-8")
     assert '"sql/*.sql"' in text
 
 
@@ -43,7 +43,7 @@ def test_migration_is_idempotent_by_owner_filter():
 
 
 def test_startup_runs_migration_after_classes_and_before_overrides():
-    src = STARTUP.read_text()
+    src = STARTUP.read_text(encoding="utf-8")
     classes_at = src.index("for c, sql in classlist:")
     migrate_at = src.index('"owner_zoid6_migration.sql"')
     channels_at = src.index("checkchannels.main(args, conn=conn)")
@@ -51,6 +51,6 @@ def test_startup_runs_migration_after_classes_and_before_overrides():
 
 
 def test_startup_migration_failure_stops_install():
-    src = STARTUP.read_text()
+    src = STARTUP.read_text(encoding="utf-8")
     window = src[src.index('"owner_zoid6_migration.sql"') - 200:src.index('"owner_zoid6_migration.sql"') + 300]
     assert "return False" in window
