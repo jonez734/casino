@@ -100,7 +100,7 @@ python -m casino --bed-host H --bed-port P
 
 # 3. Or run the WebSocket server (bed will load MessageRouter)
 pip install -e . -e ../bbsengine6/py -e ../bed -e ../zoid6/src
-zoid6 --config /etc/zoid6/bed.json   # casino block is enabled by default
+zoid6                                 # casino block is enabled by default (packaged config)
 
 # 4. Or run the door-mode CLI (talks to local Postgres directly)
 python -m casino --direct
