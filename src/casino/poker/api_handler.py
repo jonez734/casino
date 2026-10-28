@@ -61,9 +61,11 @@ class PokerServiceHandler:
         instance_id: Optional[str] = None,
         clock: Any = None,
         pool: Any = None,
+        channel_state: Any = None,
     ) -> None:
         self.args = args
         self.sessions = sessions
+        self.channel_state = channel_state
         self._service = service if service is not None else PokerService(args)
         self.secret = bytes(secret) if secret else None
         self.token_store = token_store
@@ -116,6 +118,9 @@ class PokerServiceHandler:
                     small_blind=int(message.get("small_blind", 1)),
                     big_blind=int(message.get("big_blind", 2)),
                 )
+                if result.get("success"):
+                    from casino.services import table_channels as _tc
+                    _tc.create_table_channels(self.args, result["table_moniker"], owner=moniker)
                 return _envelope("poker_table_created", result)
 
             if msg_type == "poker_join_table":
@@ -125,6 +130,8 @@ class PokerServiceHandler:
                 result = svc.join_table(table_moniker, moniker, int(message.get("buy_in", 100)))
                 if result.get("success"):
                     self._set_seated(websocket, table_moniker)
+                    self._subscribe_table(websocket, table_moniker)
+                    self._sync_announcers(table_moniker, moniker)
                 return _envelope("poker_joined_table", result, table_moniker=table_moniker)
 
             table_moniker = getattr(state, "table_moniker", None) or self._seated_table(websocket)
@@ -135,10 +142,14 @@ class PokerServiceHandler:
                 result = svc.leave_table(table_moniker, moniker)
                 if result.get("success"):
                     self._set_seated(websocket, None)
+                    self._unsubscribe_table(websocket, table_moniker)
+                    self._sync_announcers(table_moniker, moniker)
                 return _envelope("poker_left_table", result, table_moniker=table_moniker)
 
             if msg_type == "poker_start_hand":
                 result = svc.start_hand(table_moniker)
+                if result.get("success"):
+                    await self._publish_events(server, table_moniker, moniker, svc)
                 return _envelope("poker_hand_started", result, table_moniker=table_moniker)
 
             if msg_type == "poker_get_state":
@@ -148,10 +159,13 @@ class PokerServiceHandler:
             if msg_type in _ACTION_TYPES:
                 amount = int(message.get("amount", 0) or 0)
                 result = svc.player_action(table_moniker, moniker, _ACTION_TYPES[msg_type], amount)
-                return _envelope(
+                envelope = _envelope(
                     "poker_action_result", {**result, "last_result": svc.last_result(table_moniker)},
                     table_moniker=table_moniker,
                 )
+                if result.get("success"):
+                    await self._publish_events(server, table_moniker, moniker, svc)
+                return envelope
         except (TypeError, ValueError) as e:
             return _bad(str(e))
         except Exception as e:  # pragma: no cover - surfaced to the client, never swallowed
@@ -165,6 +179,61 @@ class PokerServiceHandler:
         """The table this session is seated at, from the session store (not the wire)."""
         state = self._session_state(websocket)
         return getattr(state, "table_moniker", None) if state is not None else None
+
+    async def _publish_events(self, server: Any, table_moniker: str, actor: str, svc: Any) -> None:
+        """Publish the table's new state and last result to its events channel.
+
+        The events channel is announce-only and is published by the server, so the publish runs as
+        the table's seated actor for the permission check. A publish failure is logged, never raised:
+        the action has already happened and its direct reply must still reach the sender.
+        """
+        if server is None or self.channel_state is None:
+            return
+        try:
+            from bbsengine6.net import channel_publish
+
+            from casino.services.table_channels import events_channel
+
+            payload = {
+                "type": "poker_event",
+                "table_moniker": table_moniker,
+                "state": svc.get_table_state(table_moniker, actor),
+                "last_result": svc.last_result(table_moniker),
+            }
+            await channel_publish(
+                self.channel_state,
+                events_channel(table_moniker),
+                payload,
+                server=server,
+                sender_moniker=actor,
+                args=self.args,
+            )
+        except Exception as e:
+            io.echo(f"poker events publish failed: {e}", level="warning")
+
+    def _sync_announcers(self, table_moniker: str, owner: str) -> None:
+        """Keep the events channel's announcers equal to the table's seats (players and bots)."""
+        from casino.services import table_channels as _tc
+        result = _tc.sync_announcers(self.args, table_moniker, owner=owner)
+        if not result.get("success"):
+            io.echo(f"poker announcer sync failed for {table_moniker}: {result.get('failed')}", level="warning")
+
+    def _subscribe_table(self, websocket: Any, table_moniker: str) -> None:
+        """Subscribe the seated session to the table's events and chat channels."""
+        from casino.services import table_channels as _tc
+        if self.channel_state is not None:
+            _tc.subscribe_seat(self.channel_state, self._session_key(websocket), table_moniker)
+
+    def _unsubscribe_table(self, websocket: Any, table_moniker: str) -> None:
+        from casino.services import table_channels as _tc
+        if self.channel_state is not None:
+            _tc.unsubscribe_table(self.channel_state, self._session_key(websocket), table_moniker)
+
+    def _session_key(self, websocket: Any) -> int:
+        """The int key the channel state uses for ``websocket``: the transport's session id, else
+        ``id(websocket)``. This is the same convention as the casino table handler."""
+        bbs_id = getattr(websocket, "_bbsengine6_session_id", None)
+        return int(bbs_id) if bbs_id is not None else id(websocket)
 
     def _set_seated(self, websocket: Any, table_moniker: Optional[str]) -> None:
         """Mirror the seat into the session store, the same store check_access reads."""

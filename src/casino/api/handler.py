@@ -97,6 +97,13 @@ class CasinoSessionManager(SessionManager):
     def get_table_observers(self, table_moniker: str) -> set:
         return self._spectators.get(table_moniker, set())
 
+    def is_watching(self, table_moniker: str, moniker: str) -> bool:
+        """True when a live session for ``moniker`` is spectating ``table_moniker``."""
+        for session in self._sessions.values():
+            if session.get("moniker") == moniker and table_moniker in session.get("spectator_of", set()):
+                return True
+        return False
+
     def get_table_player_count(self, table_moniker: str) -> int:
         return sum(1 for s in self._sessions.values() if s.get("table_moniker") == table_moniker)
 
@@ -153,6 +160,26 @@ class BaseService:
 
         return _time.time()
 
+    async def _publish_chat(self, server: Any, table_moniker: str, sender: str, message: dict[str, Any]) -> None:
+        """Publish a table chat message to the table's chat channel. Failures are logged, not raised."""
+        if not self.channel_state:
+            return
+        try:
+            from bbsengine6.net import channel_publish
+
+            from casino.services.table_channels import chat_channel
+
+            await channel_publish(
+                self.channel_state,
+                chat_channel(table_moniker),
+                message,
+                server=server,
+                sender_moniker=sender,
+                args=self.args,
+            )
+        except Exception as e:
+            io.echo(f"table chat publish failed: {e}", level="warning")
+
     async def _publish_to_table(
         self,
         server: Any,
@@ -174,11 +201,11 @@ class BaseService:
             return
         from bbsengine6.net import channel_publish
 
-        from bbsengine6.channel.naming import table_channel
+        from casino.services.table_channels import events_channel
 
         await channel_publish(
             self.channel_state,
-            table_channel("casino", table_moniker),
+            events_channel(table_moniker),
             message,
             server=server,
             sender_moniker=sender_moniker,
@@ -435,6 +462,9 @@ class TableServiceHandler(BaseService):
         )
 
         if result.get("success"):
+            # Every table has an events channel and a chat channel, created with the table.
+            from casino.services import table_channels as _tc
+            _tc.create_table_channels(self.args, result["table"]["moniker"], owner=state.moniker)
             return {
                 "type": "table_created",
                 "moniker": result["table"]["moniker"],
@@ -592,13 +622,12 @@ class TableServiceHandler(BaseService):
         if result["success"]:
             self._set_seated(websocket, table_moniker)
 
-            # Auto-subscribe to table channel for real-time updates
+            # Subscribe the seat to the table's events and chat channels, and keep the events
+            # announcers equal to the seats.
             if self.channel_state:
-                channel_subscribe(
-                    self.channel_state,
-                    self._legacy_session_id(websocket),
-                    f"casino:table:{table_moniker}",
-                )
+                from casino.services import table_channels as _tc
+                _tc.subscribe_seat(self.channel_state, self._legacy_session_id(websocket), table_moniker)
+            _tc.sync_announcers(self.args, table_moniker, owner=state.moniker)
 
             return {
                 "type": "joined_table",
@@ -673,13 +702,11 @@ class TableServiceHandler(BaseService):
 
         if result["success"]:
             self._set_seated(websocket, None)
-            # Unsubscribe from table channel
+            # Unsubscribe from the table's events and chat channels, and drop the seat's announcer.
             if self.channel_state:
-                channel_unsubscribe(
-                    self.channel_state,
-                    self._legacy_session_id(websocket),
-                    f"casino:table:{table_moniker}",
-                )
+                from casino.services import table_channels as _tc
+                _tc.unsubscribe_table(self.channel_state, self._legacy_session_id(websocket), table_moniker)
+            _tc.sync_announcers(self.args, table_moniker, owner=state.moniker)
 
         return {
             "type": "left_table",
@@ -779,13 +806,10 @@ class TableServiceHandler(BaseService):
 
         self._add_spectator(websocket, table_moniker)
 
-        # Auto-subscribe to table channel for real-time updates
+        # A spectator subscribes to the table's events and chat channels.
         if self.channel_state:
-            channel_subscribe(
-                self.channel_state,
-                self._legacy_session_id(websocket),
-                f"casino:table:{table_moniker}",
-            )
+            from casino.services import table_channels as _tc
+            _tc.subscribe_seat(self.channel_state, self._legacy_session_id(websocket), table_moniker)
 
         return {
             "type": "watching_table",
@@ -804,11 +828,8 @@ class TableServiceHandler(BaseService):
         if table_moniker:
             self._remove_spectator(websocket, table_moniker)
             if self.channel_state:
-                channel_unsubscribe(
-                    self.channel_state,
-                    self._legacy_session_id(websocket),
-                    f"casino:table:{table_moniker}",
-                )
+                from casino.services import table_channels as _tc
+                _tc.unsubscribe_table(self.channel_state, self._legacy_session_id(websocket), table_moniker)
 
         return {"type": "stopped_watching", "message": "Stopped watching"}
 
@@ -1011,8 +1032,9 @@ class GameServiceHandler(BaseService):
             broadcast_state["type"] = "game_state"
             observer_count = len(self._get_observers(table_moniker))
             player_count = self._get_player_count(table_moniker)
+            from casino.services.table_channels import events_channel as events_channel_name
             io.echo(
-                f"broadcast game_state: channel=casino:table:{table_moniker} "
+                f"broadcast game_state: channel={events_channel_name(table_moniker)} "
                 f"phase={broadcast_state.get('phase', '?')} "
                 f"players={player_count} observers={observer_count}",
                 level="info",
@@ -1150,8 +1172,9 @@ class BetServiceHandler(BaseService):
                 broadcast_state["type"] = "game_state"
                 observer_count = len(self._get_observers(table_moniker))
                 player_count = self._get_player_count(table_moniker)
+                from casino.services.table_channels import events_channel as events_channel_name
                 io.echo(
-                    f"broadcast game_state: channel=casino:table:{table_moniker} "
+                    f"broadcast game_state: channel={events_channel_name(table_moniker)} "
                     f"phase={broadcast_state.get('phase', '?')} "
                     f"players={player_count} observers={observer_count}",
                     level="info",
@@ -1216,7 +1239,7 @@ class ChatServiceHandler(BaseService):
         msg_type = message.get("type")
 
         if msg_type in ("chat_table", "chat_global", "emote"):
-            return await self._handle_chat(websocket, msg_type, message)
+            return await self._handle_chat(websocket, msg_type, message, server=server)
 
         return None
 
@@ -1225,6 +1248,8 @@ class ChatServiceHandler(BaseService):
         websocket: Any,
         msg_type: str,
         message: dict[str, Any],
+        *,
+        server: Any = None,
     ) -> Optional[dict[str, Any]]:
         op = msg_type  # chat_table / chat_global / emote map directly to op
         state, err = self._check_access(websocket, op, message)
@@ -1239,7 +1264,7 @@ class ChatServiceHandler(BaseService):
             if not table_moniker:
                 return {"type": "error", "code": "not_at_table"}
 
-            return {
+            reply = {
                 "type": "chat_message",
                 "from_moniker": moniker,
                 "message": chat_msg,
@@ -1247,6 +1272,10 @@ class ChatServiceHandler(BaseService):
                 "moniker": table_moniker,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
+            # The table's chat channel reaches every seat and spectator. The publish requires the
+            # sender to be subscribed to the channel (publish_requires_subscription).
+            await self._publish_chat(server, table_moniker, moniker, reply)
+            return reply
 
         elif msg_type == "chat_global":
             return {
@@ -1635,8 +1664,13 @@ class MessageRouter:
 
         # Create services
         self.auth_service = AuthService(args, self.sessions, self.channel_state)
+        # The casino subscribe rule for table channels: seated players, bots and spectators.
+        from casino.services import table_channels as _table_channels
+        _table_channels.register_table_channels(
+            args, session_is_watching=self.sessions.is_watching,
+        )
         self.poker_service_handler = PokerServiceHandler(
-            args, self.sessions, **token_kwargs
+            args, self.sessions, channel_state=self.channel_state, **token_kwargs
         )
         self.table_service = TableServiceHandler(
             args, self.sessions, self.channel_state,
