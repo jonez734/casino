@@ -942,7 +942,10 @@ class GameServiceHandler(BaseService):
         instance_id: Optional[str] = None,
         clock: Any = None,
         pool: Any = None,
+        channel_state: Any = None,
     ) -> None:
+        # The table broadcast after a stand, double, or settle goes to the router's shared channel
+        # state. Without it the broadcast reaches no seated player.
         super().__init__(
             args,
             session_manager,
@@ -950,6 +953,7 @@ class GameServiceHandler(BaseService):
             token_store=token_store,
             instance_id=instance_id,
             clock=clock,
+            channel_state=channel_state,
         )
         self.game_service = self.GameService(args, pool=pool)
 
@@ -1092,7 +1096,10 @@ class BetServiceHandler(BaseService):
         instance_id: Optional[str] = None,
         clock: Any = None,
         pool: Any = None,
+        channel_state: Any = None,
     ) -> None:
+        # The table broadcast after a bet goes to the router's shared channel state. Without it the
+        # bet publishes to a private, empty state and no seated player receives the game_state.
         super().__init__(
             args,
             session_manager,
@@ -1100,6 +1107,7 @@ class BetServiceHandler(BaseService):
             token_store=token_store,
             instance_id=instance_id,
             clock=clock,
+            channel_state=channel_state,
         )
         self.game_service = self.GameService(args, pool=pool)
 
@@ -1712,8 +1720,12 @@ class MessageRouter:
             args, self.sessions, self.channel_state,
             poker_service_handler=self.poker_service_handler, **token_kwargs
         )
-        self.game_service = GameServiceHandler(args, self.sessions, **token_kwargs)
-        self.bet_service = BetServiceHandler(args, self.sessions, **token_kwargs)
+        self.game_service = GameServiceHandler(
+            args, self.sessions, channel_state=self.channel_state, **token_kwargs
+        )
+        self.bet_service = BetServiceHandler(
+            args, self.sessions, channel_state=self.channel_state, **token_kwargs
+        )
         self.chat_service = ChatServiceHandler(args, self.sessions, **token_kwargs)
         self.slot_service = SlotServiceHandler(
             args, self.sessions, self.channel_state, **token_kwargs
