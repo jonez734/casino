@@ -63,10 +63,18 @@ def choose(prompt: str, options: str, default: str = "", help: Any = None) -> Op
 
 
 def _registry_for(options: str) -> Registry:
-    """A registry whose keys are the letters in ``options``, as typed by the menu."""
+    """A registry whose keys are the valid answers in ``options``.
+
+    Two forms are used by callers: comma-separated letters (``"s,u,l,q"``) and a bare run of
+    letters (``"hp"``). Commas split tokens; a string with no commas is read one character per
+    key, as ``io.inputchoice`` reads it.
+    """
     registry = Registry()
-    for letter in options.split(","):
-        letter = letter.strip()
-        if letter:
-            registry.add(letter, letter)
+    if "," in options:
+        keys = [token.strip() for token in options.split(",")]
+    else:
+        keys = list(options.strip())
+    for key in keys:
+        if key:
+            registry.add(key, key)
     return registry

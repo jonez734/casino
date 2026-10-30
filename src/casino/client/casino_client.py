@@ -15,6 +15,7 @@ from bbsengine6 import io, util
 from bbsengine6 import bottombar as screen_mod
 from bbsengine6.net.ping import PingUnavailable, connect as _net_connect
 
+from .. import host
 from .menu import menu as _client_menu
 from .table_render import _safe_int_str, _signed_str, render_table
 
@@ -1051,7 +1052,7 @@ class CasinoClient:
         """Handle add funds to bank."""
         moniker = io.inputstring("{var:promptcolor}Table moniker: {var:inputcolor}")
         amount = io.inputinteger("{var:promptcolor}Amount to add: {var:inputcolor}")
-        source = io.inputchoice("{var:promptcolor}Source (h)ouse or (p)layer: {var:optioncolor}[hP]{var:promptcolor}: {var:inputcolor}", "hp", default="h")
+        source = host.choose("{var:promptcolor}Source (h)ouse or (p)layer: {var:optioncolor}[hP]{var:promptcolor}: {var:inputcolor}", "hp", default="h").lower()
         source = "house" if source == "h" else "player"
 
         self._loop.run_until_complete(
@@ -1165,11 +1166,13 @@ class CasinoClient:
     def cmd_channels_menu(self) -> None:
         """Channel subscription submenu: subscribe, unsubscribe, list."""
         while True:
-            cmd = io.inputchoice(
+            # host.choose uses LO when hosted (returns the key as stored) and io.inputchoice
+            # standalone (returns uppercase). Compare on lowercase so both behave the same.
+            cmd = host.choose(
                 "{var:promptcolor}{var:optioncolor}[S]{var:labelcolor}ubscribe{/all}{f6}{var:optioncolor}[U]{var:labelcolor}nsubscribe{/all}{f6}{var:optioncolor}[L]{var:labelcolor}ist subscriptions{/all}{f6}{var:optioncolor}[Q]{var:labelcolor}uit{/all}{var:promptcolor}: {var:inputcolor}",
                 "s,u,l,q",
                 default="q",
-            )
+            ).lower()
 
             if cmd == "s":
                 io.echo("Subscribe")
@@ -1210,11 +1213,12 @@ class CasinoClient:
     def cmd_bank_menu(self) -> None:
         """Bank management submenu."""
         while True:
-            cmd = io.inputchoice(
+            # Compare on lowercase: see cmd_channels_menu.
+            cmd = host.choose(
                 "{var:promptcolor}{var:optioncolor}[B]{var:labelcolor}alance{/all}{f6}{var:optioncolor}[A]{var:labelcolor}dd{/all}{f6}{var:optioncolor}[W]{var:labelcolor}ithdraw{/all}{f6}{var:optioncolor}[T]{var:labelcolor}ransfer{/all}{f6}{var:optioncolor}[P]{var:labelcolor}ending{/all}{f6}{var:optioncolor}[H]{var:labelcolor}istory{/all}{f6}{var:optioncolor}[L]{var:labelcolor}ist all{/all}{f6}{var:optioncolor}[Q]{var:labelcolor}uit{/all}{var:promptcolor}: {var:inputcolor}",
                 "b,a,w,t,p,h,l,q",
                 default="q",
-            )
+            ).lower()
 
             if cmd == "b":
                 io.echo("Balance")

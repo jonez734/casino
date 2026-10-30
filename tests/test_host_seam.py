@@ -128,3 +128,16 @@ def test_init_without_a_host_stays_standalone():
          patch("casino.here.install", create=True):
         casino.init(None)
     assert host.is_hosted() is False
+
+
+def test_bare_letter_run_is_one_key_per_character():
+    """'hp' means h or p, as io.inputchoice reads it, not a single key 'hp'."""
+    seen = {}
+
+    def menu(prompt, registry, default="", help=None):
+        seen["keys"] = sorted(registry.keys())
+        return "h"
+
+    host.register_menu(menu)
+    host.choose("pick: ", "hp", default="h")
+    assert seen["keys"] == ["h", "p"]
