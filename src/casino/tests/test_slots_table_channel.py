@@ -157,3 +157,56 @@ class TestSlotsTableChannel(__import__("unittest").IsolatedAsyncioTestCase):
         self.assertIsNotNone(seen, "the spectator did not receive the spin on the table channel")
         self.assertEqual(seen["player_moniker"], self.player)
         self.assertEqual(seen["spin"]["id"], spin_reply["spin"]["id"])
+
+
+class TestSlotsBigWinShout(TestSlotsTableChannel):
+    """A big win reaches a connected player who is not at the table, over real websockets."""
+
+    async def test_a_big_win_is_shouted_to_a_player_who_is_not_at_the_table(self) -> None:
+        from casino.slots.lib import BIG_WIN_MULTIPLIER
+        # The spectator stays in the lobby: they never join or watch the table.
+
+        self.client_player = await self._login(self.player)
+        self.client_spectator = await self._login(self.spectator)
+
+        await self.client_player.send({
+            "type": "create_table", "game_type": "slots",
+            "min_bet": 1, "max_bet": 100, "moniker": self.table_moniker,
+        })
+        self.assertEqual((await self.client_player.receive())["type"], "table_created")
+        await self.client_player.send({"type": "join_table", "moniker": self.table_moniker})
+        self.assertEqual((await self.client_player.receive())["type"], "joined_table")
+
+        forced = {"success": True, "spin": {
+            "id": 99, "bet": 1, "payout": 1 * BIG_WIN_MULTIPLIER, "net": BIG_WIN_MULTIPLIER - 1,
+            "reels": [], "center_row": [], "wins": [],
+        }}
+        from unittest.mock import patch as _patch
+
+        with _patch.object(self.router.slot_service, "_handle_spin", return_value=forced):
+            await self.client_player.send({
+                "type": "slot_spin", "bet": 1, "table_moniker": self.table_moniker,
+            })
+            # The player is subscribed to casino:global too, so the shout may arrive first. Take
+            # the spin reply by type.
+            reply = None
+            for _ in range(5):
+                msg = await self.client_player.receive()
+                if msg.get("type") == "slot_result":
+                    reply = msg
+                    break
+        self.assertIsNotNone(reply, "the player did not receive the spin reply")
+        self.assertEqual(reply["type"], "slot_result")
+
+        shout = None
+        for _ in range(10):
+            try:
+                msg = await asyncio.wait_for(self.client_spectator._message_queue.get(), 3)
+            except asyncio.TimeoutError:
+                break
+            if msg.get("type") == "big_win":
+                shout = msg
+                break
+        self.assertIsNotNone(shout, "the lobby player did not receive the big-win shout")
+        self.assertEqual(shout["player_moniker"], self.player)
+        self.assertEqual(shout["multiplier"], BIG_WIN_MULTIPLIER)

@@ -23,6 +23,8 @@ from casino.api._auth import (
 )
 from casino.dal.aiosql import table as async_dal_table
 from casino.poker.api_handler import PokerServiceHandler
+from casino.config import get_big_win_settings
+from casino.slots.lib import is_big_win
 from casino.tictactoe.api_handler import TictactoeServiceHandler
 from casino.yahtzee.api_handler import YahtzeeServiceHandler
 
@@ -308,6 +310,13 @@ class AuthService(BaseService):
                 session_id = id(websocket)
             is_sysop = member.issysop(self.args, moniker=moniker) is True
             self.sessions.register_session(session_id, moniker, is_sysop=is_sysop)
+            # Every signed-in player hears the casino-wide announcements (big wins), not only the
+            # players at a table. Subscribed here, next to the session registration.
+            if self.channel_state is not None:
+                from bbsengine6.net import channel_subscribe
+                from bbsengine6.channel.naming import global_channel
+
+                channel_subscribe(self.channel_state, session_id, global_channel("casino"))
             balance = self.player_service.get_balance(moniker)
 
             # Direct messages reach this client through bed's NOTIFY path
@@ -1469,6 +1478,30 @@ class SlotServiceHandler(BaseService):
             }
 
         spin = result["spin"]
+        # A big win is shouted to every connected player on casino:global, not only to the table.
+        # Enabled and threshold come from bed.json casino.slots.big_win (see casino.config).
+        big_win = get_big_win_settings(self.args)
+        if (
+            server is not None
+            and big_win["enabled"]
+            and is_big_win(spin["bet"], spin["payout"], multiplier=big_win["multiplier"])
+        ):
+            shout = {
+                "type": "big_win",
+                "table_moniker": table_moniker,
+                "player_moniker": state.moniker,
+                "game_type": "slots",
+                "bet": spin["bet"],
+                "payout": spin["payout"],
+                "multiplier": spin["payout"] // spin["bet"],
+            }
+            try:
+                # Server-originated: a system announcement, so it carries no sender and is not
+                # refused by the announce-only check that applies to player messages.
+                await self._publish_global(server, shout, sender_moniker=None)
+            except Exception as e:
+                io.echo(f"big win shout failed: {e}", level="warning")
+
         # Broadcast to spectators at the table
         if server is not None:
             broadcast_msg = {
