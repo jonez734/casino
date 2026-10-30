@@ -129,7 +129,8 @@ class TestYahtzeeServiceThreadsPool:
                            pool="POOL")
 
         with patch("casino.yahtzee.service.dal_bet") as db, \
-             patch("casino.yahtzee.service.dal_game") as dg:
+             patch("casino.yahtzee.service.dal_game") as dg, \
+             patch("casino.services.table_channels.create_table_channels"):
             db.place_bet.return_value = {"id": 7}
             s.quick_play("alice")
             assert db.place_bet.call_args.kwargs.get("pool") == "POOL"
@@ -143,7 +144,8 @@ class TestYahtzeeServiceThreadsPool:
                            find_table_fn=lambda *a, **kw: None)
 
         with patch("casino.yahtzee.service.dal_bet") as db, \
-             patch("casino.yahtzee.service.dal_game") as dg:
+             patch("casino.yahtzee.service.dal_game") as dg, \
+             patch("casino.services.table_channels.create_table_channels"):
             db.place_bet.return_value = {"id": 7}
             s.quick_play("alice")
             assert db.place_bet.call_args.kwargs.get("pool") is None
@@ -168,7 +170,8 @@ class TestTictactoeServiceThreadsPool:
                             pool="POOL")
 
         with patch("casino.tictactoe.service.dal_bet") as db, \
-             patch("casino.tictactoe.service.dal_game") as dg:
+             patch("casino.tictactoe.service.dal_game") as dg, \
+             patch("casino.services.table_channels.create_table_channels"):
             db.place_bet.return_value = {"id": 7}
             s.quick_play("alice", mode=1)
             assert db.place_bet.call_args.kwargs.get("pool") == "POOL"

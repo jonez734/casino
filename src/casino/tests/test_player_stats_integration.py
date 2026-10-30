@@ -34,6 +34,9 @@ class TestPlayerStatsDALIntegration(unittest.IsolatedAsyncioTestCase):
         parser = lib.buildargs()
         self.args = parser.parse_args(_dbname.dbname_args())
         self.pool = database.getpool(self.args)
+        # Register the close now, so the pool is released even if setup skips below: a skip
+        # raises before asyncTearDown would run.
+        self.addAsyncCleanup(self._close_pool)
         self.test_moniker = "stats_test_player"
 
         self.stats_column_available = stats_column_exists(self.args)
@@ -66,6 +69,13 @@ class TestPlayerStatsDALIntegration(unittest.IsolatedAsyncioTestCase):
 
         dal_player.get_or_create_player(self.args, self.test_moniker)
 
+    async def _close_pool(self):
+        """Close the pool this test opened. Runs from addAsyncCleanup, so it also runs on skip."""
+        pool = getattr(self, "pool", None)
+        if pool is not None:
+            pool.close()
+            self.pool = None
+
     async def asyncTearDown(self):
         """Clean up test data."""
         if hasattr(self, "pool") and self.pool is not None:
@@ -76,8 +86,6 @@ class TestPlayerStatsDALIntegration(unittest.IsolatedAsyncioTestCase):
                     )
             except Exception:
                 pass
-            self.pool.close()
-            self.pool = None
 
     async def test_get_player_stats_initial_empty(self):
         """New player should have empty stats."""

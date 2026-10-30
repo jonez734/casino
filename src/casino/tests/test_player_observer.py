@@ -189,6 +189,14 @@ class WebSocketTestClient:
             return self._running and hasattr(self.ws, "open") and self.ws.open
 
 
+def _free_port() -> int:
+    """A port nothing is listening on, so the test does not depend on a shared fixed port."""
+    import socket
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
+
+
 class TestPlayerAndObserver(unittest.IsolatedAsyncioTestCase):
     """Test: blackjack player + observer watching the table simultaneously."""
 
@@ -210,6 +218,7 @@ class TestPlayerAndObserver(unittest.IsolatedAsyncioTestCase):
         # auth flow bails with "verify failed". Skip cleanly when
         # the database isn't reachable so the test isn't a false
         # failure under ``make test-unit``.
+        probe_pool = None
         try:
             probe_pool = database.getpool(self.args)
             with database.connect(self.args, pool=probe_pool) as conn, database.cursor(conn) as cur:
@@ -217,6 +226,11 @@ class TestPlayerAndObserver(unittest.IsolatedAsyncioTestCase):
                 cur.fetchone()
         except Exception as exc:
             self.skipTest(f"player/observer integration requires a live DB: {exc}")
+        finally:
+            # The probe only checks reachability. Close its pool here, so its connection
+            # thread does not outlive the test (that is what crashed interpreter shutdown).
+            if probe_pool is not None:
+                probe_pool.close()
 
         self.pool = database.getpool(self.args)
 
@@ -233,7 +247,8 @@ class TestPlayerAndObserver(unittest.IsolatedAsyncioTestCase):
                 "ON CONFLICT (moniker) DO UPDATE SET balance = 100000"
             )
 
-        self.server = WebSocketServer(host="127.0.0.1", port=8765)
+        self.port = _free_port()
+        self.server = WebSocketServer(host="127.0.0.1", port=self.port)
         self.router = MessageRouter(self.args)
         # Door-mode fixture: drive the handlers without a real
         # ``secret`` / ``token_store`` / ``instance_id`` so the
@@ -267,8 +282,12 @@ class TestPlayerAndObserver(unittest.IsolatedAsyncioTestCase):
         if self.observer_client:
             await self.observer_client.close()
 
-        if hasattr(self, "_server_started") and self._server_started:
-            await self.server.stop()
+        # Stop the server even when start() raised part-way (for example, the port was already
+        # bound). Otherwise its thread outlives the test, and the next test cannot bind the port.
+        server = getattr(self, "server", None)
+        if server is not None:
+            with contextlib.suppress(Exception):
+                await server.stop()
 
         if hasattr(self, "pool") and self.pool is not None:
             try:
@@ -294,7 +313,7 @@ class TestPlayerAndObserver(unittest.IsolatedAsyncioTestCase):
 
     async def test_player_and_observer(self):
         """Test blackjack player and observer watching the table simultaneously."""
-        uri = "ws://127.0.0.1:8765/"
+        uri = f"ws://127.0.0.1:{self.port}/"
 
         self.player_client = WebSocketTestClient(uri)
         self.observer_client = WebSocketTestClient(uri)
@@ -500,7 +519,7 @@ class TestPlayerAndObserver(unittest.IsolatedAsyncioTestCase):
 
     async def test_observer_without_player(self):
         """Test observer watching a table that has no active player."""
-        uri = "ws://127.0.0.1:8765/"
+        uri = f"ws://127.0.0.1:{self.port}/"
 
         self.player_client = WebSocketTestClient(uri)
         self.observer_client = WebSocketTestClient(uri)
