@@ -62,6 +62,7 @@ def _make_service(seed=0, find_returns=None):
     find_fn = MagicMock(return_value=find_returns)
     return YahtzeeService(
         _make_args(), dealer=dealer, table_service=ts, find_table_fn=find_fn,
+        pool=MagicMock(name="pool"),
     )
 
 
@@ -91,6 +92,32 @@ def _patched_db():
         p1.stop()
         p2.stop()
         p3.stop()
+
+
+# Table channels and the publish announce-check run against the database, which these tests do
+# not need. Both open a connection pool that no test closes. Replace them for the whole module
+# with a stand-in that fans out through ``server.publish``, as the real publish does for a valid
+# channel, so the broadcast assertions still hold.
+_module_patches: list = []
+
+
+def setUpModule():
+    async def _publish(state, channel, message, server=None, sender_moniker=None, args=None):
+        if server is not None:
+            await server.publish(channel, message)
+
+    for p in (
+        patch("casino.services.table_channels.create_table_channels", return_value={}),
+        patch("bbsengine6.net.channel_publish", side_effect=_publish),
+    ):
+        p.start()
+        _module_patches.append(p)
+
+
+def tearDownModule():
+    for p in reversed(_module_patches):
+        p.stop()
+    _module_patches.clear()
 
 
 class _SimpleSQL:
@@ -247,7 +274,7 @@ class TestFullGameScenario(unittest.TestCase):
             self.assertIsNone(s.get_game("yahtzee-alice"))
             # Game status moved to "closed"
             dg.update_game_status.assert_called_once_with(
-                s.args, 42, "closed", pool=None
+                s.args, 42, "closed", pool=s._pool
             )
 
             # Final scorecard: every category filled (no None)
@@ -587,10 +614,10 @@ class TestDisconnectAndFinalize(unittest.TestCase):
             result = s.finalize_on_disconnect("yahtzee-alice")
             self.assertTrue(result)
             db.settle_bet.assert_called_once_with(
-                s.args, bet_id=7, won=False, payout=0, pool=None,
+                s.args, bet_id=7, won=False, payout=0, pool=s._pool,
             )
             dg.update_game_status.assert_called_once_with(
-                s.args, 42, "cancelled", pool=None,
+                s.args, 42, "cancelled", pool=s._pool,
             )
             self.assertIsNone(s.get_game("yahtzee-alice"))
 
@@ -982,7 +1009,8 @@ class TestHandlerFullMessageFlow(unittest.TestCase):
         # Every state change was broadcast to the table channel.
         self.assertEqual(server.publish.await_count, 4)
         for call in server.publish.await_args_list:
-            self.assertEqual(call.args[0], "casino:table:yahtzee-alice")
+            from casino.services.table_channels import events_channel
+            self.assertEqual(call.args[0], events_channel("yahtzee-alice"))
             self.assertIn(call.args[1]["type"],
                           ("yahtzee_state", "yahtzee_result"))
 

@@ -47,11 +47,14 @@ def _make_service(find_returns=None):
     ts = _mock_table_service()
     dealer = TictactoeDealer()
     find_fn = MagicMock(return_value=find_returns)
+    # A fake pool, so the service never opens a real one. Without a pool, the turn log and the
+    # DAL fall back to database.connect, which creates a pool the test never closes.
     s = TictactoeService(
         args,
         dealer=dealer,
         table_service=ts,
         find_table_fn=find_fn,
+        pool=MagicMock(name="pool"),
     )
     return s, ts, find_fn
 
@@ -271,7 +274,7 @@ class TestQuickPlay:
              patch("casino.tictactoe.service.dal_game", dg), \
              patch("casino.tictactoe.service.database", dbconn), pytest.raises(ValueError):
             s.quick_play("alice", mode=1)
-        dg.update_game_status.assert_called_once_with(s.args, 42, "cancelled", pool=None)
+        dg.update_game_status.assert_called_once_with(s.args, 42, "cancelled", pool=s._pool)
         assert s.get_game("ttt-alice") is None
 
 

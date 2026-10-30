@@ -17,6 +17,25 @@ from casino.yahtzee.service import YahtzeeService
 from casino.tests._session_mock import make_sessions_mock
 
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _no_database_channels():
+    """Table channels and the publish announce-check run against the database, which these
+    tests do not need. Both open a connection pool that no test closes. Replace them with a
+    stand-in that fans out through ``server.publish``, as the real publish does for a valid
+    channel, so the broadcast assertions still hold.
+    """
+    async def _publish(state, channel, message, server=None, sender_moniker=None, args=None):
+        if server is not None:
+            await server.publish(channel, message)
+
+    with patch("casino.services.table_channels.create_table_channels", return_value={}), \
+         patch("bbsengine6.net.channel_publish", side_effect=_publish):
+        yield
+
+
 def _make_args():
     return MagicMock()
 
@@ -38,6 +57,7 @@ def _make_service():
     return YahtzeeService(
         _make_args(), dealer=dealer, table_service=ts,
         find_table_fn=MagicMock(return_value=None),
+        pool=MagicMock(name="pool"),
     )
 
 
@@ -180,7 +200,8 @@ class TestBroadcast:
             ))
         assert server.publish.await_count == 1
         call = server.publish.await_args
-        assert call.args[0] == "casino:table:yahtzee-alice"
+        from casino.services.table_channels import events_channel
+        assert call.args[0] == events_channel("yahtzee-alice")
         assert call.args[1]["type"] == "yahtzee_state"
 
     def test_publish_failure_is_swallowed(self):
