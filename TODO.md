@@ -3309,23 +3309,43 @@ Stage 8 moves casino's menus onto that seam, in parts.
       blackjack, slots, yahtzee) call `host.choose`, each answer uppercased once. Commit
       `f3dc389`. Covered by `tests/test_commands_menus_host_choose.py` (6 of 8 fail on HEAD).
       With this, every casino menu is on the host seam.
-- [ ] **Pre-existing, not 8d**: `tests/test_slots_flow.py` has one failure on HEAD too.
-- [ ] **Deprecated `screen.init` shim**: `casino/__main__.py`, the blackjack, yahtzee, and
-      tictactoe entry points, and `auth.init_remote_client_screen` (called from the door loop)
-      still call `bbsengine6.screen.init`, which warns. Move them to `bbsengine6.bottombar.init`.
-      Hosted casino should not call it at all (LO owns the screen).
-- [ ] **Hosted `init`**: casino does its own `getpool` and `session.start` when hosted. It
-      should use the host's pool and identity instead.
+- [x] **Deprecated `screen.init` shim**: every casino call site moved to `bottombar.init`
+      (`1c62b9e`). The shim delegates to `bottombar`, so behavior is unchanged. Two tests that
+      patched the old aliases now patch `bottombar.init`.
+- [x] **Hosted `init`**: when a bedsession is passed, the door loop uses its pool (not closed
+      here), skips `session.start`, and takes the member from its identity (`d69544e`).
+      Standalone is unchanged. Covered by `tests/test_hosted_init.py` (3 of 7 fail on HEAD).
+- [x] **Stale option-list tests** (`test_client.py`, `test_menu_inline_prompt.py`): the
+      expectations now come from `_visible_options`, not a copied string (`cc41696`). The
+      visible set is `t,c,u,j,p,w,m,k,e,x,q` unseated, and adds `l,b,h,s` when seated at
+      blackjack.
+- [x] **Bottombar width test**: the helper counted ESC 7 / ESC 8 save codes as text. The bar
+      was already correct (`203e218`).
+- [x] **Shutdown crash, part 1**: seven files no longer leak a pool or server, and now report
+      results: `test_services_conn_pool`, `test_player_observer`, `test_player_stats_integration`,
+      `test_tictactoe_handler`, `test_tictactoe_service`, `test_yahtzee_handler`,
+      `test_yahtzee_integrated` (`787024d`, `450f593`).
 
-Open test failures, present on HEAD before Stage 8a (not caused by it):
+Open, needs a decision:
 
-- [ ] `casino/tests/test_client.py::TestMenuVisibility::test_inputchoice_option_str_matches_visible`
-      expects the client menu to be `t,c,u,j,p,l,b,h,s,m,k,x,q`. The menu now also offers `w`
-      (Watch) and `e` (Channels). Decide the intended option list, then update the test or the
-      menu.
-- [ ] `casino/tests/test_menu_inline_prompt.py::TestClientMenuInlinePrompt::test_main_menu_prompt_seated_at_blackjack`
-      fails for the same reason: the expected option list is out of date.
-- [ ] Full `casino/tests` run crashes at interpreter shutdown with
-      `PythonFinalizationError: cannot join thread at interpreter shutdown`. A psycopg pool
-      thread is still running when Python exits, so pytest never prints its summary. Find the
-      pool that is not closed in a test fixture. Until then, run test files one at a time.
+- [ ] **Shutdown crash, part 2**: the full `casino/tests` run still crashes with
+      `PythonFinalizationError`. Eight files leak a pool when run alone: `test_api`,
+      `test_casino_integration`, `test_poker_integration`, `test_poker_persistence`,
+      `test_poker_play_flow`, `test_server`, `test_shoe`, `test_table_channels`.
+      Root cause: `bbsengine6.database.connect` creates a new, unowned pool on every call that
+      omits `pool=`. About 50 production call sites can omit it, and the message delivery on
+      login does. Options: (1) cache one process pool in `database.connect` and close it at
+      exit (fixes tests and production, shared change); (2) give each test base class one owned
+      pool (tests only, about a dozen edits). Decide before changing shared infrastructure.
+- [ ] **Permission failures**: blackjack flow, console member, multi-join, three-hands,
+      two-players, and the player-observer and player-stats tests fail with
+      `permission denied for view player`. The per-test data role (`m_bjconsole_*`) has no
+      SELECT on `casino.player`, `casino.__player`, or `engine.__member`. The sibling views grant
+      `opencode` and `m_opencode`. Fix is a grant in `src/casino/sql/player_view.sql` (and the
+      base tables), or making the test roles members of `member`. This changes who can read
+      player data, so it needs a decision.
+- [ ] **Slots broadcast**: `test_slots_flow` (`test_broadcast_publishes_to_table_channel`) and
+      `test_slots_integrated` (`test_slot_spin_full_flow_with_broadcast`) assert a publish that
+      the slots game never makes. Tictactoe and yahtzee publish from their handlers; slots does
+      not, and no commit ever added it. Decide whether slot spins should broadcast, then either
+      implement it or remove the expectation.
