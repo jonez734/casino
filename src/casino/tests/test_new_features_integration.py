@@ -183,13 +183,15 @@ class TestSurrenderIntegration(BaseIntegrationTest):
             messages = await client.receive_messages(max_count=10, timeout=5.0)
 
             # Check game state for surrender status
+            # A surrender also broadcasts the table state with no per-player hands. Take the reply
+            # that carries this player's hands.
             game_state = None
             for msg in messages:
-                if msg.get("type") == "game_state":
+                if msg.get("type") == "game_state" and msg.get("hands"):
                     game_state = msg
                     break
 
-            self.assertIsNotNone(game_state, "Should get game state after surrender")
+            self.assertIsNotNone(game_state, "Should get game state with hands after surrender")
             hands = game_state.get("hands", [])
             self.assertEqual(len(hands), 1)
             # Hand status should be surrendered

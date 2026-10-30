@@ -421,13 +421,15 @@ class TestPlayerAndObserver(unittest.IsolatedAsyncioTestCase):
             await self.player_client.send({"type": "hit"})
             messages = await self.player_client.receive_messages(max_count=10, timeout=5.0)
 
+            # The hit broadcasts the table state (no per-player hand) as well as this player's reply.
+            # Take the reply that carries the player's hand.
             player_game_state = None
             for msg in messages:
-                if msg.get("type") == "game_state":
+                if msg.get("type") == "game_state" and msg.get("player_hand"):
                     player_game_state = msg
                     break
 
-            self.assertIsNotNone(player_game_state, "Player should receive game_state after hit")
+            self.assertIsNotNone(player_game_state, "Player should receive game_state with a hand after hit")
             player_hand = player_game_state.get("player_hand", [])
             player_total = player_game_state.get("player_total", 0)
             print(f"✓ Player hit: {' '.join(player_hand)} [{player_total}]")
@@ -441,17 +443,17 @@ class TestPlayerAndObserver(unittest.IsolatedAsyncioTestCase):
                     break
 
             if observer_game_state:
+                # The observer gets the table broadcast, not the player's private view. The table
+                # state is shared; the player's cards are not, so the observer must not see them.
                 observer_hand = observer_game_state.get("player_hand", [])
-                observer_total = observer_game_state.get("player_total", 0)
-                print(f"✓ Observer saw hit: {' '.join(observer_hand)} [{observer_total}]")
-
+                print(f"✓ Observer saw table state after hit, phase={observer_game_state.get('phase')}")
                 self.assertEqual(
-                    player_hand, observer_hand,
-                    f"Observer hand {observer_hand} should match player hand {player_hand}"
+                    observer_hand, [],
+                    f"Observer must not see the player's private hand, got {observer_hand}"
                 )
                 self.assertEqual(
-                    player_total, observer_total,
-                    f"Observer total {observer_total} should match player total {player_total}"
+                    observer_game_state.get("phase"), player_game_state.get("phase"),
+                    "Observer should see the same table phase as the player"
                 )
             else:
                 print("⚠ Note: Observer didn't receive game_state after hit (broadcast not implemented for spectators)")

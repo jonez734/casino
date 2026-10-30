@@ -97,13 +97,25 @@ def test_poker_table_is_a_casino_table_row_of_type_poker():
 
 def test_blackjack_lobby_excludes_poker_rows():
     from casino.dal import table as dal_table
+    from casino.services.table import TableService
 
-    name = _name("lobby")
-    _mid_hand(name)
-    rows = dal_table.list_tables(ARGS, "blackjack", include_hidden=True)
-    assert rows, "the blackjack lobby query returned nothing to compare against"
-    assert all(r.get("type") == "blackjack" for r in rows)
-    assert all(r.get("moniker") != name for r in rows)
+    # The lobby must hold at least one blackjack table for the check to mean anything. Make one
+    # here, rather than depend on whatever earlier runs left in the database, and remove it after.
+    bj = TableService(ARGS).create_table("blackjack", "bjbed_a", min_bet=10, max_bet=1000)
+    bj_name = bj["table"]["moniker"] if isinstance(bj, dict) and "table" in bj else bj.get("moniker")
+    try:
+        name = _name("lobby")
+        _mid_hand(name)
+        rows = dal_table.list_tables(ARGS, "blackjack", include_hidden=True)
+        assert rows, "the blackjack lobby query returned nothing to compare against"
+        assert all(r.get("type") == "blackjack" for r in rows)
+        assert all(r.get("moniker") != name for r in rows)
+    finally:
+        if bj_name:
+            from bbsengine6 import database
+
+            with database.connect(ARGS) as conn, database.cursor(conn) as cur:
+                cur.execute(database.query("DELETE FROM $casino.__table WHERE moniker = :m", m=bj_name))
 
 
 def test_no_audit_rows_without_the_audit_flag():

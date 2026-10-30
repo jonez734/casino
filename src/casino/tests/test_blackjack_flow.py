@@ -416,12 +416,13 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
             # Step 8: Hit
             await self.client.send({"type": "hit"})
 
-            # Receive updated game state
+            # Receive updated game state. A hit also broadcasts the table state with no per-player
+            # hand, so take the reply that carries this player's hand.
             messages = await self.client.receive_messages(max_count=10, timeout=5.0)
 
             game_state = None
             for msg in messages:
-                if msg.get("type") == "game_state":
+                if msg.get("type") == "game_state" and msg.get("player_hand"):
                     game_state = msg
                     break
 
@@ -620,13 +621,15 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
             await self.client.send({"type": "hit"})
 
             messages = await self.client.receive_messages(max_count=10, timeout=5.0)
+            # A hit sends two game_state messages: the table broadcast (no per-player hand) and this
+            # player's own reply. The test wants the player's hand, so take the reply that carries it.
             game_state = None
             for msg in messages:
-                if msg.get("type") == "game_state":
+                if msg.get("type") == "game_state" and msg.get("player_hand"):
                     game_state = msg
                     break
 
-            self.assertIsNotNone(game_state, "No game_state received after hit")
+            self.assertIsNotNone(game_state, "No game_state with the player's hand received after hit")
             player_hand_after_hit = game_state.get("player_hand", [])
             player_total_after_hit = game_state.get("player_total", 0)
             print(f"  After hit: {' '.join(player_hand_after_hit)} [{player_total_after_hit}]")
@@ -638,7 +641,7 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
             messages = await self.client.receive_messages(max_count=10, timeout=5.0)
             game_state = None
             for msg in messages:
-                if msg.get("type") == "game_state":
+                if msg.get("type") == "game_state" and msg.get("player_hand"):
                     game_state = msg
                     break
 
