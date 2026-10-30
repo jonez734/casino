@@ -2,7 +2,7 @@ from argparse import Namespace
 
 from bbsengine6 import database, io, member, session, util
 
-from . import _version, auth, lib
+from . import _version, auth, host, lib
 from .menu_lib import MenuOption, visible_options
 
 
@@ -159,21 +159,24 @@ def main(args: Namespace, **kwargs) -> bool | None:
                 # WS-client menu's ``_DEFAULT = "q"`` invariant).
                 state = _menu_state(currentplayer, remote_client is not None)
                 visible_opts = visible_options(options, state)
-                choices = "QX"
+                choices = "qx"
                 for opt in visible_opts:
                     choices += opt.letter
                 mainmenuhelp()
 
                 try:
-                    ch = io.inputchoice(
+                    # host.choose: LO when hosted (returns the key as stored), io.inputchoice
+                    # standalone (returns uppercase). Normalize once so the letter checks
+                    # below compare the same way in both modes.
+                    ch = host.choose(
                         f"{{var:promptcolor}}Your command, {currentplayer.moniker}? {{var:inputcolor}}",
                         choices,
                         "",
                         help=mainmenuhelp,
-                        **kwargs,
                     )
+                    ch = ch.lower() if ch else ch
 
-                    if ch == "Q" or ch == "X":
+                    if ch == "q" or ch == "x":
                         if remote_client is not None:
                             auth.disconnect(args, client=remote_client)
                             auth.cleanup_remote_client_screen()
