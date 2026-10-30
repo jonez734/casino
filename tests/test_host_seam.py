@@ -116,7 +116,7 @@ def test_init_with_a_host_registers_its_menu():
     with patch.object(casino, "register_module"), \
          patch.object(casino.lib, "runmodule", create=True), \
          patch("casino.here.install", create=True):
-        casino.init(None, host=fake_host)
+        casino.init(None, bedsession=fake_host)
     assert host.is_hosted() is True
     assert host._menu is menu
 
