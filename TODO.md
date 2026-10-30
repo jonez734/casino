@@ -3299,7 +3299,15 @@ Stage 8 moves casino's menus onto that seam, in parts.
       This also fixed a standalone bug: the loop compared lowercase letters to
       `inputchoice`'s uppercase answer, so no option could be dispatched from the standalone
       door menu. Covered by `tests/test_door_menu_host_choose.py` (4 of 5 fail on the old code).
-- [ ] **8d: game prompts** (blackjack, slots, yahtzee, tictactoe) call `host.choose`.
+- [x] **8d: game prompts** (blackjack, slots, yahtzee, tictactoe) call `host.choose`. Commit
+      `862e619`. Each answer is normalized before its checks. Covered by
+      `tests/test_game_prompts_host_choose.py` (7 of 8 fail on the old code).
+      Still on `io.inputchoice`, deliberately (deferred by the user; separate stage):
+      `commands/table`, `commands/game`, `commands/chat`, `commands/bank`, `commands/admin`,
+      `commands/poker`, `commands/blackjack`, `commands/slots`, `commands/yahtzee`.
+- [ ] **8e: `commands/*/lib.py` menus**: the nine menus above, once you decide to move them.
+      Each needs the same normalize-once treatment.
+- [ ] **Pre-existing, not 8d**: `tests/test_slots_flow.py` has one failure on HEAD too.
 - [ ] **Deprecated `screen.init` shim**: `casino/__main__.py`, the blackjack, yahtzee, and
       tictactoe entry points, and `auth.init_remote_client_screen` (called from the door loop)
       still call `bbsengine6.screen.init`, which warns. Move them to `bbsengine6.bottombar.init`.
