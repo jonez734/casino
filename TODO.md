@@ -3353,8 +3353,14 @@ Open items (decisions made 2026-10-30, in progress):
       shared state (`fd42aa9`). Tests that read the first `game_state` now read the player's
       own reply (`3959c4c`). `system:shout` is created by the channel test and removed after.
 
-- [ ] **Slots broadcast**: `test_slots_flow` (`test_broadcast_publishes_to_table_channel`) and
-      `test_slots_integrated` (`test_slot_spin_full_flow_with_broadcast`) assert a publish that
-      the slots game never makes. Tictactoe and yahtzee publish from their handlers; slots does
-      not, and no commit ever added it. Decide whether slot spins should broadcast, then either
-      implement it or remove the expectation.
+- [x] **Slots table channel and spectators**: a slots table has its events and chat channels
+      from the generic create path, and watch_table subscribes spectators. A spin publishes its
+      result to the events channel, so a spectator sees it (`f6f1f33`, end to end in
+      `test_slots_table_channel.py`).
+- [x] **Big-win shout**: a spin whose payout meets `casino.slots.big_win.multiplier` (default
+      50x the bet) publishes a `big_win` message to `casino:global`. Every signed-in session is
+      subscribed to `casino:global` at login, so players in the lobby hear it. Configure in
+      `bed.json`:
+      `"casino": {"slots": {"big_win": {"enabled": true, "multiplier": 50}}}`.
+      Commits: `4a63b0c` (settings), `4f474cc` (shout and subscription).
+      Open: the threshold and default are a product choice, not a tuned number.
