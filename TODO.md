@@ -3341,26 +3341,18 @@ Open items (decisions made 2026-10-30, in progress):
       Follow-up, other projects with `with database.getpool(...)` (not changed here):
       achilles (2 files), empyre (4), murdermotel (2), asimov (1), letteredolive (1), teos (1),
       and bbsengine6 itself (5 files).
-- [ ] **Permission failures and live-database cleanup**: blackjack flow, console member,
-      multi-join, three-hands, two-players, and the player-observer and player-stats tests fail
-      with `permission denied for view player`. The per-test roles lacked SELECT on
-      `casino.player`, `casino.__player`, and `engine.__member`.
-      Done:
-      - `casino_test` created in `zoid6test` by `jam` (`scripts/create-casino-test-role.sql`).
-        The per-test fixtures make their roles members of it (`fdf1396`).
-      - Tests refuse to run against `zoid6`, and every casino default names `zoid6test`
-        (`30b2905`). Test runs against `zoid6` had created 442 per-test roles and 190 USAGE
-        grants on zoid6's live `engine` schema.
-      Still to do, as `jam` (both scripts are idempotent):
-      1. `psql -U jam -d zoid6 -v ON_ERROR_STOP=1 -1 -f scripts/revoke-per-test-engine-usage.sql`
-         revokes the 190 per-test USAGE grants on the live `engine` schema (`8781379`).
-         Run it first: the drop cannot finish while zoid6 still grants those roles anything.
-      2. `psql -U jam -d zoid6test -v ON_ERROR_STOP=1 -f scripts/drop-casino-test-roles.sql`
-         drops the 442 per-test roles (`bjconsole`, `bj2p`). Latest run rolled back, because
-         the live grants above were still in place.
-      Open: the drop depends on stale `pg_shdepend` rows in zoid6, which step 1 clears. Confirm
-      after step 2 that `select count(*) from pg_roles where rolname ~ '^(m_)?(bjconsole|bj2p)'`
-      returns 0.
+- [x] **Permission failures and live-database cleanup**: done. The per-test roles were
+      dropped from `zoid6test` (0 remain), and the 190 per-test USAGE grants on `zoid6`'s live
+      `engine` schema were revoked (0 remain). `casino_test` remains and can read
+      `casino.player`. Tests refuse to run against `zoid6`. Commits: `438952c`, `58b8465`,
+      `fdf1396`, `30b2905`, `8781379`, `2924e99`, `116ceea`, `9fdae98`, `2f038ef`.
+      Verified: `jam` ran `create-casino-test-role.sql`, `revoke-per-test-engine-usage.sql`
+      (against `zoid6`), and `drop-casino-test-roles.sql` (against `zoid6test`).
+- [x] **Multi-player and channel failures**: the bet, stand, and surrender broadcasts went to
+      an empty channel state, because the bet and game handlers did not receive the router's
+      shared state (`fd42aa9`). Tests that read the first `game_state` now read the player's
+      own reply (`3959c4c`). `system:shout` is created by the channel test and removed after.
+
 - [ ] **Slots broadcast**: `test_slots_flow` (`test_broadcast_publishes_to_table_channel`) and
       `test_slots_integrated` (`test_slot_spin_full_flow_with_broadcast`) assert a publish that
       the slots game never makes. Tictactoe and yahtzee publish from their handlers; slots does
