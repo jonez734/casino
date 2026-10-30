@@ -7,6 +7,7 @@ from typing import Any
 
 from bbsengine6 import io, util
 
+from .. import host
 from .dealer import SlotDealer
 from .lib import render_ascii
 from .player import SlotPlayer
@@ -49,12 +50,13 @@ def _render_again_help(**kwargs) -> None:
 def _prompt_bet(player: SlotPlayer) -> int | None:
     """Ask the player for a bet. Returns the bet or None if the player quit."""
     while True:
-        choice = io.inputchoice(
+        # host.choose: LO when hosted, io.inputchoice standalone. Uppercased for the check below.
+        choice = (host.choose(
             "{var:promptcolor}Bet (q to quit): {var:inputcolor}",
             "b,q",
             default="b",
             help=_render_bet_help,
-        )
+        ) or "").upper()
         if choice == "Q":
             return None
         bet = io.inputinteger(
@@ -108,11 +110,11 @@ def main(args: Any, **kw: dict) -> bool:
         result = run_one_spin(player)
         if result is None:
             return True
-        again = io.inputchoice(
+        again = (host.choose(
             "{var:promptcolor}spin again? {var:optioncolor}[Yn]{var:promptcolor}: {var:inputcolor}",
             "y,n",
             default="y",
             help=_render_again_help,
-        )
+        ) or "").upper()
         if again == "N":
             return True

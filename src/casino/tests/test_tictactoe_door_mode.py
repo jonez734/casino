@@ -95,8 +95,8 @@ class TestPromptOptionsContract:
             tt_main._run_mode1(svc, PLAYER)
 
         assert mock_ic.called, "io.inputchoice was not called"
-        options = mock_ic.call_args.kwargs.get("options") \
-            if mock_ic.call_args.kwargs else mock_ic.call_args.args[0]
+        # The call is positional: host.choose(prompt, options, ...) -> inputchoice(prompt, options, ...).
+        options = mock_ic.call_args.args[1]
         assert options == "0123456789QR", (
             f"PROMPT_OPTIONS passed to inputchoice must be the tight "
             f"char set '0123456789QR'; got {options!r}"
@@ -113,8 +113,7 @@ class TestPromptOptionsContract:
              patch.object(tt_main.io, "echo"):
             tt_main._run_mode1(svc, PLAYER)
 
-        prompt = mock_ic.call_args.kwargs.get("prompt") \
-            if mock_ic.call_args.kwargs else mock_ic.call_args.args[1]
+        prompt = mock_ic.call_args.args[0]
         assert "[0-8] Q R" in prompt, (
             f"prompt should self-document the menu as '[0-8] Q R'; "
             f"got {prompt!r}"

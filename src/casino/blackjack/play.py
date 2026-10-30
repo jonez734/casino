@@ -1,5 +1,6 @@
 from bbsengine6 import io, util
 
+from .. import host
 from .. import lib as libcasino
 
 
@@ -112,7 +113,8 @@ def main(args, **kw):
 
     quit_hand = False
     while True:
-        choice = io.inputchoice(
+        # host.choose: LO when hosted, io.inputchoice standalone. Both are uppercased below.
+        choice = host.choose(
             "{var:promptcolor}Action: {var:optioncolor}[HSDQ]{var:promptcolor}: {var:inputcolor}",
             "hsdq",
             "h",

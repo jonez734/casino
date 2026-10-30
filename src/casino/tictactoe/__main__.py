@@ -30,6 +30,7 @@ from argparse import Namespace
 from bbsengine6 import database, io, member, module, screen, session
 from bbsengine6.net.ping import PingUnavailable
 
+from .. import host
 from . import lib
 from .service import TictactoeService
 
@@ -132,9 +133,11 @@ def _run_mode1(svc: TictactoeService, player_moniker: str) -> int:
         if state.get("turn_moniker") != player_moniker:
             return 0
 
-        raw = io.inputchoice(
-            options=PROMPT_OPTIONS,
-            prompt="{var:promptcolor}your move {var:optioncolor}[0-8] Q R{var:promptcolor}: {var:inputcolor}",
+        # host.choose: LO when hosted, io.inputchoice standalone (clearline is passed through
+        # to io.inputchoice there and dropped when hosted).
+        raw = host.choose(
+            "{var:promptcolor}your move {var:optioncolor}[0-8] Q R{var:promptcolor}: {var:inputcolor}",
+            PROMPT_OPTIONS,
             default=None,
             clearline=False,
         )

@@ -45,10 +45,15 @@ def is_hosted() -> bool:
     return _hosted
 
 
-def choose(prompt: str, options: str, default: str = "", help: Any = None) -> Optional[str]:
+def choose(
+    prompt: str, options: str, default: Optional[str] = "", help: Any = None, **kwargs: Any
+) -> Optional[str]:
     """Read one menu choice.
 
-    ``options`` is the comma-separated list of valid letters, as ``io.inputchoice`` takes it.
+    ``options`` is the letter list, as ``io.inputchoice`` takes it: comma-separated, or a bare
+    run of letters. Extra keyword arguments (for example ``clearline``) are passed to
+    ``io.inputchoice`` when standalone. Hosted, LO's menu does not take them, so they are
+    dropped.
 
     Hosted: the letters are turned into a ``Registry`` (one entry per letter) and passed to
     the registered menu, which validates against it. Standalone: ``io.inputchoice`` is
@@ -59,7 +64,7 @@ def choose(prompt: str, options: str, default: str = "", help: Any = None) -> Op
         if _menu is None:
             raise CasinoHostMissing("casino is hosted but no menu function is registered")
         return _menu(prompt, _registry_for(options), default=default, help=help)
-    return io.inputchoice(prompt, options, default=default, help=help)
+    return io.inputchoice(prompt, options, default=default, help=help, **kwargs)
 
 
 def _registry_for(options: str) -> Registry:

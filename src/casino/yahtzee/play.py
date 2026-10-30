@@ -15,6 +15,7 @@ from typing import Any
 
 from bbsengine6 import io, util
 
+from .. import host
 from . import lib as yahtzee_lib
 from .dealer import YahtzeeDealer
 from .player import YahtzeePlayer
@@ -73,12 +74,13 @@ def _prompt_action(
     """
     _render_action_help()
     while True:
-        choice = io.inputchoice(
+        # host.choose: LO when hosted, io.inputchoice standalone. Uppercased for the checks below.
+        choice = (host.choose(
             "{var:promptcolor}Action: {var:optioncolor}[RLSQ]{var:promptcolor}: {var:inputcolor}",
             "rlsq",
             default="r",
             help=_render_action_help,
-        )
+        ) or "").upper()
 
         if choice == "R":
             if player.rolls_left != 2:
@@ -152,13 +154,14 @@ def _prompt_score_category(player: YahtzeePlayer) -> str | None:
     _show_scorecard(player)
     letters = "abcdefghijklm"
     while True:
-        choice = io.inputchoice(
+        # host.choose: LO when hosted, io.inputchoice standalone. Lowercased for the index.
+        choice = (host.choose(
             "{var:promptcolor}Score into which category? {var:inputcolor}",
             letters,
             default="c",
             help=_render_score_help,
-        )
-        idx = letters.index(choice.lower())
+        ) or "").lower()
+        idx = letters.index(choice)
         category = yahtzee_lib.CATEGORIES[idx]
         if player.scorecard[category] is not None:
             io.echo(
