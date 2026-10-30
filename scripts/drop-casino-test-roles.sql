@@ -22,6 +22,10 @@
 
 \set ON_ERROR_STOP on
 
+-- One transaction: the temporary role list lives across every step, and any error rolls the
+-- whole run back, so a failed run leaves the database as it found it.
+begin;
+
 -- Guard: only the test database.
 do $$
 begin
@@ -33,7 +37,7 @@ end
 $$;
 
 -- The set of per-test roles, as a temporary table so each step reads the same list.
-create temporary table _casino_test_roles on commit drop as
+create temporary table _casino_test_roles as
 select r.oid, r.rolname
 from pg_roles r
 where r.rolname ~ '^(m_)?bjconsole(_[a-z0-9]+)?_[0-9a-f]{8}$'
@@ -139,3 +143,5 @@ $$;
 select 'per-test roles remaining: ' || count(*) as status
 from pg_roles
 where rolname ~ '^(m_)?bjconsole' or rolname ~ '^(m_)?bj2p_';
+
+commit;
