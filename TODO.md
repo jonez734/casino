@@ -3305,8 +3305,10 @@ Stage 8 moves casino's menus onto that seam, in parts.
       Still on `io.inputchoice`, deliberately (deferred by the user; separate stage):
       `commands/table`, `commands/game`, `commands/chat`, `commands/bank`, `commands/admin`,
       `commands/poker`, `commands/blackjack`, `commands/slots`, `commands/yahtzee`.
-- [ ] **8e: `commands/*/lib.py` menus**: the nine menus above, once you decide to move them.
-      Each needs the same normalize-once treatment.
+- [x] **8e: `commands/*/lib.py` menus**: the nine menus (table, game, chat, bank, admin, poker,
+      blackjack, slots, yahtzee) call `host.choose`, each answer uppercased once. Commit
+      `f3dc389`. Covered by `tests/test_commands_menus_host_choose.py` (6 of 8 fail on HEAD).
+      With this, every casino menu is on the host seam.
 - [ ] **Pre-existing, not 8d**: `tests/test_slots_flow.py` has one failure on HEAD too.
 - [ ] **Deprecated `screen.init` shim**: `casino/__main__.py`, the blackjack, yahtzee, and
       tictactoe entry points, and `auth.init_remote_client_screen` (called from the door loop)
