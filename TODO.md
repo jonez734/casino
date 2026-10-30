@@ -3291,8 +3291,9 @@ seam in `casino/host.py`: hosted uses LO's `choose`, standalone uses `io.inputch
 Stage 8 moves casino's menus onto that seam, in parts.
 
 - [x] **8a: client main menu** (`casino/client/menu.py`) calls `host.choose`. Commit `5d1f937`.
-- [ ] **8b: client submenus** in `casino/client/casino_client.py` (channels, bank, source
-      picker) call `host.choose`.
+- [x] **8b: client submenus** in `casino/client/casino_client.py` (channels, bank, source
+      picker) call `host.choose`. Commit `586427a`. Submenus compare on lowercase so hosted
+      (as stored) and standalone (uppercase) match.
 - [ ] **8c: door-mode `main.py`** calls `host.choose`.
 - [ ] **8d: game prompts** (blackjack, slots, yahtzee, tictactoe) call `host.choose`.
 - [ ] **Hosted `init`**: casino does its own `getpool` and `session.start` when hosted. It
