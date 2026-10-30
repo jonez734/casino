@@ -114,6 +114,19 @@ DEFAULT_REELS: list[list[str]] = [
 # v1 evaluates only the center row. The single-BLANK entry is intentionally
 # absent - blanks are non-paying symbols. Multipliers are scaled to land
 # the realized RTP near 0.92 given the default reel strips above.
+# A spin is a big win, and is announced to every connected player, when its payout is at least
+# this many times the bet. The default paytable's top combo (three SEVENs) pays 145x, so 50x
+# reserves the announcement for the top of the table. Tune here.
+BIG_WIN_MULTIPLIER = 50
+
+
+def is_big_win(bet: int, payout: int, multiplier: int = BIG_WIN_MULTIPLIER) -> bool:
+    """True when ``payout`` is at least ``multiplier`` times ``bet``. A zero or negative bet never qualifies."""
+    if bet <= 0 or payout <= 0:
+        return False
+    return payout >= bet * multiplier
+
+
 DEFAULT_PAYTABLE: dict[tuple[str, ...], int] = {
     ("SEVEN", "SEVEN", "SEVEN"):    145,
     ("BAR", "BAR", "BAR"):           45,

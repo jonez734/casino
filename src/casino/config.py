@@ -154,3 +154,32 @@ def get_max_turn_seconds(args: Any) -> int:
         return DEFAULT_MAX_TURN_SECONDS
     return max(0, min(value, MAX_TURN_SECONDS_CEILING))
 
+
+
+#: Defaults for the slots big-win announcement. ``enabled`` keeps the shout on; ``multiplier`` is
+#: the payout, as a multiple of the bet, that counts as a big win.
+BIG_WIN_DEFAULTS: dict[str, Any] = {"enabled": True, "multiplier": 50}
+
+
+def get_big_win_settings(args: Any) -> dict[str, Any]:
+    """Big-win announcement settings from ``bed.json`` casino.slots.big_win.
+
+    Returns ``{"enabled": bool, "multiplier": int}``. Missing or invalid values fall back to
+    :data:`BIG_WIN_DEFAULTS`. A multiplier below 1 is rejected, since it would announce every
+    winning spin.
+    """
+    cfg = get_casino_config(args)
+    slots = cfg.get("slots", {}) if isinstance(cfg, dict) else {}
+    block = slots.get("big_win", {}) if isinstance(slots, dict) else {}
+    if not isinstance(block, dict):
+        block = {}
+
+    enabled = block.get("enabled", BIG_WIN_DEFAULTS["enabled"])
+    if not isinstance(enabled, bool):
+        enabled = BIG_WIN_DEFAULTS["enabled"]
+
+    multiplier = block.get("multiplier", BIG_WIN_DEFAULTS["multiplier"])
+    if isinstance(multiplier, bool) or not isinstance(multiplier, int) or multiplier < 1:
+        multiplier = BIG_WIN_DEFAULTS["multiplier"]
+
+    return {"enabled": enabled, "multiplier": multiplier}
