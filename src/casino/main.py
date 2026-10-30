@@ -1,9 +1,26 @@
 from argparse import Namespace
+from contextlib import contextmanager
 
 from bbsengine6 import database, io, member, session, util
 
 from . import _version, auth, host, lib
 from .menu_lib import MenuOption, visible_options
+
+
+@contextmanager
+def _door_pool(args: Namespace, bedsession):
+    """Yield the connection pool for the door loop.
+
+    Hosted (``bedsession`` given): use the pool the hosting program already owns. It is not
+    closed here, because the host closes it when the shell exits.
+
+    Standalone: open a pool for this run and close it on exit, as before.
+    """
+    if bedsession is not None:
+        yield bedsession.pool
+        return
+    with database.getpool(args, database=args.databasename) as pool:
+        yield pool
 
 
 def parse_module_path(path: str) -> tuple[str, str | None]:
@@ -116,9 +133,11 @@ def main(args: Namespace, **kwargs) -> bool | None:
         io.echo("casino failed to start up", level="critical")
         return False
 
+    bedsession = kwargs.get("bedsession")
     try:
-        with database.getpool(args, database=args.databasename) as pool:
-            if session.start(args, pool=pool) is False:
+        with _door_pool(args, bedsession) as pool:
+            # Hosted: the host already started the session, so do not start another.
+            if bedsession is None and session.start(args, pool=pool) is False:
                 io.echo("casino.main.240: session.start() failed", level="error")
                 return False
 
@@ -129,9 +148,13 @@ def main(args: Namespace, **kwargs) -> bool | None:
                 pool=pool,
             )
 
-            currentmembermoniker = member.getcurrentmoniker(args, pool=pool)
+            # Hosted: the host's identity is the signed-in member. Standalone: look it up.
+            if bedsession is not None:
+                currentmembermoniker = bedsession.identity
+            else:
+                currentmembermoniker = member.getcurrentmoniker(args, pool=pool)
             io.echo(f"main.300: {currentmembermoniker=}", level="debug")
-            if currentmembermoniker is False:
+            if currentmembermoniker is False or currentmembermoniker == "":
                 io.echo("casino.main.200: you do not exist! go away!", level="error")
                 return False
 
