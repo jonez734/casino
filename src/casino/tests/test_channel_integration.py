@@ -20,6 +20,13 @@ from unittest.mock import MagicMock
 sys.path.insert(0, "/home/opencode/data/work/casino/src")
 
 
+def _websocket_for(session_id: int):
+    """A websocket stand-in carrying the session id the server would attach to it."""
+    from types import SimpleNamespace
+
+    return SimpleNamespace(id=session_id, _bbsengine6_session_id=session_id)
+
+
 class TestChannelSubscriptionIntegration(unittest.IsolatedAsyncioTestCase):
     """Channel subscription integration tests that survive the casino API."""
 
@@ -27,9 +34,12 @@ class TestChannelSubscriptionIntegration(unittest.IsolatedAsyncioTestCase):
         """Set up test fixtures."""
         from casino.api.handler import MessageRouter
 
-        self.args = MagicMock()
-        self.args.pool = MagicMock()
-        self.args.databasename = _dbname.current_dbname()
+        # Real database settings, as the other integration tests use. A bare MagicMock here put
+        # mock objects into the connection string, so any path that reached the database failed
+        # with "invalid connection option", and the pool timed out.
+        from casino import lib
+
+        self.args = lib.buildargs().parse_args(_dbname.dbname_args())
 
         self.router = MessageRouter(self.args)
         self.sessions = self.router.sessions
@@ -66,7 +76,7 @@ class TestChannelSubscriptionIntegration(unittest.IsolatedAsyncioTestCase):
         self.sessions.register_session(session_id, "alice")
 
         response = await channel_service._handle_subscribe(
-            session_id, {"channel": "system:shout"}
+            _websocket_for(session_id), {"channel": "system:shout"}
         )
 
         self.assertEqual(response["type"], "subscribed")
@@ -88,7 +98,7 @@ class TestChannelSubscriptionIntegration(unittest.IsolatedAsyncioTestCase):
         )
 
         response = await channel_service._handle_unsubscribe(
-            session_id, {"channel": "system:shout"}
+            _websocket_for(session_id), {"channel": "system:shout"}
         )
 
         self.assertEqual(response["type"], "unsubscribed")
@@ -109,7 +119,7 @@ class TestChannelSubscriptionIntegration(unittest.IsolatedAsyncioTestCase):
             self.args, self.sessions, self.channel_state
         )
 
-        response = await channel_service._handle_get_subscriptions(session_id)
+        response = await channel_service._handle_get_subscriptions(_websocket_for(session_id))
 
         self.assertEqual(response["type"], "subscriptions")
         self.assertIn("member:alice", response["channels"])
