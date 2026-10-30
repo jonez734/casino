@@ -35,6 +35,7 @@ from websockets.exceptions import ConnectionClosed
 from casino import lib
 from casino.api.handler import MessageRouter
 from casino.tests import _dbname
+from casino.tests._ensure_test_member import grant_test_role
 
 DEFAULT_TIMEOUT = 10.0
 PING_INTERVAL = 30.0
@@ -169,6 +170,7 @@ class TestBlackjackConsoleMember(unittest.IsolatedAsyncioTestCase):
             }
             ok = con_member.add(self.args, pool=self.pool)
             self.assertTrue(ok, f"bbsengine6.console.member.add returned False for {self.moniker}")
+        grant_test_role(self.args, self.moniker, pool=self.pool)
 
         self.server = WebSocketServer(host="127.0.0.1", port=TEST_PORT)
         self.router = MessageRouter(self.args)

@@ -35,6 +35,7 @@ import websockets
 from websockets.exceptions import ConnectionClosed
 
 from casino import lib
+from casino.tests._ensure_test_member import grant_test_role
 from casino.api.handler import MessageRouter
 from casino.tests import _dbname
 
@@ -178,6 +179,7 @@ class TestBlackjackTwoPlayersThreeGames(unittest.IsolatedAsyncioTestCase):
                     ok,
                     f"bbsengine6.console.member.add returned False for {moniker}",
                 )
+                grant_test_role(self.args, moniker, pool=self.pool)
 
         self.server = WebSocketServer(host="127.0.0.1", port=TEST_PORT)
         self.router = MessageRouter(self.args)

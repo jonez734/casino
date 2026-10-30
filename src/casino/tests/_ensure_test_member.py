@@ -54,3 +54,28 @@ def ensure_test_member(
         return
 
     libmember.setpassword(args, plaintext, moniker, pool=pool)
+
+
+def grant_test_role(args, moniker: str, *, pool=None) -> None:
+    """Make a per-test member's roles members of ``casino_test``, so they inherit its grants.
+
+    The per-test login role (``<moniker>``) and data role (``m_<moniker>``) are created by
+    bbsengine6's member code. ``casino_test`` carries the privileges the casino suites need on
+    casino and engine objects (see scripts/create-casino-test-role.sql). Granting the role here
+    keeps the change in the test fixture; production role creation is unchanged.
+
+    Roles that do not exist yet are skipped, so the call is safe to make unconditionally.
+    Requires ``casino_test`` to exist; the role script creates it.
+    """
+    from bbsengine6 import database
+    from psycopg import sql
+
+    names = [moniker, f"m_{moniker}"]
+    with database.connect(args, pool=pool) as conn, database.cursor(conn) as cur:
+        for name in names:
+            cur.execute("select 1 from pg_roles where rolname = %s", (name,))
+            if cur.fetchone() is None:
+                continue
+            cur.execute(
+                sql.SQL("grant casino_test to {}").format(sql.Identifier(name))
+            )
