@@ -951,7 +951,8 @@ class TestHandlerFullMessageFlow(unittest.TestCase):
         self.sessions = make_sessions_mock(
             moniker="alice", table_moniker="slots-alice"
         )
-        self.handler = SlotServiceHandler(self.args, self.sessions, channel_state=None)
+        from bbsengine6.net import ChannelState
+        self.handler = SlotServiceHandler(self.args, self.sessions, channel_state=ChannelState())
         # Door-mode test: no token wiring, fall back to session-only auth.
         self.handler.allow_legacy_session_only = True
         self.ws = _StubWS()
@@ -1001,7 +1002,13 @@ class TestHandlerFullMessageFlow(unittest.TestCase):
                 return {"success": True, "new_balance": 100 - amount}
 
         server = AsyncMock()
+        published = []
+
+        async def _capture(state, channel, message, **kwargs):
+            published.append((channel, message))
+
         with patch("casino.services.slots.database.connect", fake_connect), \
+             patch("bbsengine6.net.channel_publish", side_effect=_capture), \
              patch("casino.services.slots.database.cursor",
                    side_effect=lambda c, **kw: c.cursor()), \
              patch("bbsengine6.bank.BankService", lambda args: StubBank()), \
@@ -1015,10 +1022,12 @@ class TestHandlerFullMessageFlow(unittest.TestCase):
         self.assertEqual(r["type"], "slot_result")
         self.assertEqual(r["table_moniker"], "slots-alice")
         self.assertEqual(r["spin"]["bet"], 10)
-        # Broadcast goes out to the table channel with the same shape.
-        self.assertTrue(server.publish.called)
-        channel, payload = server.publish.call_args.args
-        self.assertEqual(channel, "casino:table:slots-alice")
+        # Broadcast goes out to the table's events channel with the same shape.
+        from casino.services.table_channels import events_channel
+
+        self.assertEqual(len(published), 1)
+        channel, payload = published[0]
+        self.assertEqual(channel, events_channel("slots-alice"))
         self.assertEqual(payload["type"], "slot_result")
         self.assertEqual(payload["spin"]["bet"], 10)
 

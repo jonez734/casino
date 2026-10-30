@@ -428,7 +428,8 @@ class TestSlotServiceHandlerSpinBroadcast(unittest.TestCase):
 
         self.args = argparse.Namespace(databasename=_dbname.current_dbname(), database=_dbname.current_dbname())
         self.sessions = make_sessions_mock(moniker="alice", table_moniker="slots-test")
-        self.handler = SlotServiceHandler(self.args, self.sessions, channel_state=None)
+        from bbsengine6.net import ChannelState
+        self.handler = SlotServiceHandler(self.args, self.sessions, channel_state=ChannelState())
         # Door-mode test: no token wiring, fall back to session-only auth.
         self.handler.allow_legacy_session_only = True
         self.ws = stable_ws()
@@ -450,15 +451,22 @@ class TestSlotServiceHandlerSpinBroadcast(unittest.TestCase):
 
     def test_broadcast_publishes_to_table_channel(self):
         import asyncio
+        from casino.services.table_channels import events_channel
+
         server = AsyncMock()
-        r = asyncio.run(self.handler.handle_message(
-            server, self.ws, "/", {"type": "slot_spin", "bet": 10}
-        ))
+        published = []
+
+        async def capture(state, channel, message, **kwargs):
+            published.append((channel, message))
+
+        with patch("bbsengine6.net.channel_publish", side_effect=capture):
+            r = asyncio.run(self.handler.handle_message(
+                server, self.ws, "/", {"type": "slot_spin", "bet": 10}
+            ))
         self.assertEqual(r["type"], "slot_result")
         self.assertEqual(r["spin"]["id"], 7)
-        self.assertTrue(server.publish.called)
-        args, _ = server.publish.call_args
-        self.assertEqual(args[0], "casino:table:slots-test")
+        # The handler needs a channel state to publish at all. Give it one.
+        self.assertEqual([c for c, _ in published], [events_channel("slots-test")])
 
 
 if __name__ == "__main__":
