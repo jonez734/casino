@@ -96,27 +96,10 @@ begin
 end
 $$;
 
--- 3. Memberships. DROP ROLE removes a role's own memberships, so only one direction needs an
---    explicit revoke: a shared role (bed, bed_zoid6, opencode, ...) that is a member OF a
---    per-test role. Those edges carry the admin options the fixture used, and revoking them
---    needs the grantor's rights, which jam has. Membership of a per-test role in a shared role
---    is left to DROP ROLE. Shared roles themselves are never altered.
-do $$
-declare
-    e record;
-begin
-    for e in
-        select r.rolname as granted_role, u.rolname as member
-        from pg_auth_members m
-        join pg_roles r on r.oid = m.roleid
-        join pg_roles u on u.oid = m.member
-        where r.oid in (select oid from _casino_test_roles)
-          and u.oid not in (select oid from _casino_test_roles)
-    loop
-        execute format('revoke %I from %I', e.granted_role, e.member);
-    end loop;
-end
-$$;
+-- 3. Memberships are not revoked here. DROP ROLE removes every membership that names the role,
+--    in either direction, so no explicit revoke is needed. An explicit revoke of the fixture's
+--    admin memberships fails with "dependent privileges exist" and would abort the run before
+--    the per-role handling below can report it.
 
 -- 4. Drop. Each role is dropped on its own, so one that is still blocked is reported and the
 --    others are still removed.
