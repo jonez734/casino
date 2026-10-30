@@ -3283,3 +3283,30 @@ The client now calls `bbsengine6.bottombar.init` once, at the top of `run()`, be
 and password prompts and before the bar is attached (`_ensure_client_screen()` in
 `casino/client/casino_client.py`). The scroll region keeps the bar on the last line. Verified by the
 ordering tests in `casino/tests/test_client_screen_init_order.py`, and confirmed in the terminal.
+
+## Hosted casino: Stage 8 (in progress) and open test failures
+
+Casino runs hosted (in-process under letteredolive) or standalone. Menus go through the
+seam in `casino/host.py`: hosted uses LO's `choose`, standalone uses `io.inputchoice`.
+Stage 8 moves casino's menus onto that seam, in parts.
+
+- [x] **8a: client main menu** (`casino/client/menu.py`) calls `host.choose`. Commit `5d1f937`.
+- [ ] **8b: client submenus** in `casino/client/casino_client.py` (channels, bank, source
+      picker) call `host.choose`.
+- [ ] **8c: door-mode `main.py`** calls `host.choose`.
+- [ ] **8d: game prompts** (blackjack, slots, yahtzee, tictactoe) call `host.choose`.
+- [ ] **Hosted `init`**: casino does its own `getpool` and `session.start` when hosted. It
+      should use the host's pool and identity instead.
+
+Open test failures, present on HEAD before Stage 8a (not caused by it):
+
+- [ ] `casino/tests/test_client.py::TestMenuVisibility::test_inputchoice_option_str_matches_visible`
+      expects the client menu to be `t,c,u,j,p,l,b,h,s,m,k,x,q`. The menu now also offers `w`
+      (Watch) and `e` (Channels). Decide the intended option list, then update the test or the
+      menu.
+- [ ] `casino/tests/test_menu_inline_prompt.py::TestClientMenuInlinePrompt::test_main_menu_prompt_seated_at_blackjack`
+      fails for the same reason: the expected option list is out of date.
+- [ ] Full `casino/tests` run crashes at interpreter shutdown with
+      `PythonFinalizationError: cannot join thread at interpreter shutdown`. A psycopg pool
+      thread is still running when Python exits, so pytest never prints its summary. Find the
+      pool that is not closed in a test fixture. Until then, run test files one at a time.
