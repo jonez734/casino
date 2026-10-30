@@ -37,8 +37,7 @@ import sys
 import time
 from argparse import Namespace
 
-from bbsengine6 import database, io, screen, session
-from bbsengine6.io import screen as io_screen
+from bbsengine6 import bottombar, database, io, session
 from bed.tools._routing import BedNotReachable
 
 from . import _routing, lib
@@ -55,7 +54,7 @@ def _run_direct(args: Namespace, remaining_argv: list) -> int:
     with database.getpool(args, database=args.databasename) as pool:
         session.start(args, pool=pool)
 
-    screen.init()
+    bottombar.init()
 
     locale.setlocale(locale.LC_ALL, "")
     time.tzset()
@@ -118,7 +117,7 @@ def _run_blackjack(args: Namespace, remaining_argv: list) -> int:
     with database.getpool(bj_args, database=bj_args.databasename) as pool:
         session.start(bj_args, pool=pool)
 
-    io_screen.init()
+    bottombar.init()
 
     locale.setlocale(locale.LC_ALL, "")
     time.tzset()
@@ -128,7 +127,6 @@ def _run_blackjack(args: Namespace, remaining_argv: list) -> int:
             # The bottombar's unread count reads the registry's args and pool. Door
             # mode sets them via setbottombar; blackjack must do the same, or it
             # falls back to the default database and role.
-            from bbsengine6 import bottombar
             bottombar.setbottombar(bj_args, "", player=None, pool=pool)
             module.run(bj_args, "game", package="casino.blackjack", pool=pool)
     except KeyboardInterrupt:

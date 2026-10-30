@@ -9,7 +9,7 @@ from typing import Any
 # import ttyio5 as ttyio
 # import bbsengine5 as bbsengine
 from bbsengine6 import bottombar, database, io, member, module, util
-from bbsengine6.io import screen as bbsengine6_screen
+from bbsengine6 import bottombar as bbsengine6_bottombar
 from bbsengine6.io import terminal as bbsengine6_terminal
 from PIL import Image, ImageOps, ImageTk
 
@@ -447,7 +447,7 @@ _current_args = _casino_registry.args
 _current_player = _casino_registry.player
 
 # Mirrors the pattern in bbsengine6.ed.common.ui._screen_initialized:
-# call io.screen.init() exactly once per process so the scroll region
+# call bottombar.init() exactly once per process so the scroll region
 # (top/bottom margins) is set before any setbottombar() call lands.
 # setbottombar() positions text on ``terminal.lines()`` -- without a
 # scroll region the bottombar would scroll off the visible area when
@@ -506,19 +506,19 @@ def _unregister_casino_fragments() -> None:
 
 
 def _ensure_screen_initialized() -> None:
-    """Call ``io.screen.init()`` exactly once per process.
+    """Call ``bottombar.init()`` exactly once per process.
 
     Mirrors :func:`bed.tools.bank._ensure_screen_initialized` and
-    :func:`bbsengine6.ed.common.ui.init_screen`. ``screen.init()``
+    :func:`bbsengine6.ed.common.ui.init_screen`. ``bottombar.init()``
     sets the terminal scroll region (top/bottom margins) so the bottom
     bar stays parked on the last line instead of scrolling off when
     output overflows. setbottombar() positions text on the last line,
-    so calling it before screen.init() is a no-op (the bar would be
+    so calling it before bottombar.init() is a no-op (the bar would be
     drawn but immediately scrolled away on the next line of output).
     """
     global _screen_initialized
     if not _screen_initialized:
-        bbsengine6_screen.init()
+        bbsengine6_bottombar.init()
         _screen_initialized = True
 
 
@@ -563,7 +563,7 @@ def setarea(args: Namespace, left: str, player: Any = None) -> None:
             rightbuf += " | debug"
         return rightbuf
 
-    io.screen.setbottombar(left, right)
+    bottombar.setbottombar(left, right)
 
 
 class Player:

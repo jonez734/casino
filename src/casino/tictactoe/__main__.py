@@ -27,7 +27,7 @@ import sys
 import time
 from argparse import Namespace
 
-from bbsengine6 import database, io, member, module, screen, session
+from bbsengine6 import bottombar, database, io, member, module, session
 from bbsengine6.net.ping import PingUnavailable
 
 from .. import host
@@ -174,7 +174,7 @@ def main(argv: list[str] | None = None) -> int:
                 io.echo("{level.error}Could not determine current member.{/all}")
                 return 1
 
-            screen.init()
+            bottombar.init()
             locale.setlocale(locale.LC_ALL, "")
             time.tzset()
 

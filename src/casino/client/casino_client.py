@@ -56,7 +56,7 @@ _screen_ready = False
 def _ensure_client_screen() -> None:
     """Initialize the terminal screen once per process, before any client output or prompt.
 
-    ``screen.init()`` sets the scroll region so the bottom bar stays on the last line. It has to run
+    ``bottombar.init()`` sets the scroll region so the bottom bar stays on the last line. It has to run
     before the moniker and password prompts, or the first output lands on an unconfigured screen.
     """
     global _screen_ready

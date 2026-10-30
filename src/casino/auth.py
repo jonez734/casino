@@ -222,9 +222,7 @@ def _casino_table_fragment(**kwargs) -> str:
 
 
 def init_remote_client_screen() -> None:
-    from bbsengine6 import io as bbsio
-
-    bbsio.screen.init()
+    bottombar.init()
     bottombar.register_bottombar_fragment(_casino_table_fragment)
 
 

@@ -2,7 +2,7 @@ import locale
 import sys
 import time
 
-from bbsengine6 import io, module, screen, session
+from bbsengine6 import bottombar, io, module, session
 from bbsengine6.net.ping import PingUnavailable
 
 from . import lib
@@ -12,7 +12,7 @@ args = parser.parse_args() if parser is not None else None
 
 session.start(args)
 
-screen.init()
+bottombar.init()
 
 locale.setlocale(locale.LC_ALL, "")
 time.tzset()

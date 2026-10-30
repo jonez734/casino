@@ -18,6 +18,8 @@ import unittest
 from contextlib import redirect_stdout
 from unittest.mock import MagicMock, patch
 
+from bbsengine6 import bottombar
+
 sys.path.insert(0, "/home/opencode/data/work/casino/src")
 sys.path.insert(0, "/home/opencode/data/work/bbsengine6/py/src")
 sys.path.insert(0, "/home/opencode/data/work/bed/src")
@@ -202,7 +204,6 @@ class TestMainDispatchBlackjackSubcommand(unittest.TestCase):
         # stick. ``patch.object`` on the specific module reference
         # that ``casino.__main__`` actually imported is the fix.
         from casino.__main__ import main, session as _cm_session
-        from casino.__main__ import io_screen as _cm_io_screen
 
         args = _make_args()
 
@@ -211,7 +212,7 @@ class TestMainDispatchBlackjackSubcommand(unittest.TestCase):
              patch("casino._routing.build_client_args"), \
              patch("casino.lib.buildargs", return_value=_StubParser(args, leftover=["blackjack"])), \
              patch.object(_cm_session, "start") as session_start, \
-             patch.object(_cm_io_screen, "init"), \
+             patch.object(bottombar, "init"), \
              patch("bbsengine6.module.run") as module_run, \
              patch("bbsengine6.io.echo"), \
              patch("bbsengine6.io.terminal") as terminal, \
@@ -237,7 +238,6 @@ class TestMainDispatchBlackjackSubcommand(unittest.TestCase):
         # ``casino.__main__.io_screen`` instead of
         # ``bbsengine6.session.start`` / ``bbsengine6.io.screen.init``.
         from casino.__main__ import main, session as _cm_session
-        from casino.__main__ import io_screen as _cm_io_screen
 
         args = _make_args()
 
@@ -246,7 +246,7 @@ class TestMainDispatchBlackjackSubcommand(unittest.TestCase):
              patch("casino._routing.build_client_args"), \
              patch("casino.lib.buildargs", return_value=_StubParser(args, leftover=["blackjack", "--databasename", "bjdb"])), \
              patch.object(_cm_session, "start") as session_start, \
-             patch.object(_cm_io_screen, "init"), \
+             patch.object(bottombar, "init"), \
              patch("bbsengine6.module.run") as module_run, \
              patch("bbsengine6.io.echo"), \
              patch("bbsengine6.io.terminal") as terminal, \

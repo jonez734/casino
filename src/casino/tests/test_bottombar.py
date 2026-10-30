@@ -218,7 +218,7 @@ class TestCasinoScreenInitGuard:
     ):
         lib = _save_casino_state
         lib._screen_initialized = False
-        with patch.object(lib.bbsengine6_screen, "init") as init:
+        with patch.object(lib.bbsengine6_bottombar, "init") as init:
             lib._ensure_screen_initialized()
         init.assert_called_once_with()
         assert lib._screen_initialized is True
@@ -228,7 +228,7 @@ class TestCasinoScreenInitGuard:
     ):
         lib = _save_casino_state
         lib._screen_initialized = True
-        with patch.object(lib.bbsengine6_screen, "init") as init:
+        with patch.object(lib.bbsengine6_bottombar, "init") as init:
             lib._ensure_screen_initialized()
             lib._ensure_screen_initialized()
         init.assert_not_called()
@@ -238,7 +238,7 @@ class TestCasinoScreenInitGuard:
     ):
         lib = _save_casino_state
         lib._screen_initialized = False
-        with patch.object(lib.bbsengine6_screen, "init") as init, \
+        with patch.object(lib.bbsengine6_bottombar, "init") as init, \
              patch.object(lib.bottombar, "setbottombar"):
             lib.setbottombar(_make_args(), "casino banner")
         init.assert_called_once_with()
@@ -249,7 +249,7 @@ class TestCasinoScreenInitGuard:
     ):
         lib = _save_casino_state
         lib._screen_initialized = True
-        with patch.object(lib.bbsengine6_screen, "init") as init, \
+        with patch.object(lib.bbsengine6_bottombar, "init") as init, \
              patch.object(lib.bottombar, "setbottombar"):
             lib.setbottombar(_make_args(), "casino banner")
             lib.setbottombar(_make_args(), "casino banner")
