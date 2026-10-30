@@ -3328,19 +3328,18 @@ Stage 8 moves casino's menus onto that seam, in parts.
 
 Open items (decisions made 2026-10-30, in progress):
 
-- [ ] **Shutdown crash, part 2**: the full `casino/tests` run still crashes with
-      `PythonFinalizationError`. Eight files leak a pool when run alone: `test_api`,
-      `test_casino_integration`, `test_poker_integration`, `test_poker_persistence`,
-      `test_poker_play_flow`, `test_server`, `test_shoe`, `test_table_channels`.
-      Decision: keep the per-DSN pool cache in bbsengine6 `getpool`. No `atexit` hook. Pool
-      lifetime is owned by a context manager: each owner opens the pool for its scope and
-      closes it on exit, including on error. Casino's 7 non-test `with database.getpool(...)`
-      sites follow this. Test base classes open their pool through the same manager, or
-      `addAsyncCleanup`, so nothing outlives its test.
-      Not yet started.
-      Follow-up, other projects with `with database.getpool(...)` (not changed here):
-      achilles (2 files), empyre (4), murdermotel (2), asimov (1), letteredolive (1), teos (1),
-      and bbsengine6 itself (5 files).
+- [x] **Shutdown crash, part 2**: done. The full casino run completes with no
+      `PythonFinalizationError`. The pool lifetime is enforced in bbsengine6 as
+      `database.context_pool`, which yields the cached pool and never closes it. The casino
+      entry points use it (`9c1ebf3`), and the test session closes the cache once at end
+      (`58b8465`). bbsengine6 commit `7cff110`. The lifetime rule is in
+      `specs/CONN_POOL_PATTERN.md` under "Pool Lifetime".
+      Still to do, in other projects (recorded in each project's TODO, not here):
+      `empyre` (4), `murdermotel` (2), `asimov` (1), `letteredolive` (1), `bbsengine6` (5).
+      Held for `achilles` (2) and `teos` (1), which have no TODO file yet (see Held items below).
+- [ ] **Intermittent: `test_tablegroups::TestLifecycle::test_create_makes_group_and_registers_dealer_source`**
+      failed once in a full run after the pool change, then passed on a rerun and in two further
+      full runs, and passes alone. Not reproduced, so the cause is unknown. Investigate if it recurs.
 - [x] **Permission failures and live-database cleanup**: done. The per-test roles were
       dropped from `zoid6test` (0 remain), and the 190 per-test USAGE grants on `zoid6`'s live
       `engine` schema were revoked (0 remain). `casino_test` remains and can read
