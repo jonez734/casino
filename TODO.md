@@ -3326,24 +3326,37 @@ Stage 8 moves casino's menus onto that seam, in parts.
       `test_tictactoe_handler`, `test_tictactoe_service`, `test_yahtzee_handler`,
       `test_yahtzee_integrated` (`787024d`, `450f593`).
 
-Open, needs a decision:
+Open items (decisions made 2026-10-30, in progress):
 
 - [ ] **Shutdown crash, part 2**: the full `casino/tests` run still crashes with
       `PythonFinalizationError`. Eight files leak a pool when run alone: `test_api`,
       `test_casino_integration`, `test_poker_integration`, `test_poker_persistence`,
       `test_poker_play_flow`, `test_server`, `test_shoe`, `test_table_channels`.
-      Root cause: `bbsengine6.database.connect` creates a new, unowned pool on every call that
-      omits `pool=`. About 50 production call sites can omit it, and the message delivery on
-      login does. Options: (1) cache one process pool in `database.connect` and close it at
-      exit (fixes tests and production, shared change); (2) give each test base class one owned
-      pool (tests only, about a dozen edits). Decide before changing shared infrastructure.
+      Decision: keep the per-DSN pool cache in bbsengine6 `getpool`. No `atexit` hook. Pool
+      lifetime is owned by a context manager: each owner opens the pool for its scope and
+      closes it on exit, including on error. Casino's 7 non-test `with database.getpool(...)`
+      sites follow this. Test base classes open their pool through the same manager, or
+      `addAsyncCleanup`, so nothing outlives its test.
+      Not yet started.
+      Follow-up, other projects with `with database.getpool(...)` (not changed here):
+      achilles (2 files), empyre (4), murdermotel (2), asimov (1), letteredolive (1), teos (1),
+      and bbsengine6 itself (5 files).
 - [ ] **Permission failures**: blackjack flow, console member, multi-join, three-hands,
       two-players, and the player-observer and player-stats tests fail with
-      `permission denied for view player`. The per-test data role (`m_bjconsole_*`) has no
-      SELECT on `casino.player`, `casino.__player`, or `engine.__member`. The sibling views grant
-      `opencode` and `m_opencode`. Fix is a grant in `src/casino/sql/player_view.sql` (and the
-      base tables), or making the test roles members of `member`. This changes who can read
-      player data, so it needs a decision.
+      `permission denied for view player`. The per-test roles (`m_bjconsole_*`) lack SELECT on
+      `casino.player`, `casino.__player`, and `engine.__member`.
+      Decision: add a non-login role `casino_test` with the grants the sibling views give
+      `opencode`, and grant it to `opencode WITH ADMIN OPTION` so the fixture can attach
+      per-test roles. Production grants in `src/casino/sql/*.sql` do not change.
+      Scripts (`casino/scripts/`):
+      - `create-casino-test-role.sql`: idempotent. Refuses to run unless the database is
+        `zoid6test`. Run as `jam`: `psql -d zoid6test -v ON_ERROR_STOP=1 -f <script>`.
+      - `drop-casino-test-roles.sql`: idempotent. Drops the per-test `bjconsole_*` and
+        `m_bjconsole_*` roles cleanly. Refuses to run unless the database is `zoid6test`.
+        The 174 existing per-test roles in `zoid6test` are left until this runs.
+      Blocker: `jam` authenticates by peer (OS user), and this session runs as `opencode`. The
+      scripts must be run from a `jam` OS session. Not yet applied.
+      Test default: `_dbname.py` changes from `zoid6` to `zoid6test`.
 - [ ] **Slots broadcast**: `test_slots_flow` (`test_broadcast_publishes_to_table_channel`) and
       `test_slots_integrated` (`test_slot_spin_full_flow_with_broadcast`) assert a publish that
       the slots game never makes. Tictactoe and yahtzee publish from their handlers; slots does
