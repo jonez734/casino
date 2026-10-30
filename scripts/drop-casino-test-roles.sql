@@ -66,12 +66,13 @@ declare
     g record;
 begin
     for g in
-        select n.nspname as schema_name, t.rolname as grantee
+        -- Explicit grants only: has_schema_privilege also reports implicit rights (public,
+        -- pg_temp) that no revoke can remove, so it would warn on every run.
+        select distinct n.nspname as schema_name, t.rolname as grantee
         from pg_namespace n
-        cross join _casino_test_roles t
-        where has_schema_privilege(t.oid, n.oid, 'usage')
-          and n.nspname not in ('pg_catalog', 'information_schema')
-          and n.nspname not like 'pg_toast%'
+        cross join lateral aclexplode(n.nspacl) a
+        join _casino_test_roles t on t.oid = a.grantee
+        where a.privilege_type = 'USAGE'
     loop
         execute format('revoke usage on schema %I from %I', g.schema_name, g.grantee);
     end loop;
@@ -84,20 +85,22 @@ declare
     g record;
 begin
     for g in
-        select c.oid::regclass as rel, t.rolname as grantee
+        select distinct c.oid::regclass as rel, t.rolname as grantee
         from pg_class c
-        cross join _casino_test_roles t
+        cross join lateral aclexplode(c.relacl) a
+        join _casino_test_roles t on t.oid = a.grantee
         where c.relkind in ('r', 'v', 'm', 'p', 'S', 'f')
-          and c.relacl::text like '%' || t.rolname || '=%'
     loop
         execute format('revoke all on %s from %I', g.rel, g.grantee);
     end loop;
 end
 $$;
 
--- 3. Memberships, in both directions. A login role is a member of its data role, and the
---    per-test roles are members of shared roles (bed, bed_zoid6). Revoke only the edges that
---    touch a per-test role; the shared role itself is left as it is.
+-- 3. Memberships. DROP ROLE removes a role's own memberships, so only one direction needs an
+--    explicit revoke: a shared role (bed, bed_zoid6, opencode, ...) that is a member OF a
+--    per-test role. Those edges carry the admin options the fixture used, and revoking them
+--    needs the grantor's rights, which jam has. Membership of a per-test role in a shared role
+--    is left to DROP ROLE. Shared roles themselves are never altered.
 do $$
 declare
     e record;
@@ -108,7 +111,7 @@ begin
         join pg_roles r on r.oid = m.roleid
         join pg_roles u on u.oid = m.member
         where r.oid in (select oid from _casino_test_roles)
-           or u.oid in (select oid from _casino_test_roles)
+          and u.oid not in (select oid from _casino_test_roles)
     loop
         execute format('revoke %I from %I', e.granted_role, e.member);
     end loop;
@@ -140,8 +143,20 @@ begin
 end
 $$;
 
-select 'per-test roles remaining: ' || count(*) as status
-from pg_roles
-where rolname ~ '^(m_)?bjconsole' or rolname ~ '^(m_)?bj2p_';
+-- Fail the whole run, and roll it back, if any per-test role is left. Nothing is committed
+-- half-done, and the cause shows in the error.
+do $$
+declare
+    left_over integer;
+begin
+    select count(*) into left_over from pg_roles
+    where rolname ~ '^(m_)?(bjconsole|bj2p)';
+    if left_over > 0 then
+        raise exception 'drop-casino-test-roles: % per-test role(s) remain; rolled back', left_over;
+    end if;
+end
+$$;
+
+select 'per-test roles remaining: 0' as status;
 
 commit;
