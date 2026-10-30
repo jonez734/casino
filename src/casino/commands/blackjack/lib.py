@@ -2,6 +2,7 @@
 # Blackjack command functions
 
 from bbsengine6 import io
+from casino import host
 
 
 def play(args, **kwargs) -> bool:
@@ -18,11 +19,12 @@ def menu(args, **kwargs):
     io.echo("  [Q]uit   return to the main menu")
     io.echo()
 
-    cmd = io.inputchoice(
+    # host.choose: LO when hosted, io.inputchoice standalone. Uppercased for the checks below.
+    cmd = (host.choose(
         "{var:promptcolor}[P]lay  [Q]uit: {var:inputcolor}",
         "p,q",
         default="q",
-    )
+    ) or "").upper()
 
     if cmd == "P":
         play(args, **kwargs)

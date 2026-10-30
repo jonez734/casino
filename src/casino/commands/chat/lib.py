@@ -4,6 +4,7 @@
 import asyncio
 
 from bbsengine6 import io
+from casino import host
 
 
 def get_client():
@@ -45,7 +46,7 @@ def menu(args, client=None, **kwargs):
         return False
 
     while True:
-        cmd = io.inputchoice("{var:promptcolor}[G]lobal  [T]able  [Q]uit: {var:inputcolor}", "g,t,q", default="q")
+        cmd = (host.choose("{var:promptcolor}[G]lobal  [T]able  [Q]uit: {var:inputcolor}", "g,t,q", default="q") or "").upper()
 
         if cmd == "G":
             chat(args, client=client, **kwargs)

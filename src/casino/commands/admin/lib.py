@@ -4,6 +4,7 @@
 import asyncio
 
 from bbsengine6 import io
+from casino import host
 
 
 def get_client():
@@ -111,7 +112,7 @@ def menu(args, client=None, **kwargs):
         return False
 
     while True:
-        cmd = io.inputchoice("{var:promptcolor}[W]atch  [U]nwatch  [K]ick  [Q]uit: {var:inputcolor}", "w,u,k,q", default="q")
+        cmd = (host.choose("{var:promptcolor}[W]atch  [U]nwatch  [K]ick  [Q]uit: {var:inputcolor}", "w,u,k,q", default="q") or "").upper()
 
         if cmd == "W":
             watch_table(args, client=client, **kwargs)

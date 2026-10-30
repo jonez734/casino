@@ -15,6 +15,7 @@
 #   exactly once per display of help (one F1 press -> one heading).
 
 from bbsengine6 import io, module, util
+from casino import host
 
 
 def play(args, **kwargs) -> bool:
@@ -51,12 +52,13 @@ def menu(args, **kwargs):
     """Show the yahtzee submenu and dispatch the chosen subcommand."""
     util.heading("Yahtzee")
     _render_help()
-    cmd = io.inputchoice(
+    # host.choose: LO when hosted, io.inputchoice standalone. Uppercased for the checks below.
+    cmd = (host.choose(
         "{var:promptcolor}[P]lay  [Q]uit: {var:inputcolor}",
         "p,q",
         default="q",
         help=_render_help,
-    )
+    ) or "").upper()
 
     if cmd == "P":
         play(args, **kwargs)

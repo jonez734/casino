@@ -4,6 +4,7 @@
 import asyncio
 
 from bbsengine6 import io
+from casino import host
 
 from casino.poker import list_variants
 
@@ -244,12 +245,13 @@ def menu(args, client=None, **kwargs):
         return False
 
     while True:
-        cmd = io.inputchoice(
+        # host.choose: LO when hosted, io.inputchoice standalone. Uppercased for the checks below.
+        cmd = (host.choose(
             "{var:promptcolor}[S]tart  [C]heck  [L]call  [B]et  [R]aise  [A]ll-in  [F]old  "
             "[T]able  [Q]uit: {var:inputcolor}",
             "s,c,l,b,r,a,f,t,q",
             default="q"
-        )
+        ) or "").upper()
 
         if cmd == "S":
             start_hand(args, client=client, **kwargs)

@@ -19,6 +19,7 @@ from types import SimpleNamespace
 from typing import Any, Dict, Optional
 
 from bbsengine6 import io, util
+from casino import host
 from casino.access import access as _casino_access
 from casino.menu_lib import MenuOption, visible_options
 
@@ -308,12 +309,13 @@ def menu(args: argparse.Namespace, client=None, **kwargs):
         for letter, label in visible
     )
     _render_help(client=client)
-    cmd = io.inputchoice(
+    # host.choose: LO when hosted, io.inputchoice standalone. Uppercased for the checks below.
+    cmd = (host.choose(
         "{var:promptcolor}" + inline + ": {var:inputcolor}",
         option_str,
         default="q",
         help=_render_help,
-    )
+    ) or "").upper()
 
     if cmd == "S":
         slot_spin(args, client=client, **kwargs)

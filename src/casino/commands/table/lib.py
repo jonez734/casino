@@ -16,6 +16,7 @@ from types import SimpleNamespace
 from typing import Any, Dict, Optional
 
 from bbsengine6 import io
+from casino import host
 from casino.access import access as _casino_access
 
 
@@ -248,11 +249,12 @@ def menu(args, client=None, **kwargs):
         return False
 
     while True:
-        cmd = io.inputchoice(
+        # host.choose: LO when hosted, io.inputchoice standalone. Uppercased for the checks below.
+        cmd = (host.choose(
             "{var:promptcolor}[T]ables  [C]reate  [J]oin  [L]eave  [U]pdate  [V]iew  [Q]uit: {var:inputcolor}",
             "t,c,j,l,u,v,q",
             default="q",
-        )
+        ) or "").upper()
 
         if cmd == "T":
             list_tables(args, client=client, **kwargs)

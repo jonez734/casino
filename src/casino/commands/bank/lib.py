@@ -16,6 +16,7 @@ from types import SimpleNamespace
 from typing import Any, Dict, Optional
 
 from bbsengine6 import io
+from casino import host
 from bbsengine6.bank import access as _bank_access
 
 from casino.commands._auth import _require_authenticated_client
@@ -306,11 +307,12 @@ def menu(args, client=None, **kwargs):
         return False
 
     while True:
-        cmd = io.inputchoice(
+        # host.choose: LO when hosted, io.inputchoice standalone. Uppercased for the checks below.
+        cmd = (host.choose(
             "{var:promptcolor}[B]alance  [A]dd  [W]ithdraw  [T]ransfer  [P]ending  [H]istory  [L]ist all  [Q]uit: {var:inputcolor}",
             "b,a,w,t,p,h,l,q",
             default="q",
-        )
+        ) or "").upper()
 
         if cmd == "B":
             bank_balance(args, client=client, **kwargs)
