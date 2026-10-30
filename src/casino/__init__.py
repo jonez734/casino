@@ -7,6 +7,13 @@ __version__ = "202210010112"
 
 
 def init(args, **kw: dict) -> bool:
+    # Hosted: the hosting program passes a host with a ``choose`` menu. Route casino's menus
+    # through it. Standalone runs pass no host, so menus stay on io.inputchoice.
+    hosted = kw.get("host")
+    if hosted is not None:
+        from . import host as casino_host
+
+        casino_host.register_menu(hosted.choose)
     register_module(
         name="casino",
         module_path="casino",

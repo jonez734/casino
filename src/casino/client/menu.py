@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 from bbsengine6 import io, util
 
+from .. import host
 from ..menu_lib import MenuOption, visible_options
 from .registry import get_client
 
@@ -116,7 +117,8 @@ def menu(client: "CasinoClient | None" = None, **kwargs) -> str | None:
         for letter, label in visible
     )
     prompt = status + inline + "{f6}{var:promptcolor}casino_client: {var:inputcolor}"
-    return io.inputchoice(
+    # host.choose uses LO when casino is hosted, and io.inputchoice standalone.
+    return host.choose(
         prompt,
         option_str,
         default=_DEFAULT,
