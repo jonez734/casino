@@ -3341,22 +3341,26 @@ Open items (decisions made 2026-10-30, in progress):
       Follow-up, other projects with `with database.getpool(...)` (not changed here):
       achilles (2 files), empyre (4), murdermotel (2), asimov (1), letteredolive (1), teos (1),
       and bbsengine6 itself (5 files).
-- [ ] **Permission failures**: blackjack flow, console member, multi-join, three-hands,
-      two-players, and the player-observer and player-stats tests fail with
-      `permission denied for view player`. The per-test roles (`m_bjconsole_*`) lack SELECT on
+- [ ] **Permission failures and live-database cleanup**: blackjack flow, console member,
+      multi-join, three-hands, two-players, and the player-observer and player-stats tests fail
+      with `permission denied for view player`. The per-test roles lacked SELECT on
       `casino.player`, `casino.__player`, and `engine.__member`.
-      Decision: add a non-login role `casino_test` with the grants the sibling views give
-      `opencode`, and grant it to `opencode WITH ADMIN OPTION` so the fixture can attach
-      per-test roles. Production grants in `src/casino/sql/*.sql` do not change.
-      Scripts (`casino/scripts/`):
-      - `create-casino-test-role.sql`: idempotent. Refuses to run unless the database is
-        `zoid6test`. Run as `jam`: `psql -d zoid6test -v ON_ERROR_STOP=1 -f <script>`.
-      - `drop-casino-test-roles.sql`: idempotent. Drops the per-test `bjconsole_*` and
-        `m_bjconsole_*` roles cleanly. Refuses to run unless the database is `zoid6test`.
-        The 174 existing per-test roles in `zoid6test` are left until this runs.
-      Blocker: `jam` authenticates by peer (OS user), and this session runs as `opencode`. The
-      scripts must be run from a `jam` OS session. Not yet applied.
-      Test default: `_dbname.py` changes from `zoid6` to `zoid6test`.
+      Done:
+      - `casino_test` created in `zoid6test` by `jam` (`scripts/create-casino-test-role.sql`).
+        The per-test fixtures make their roles members of it (`fdf1396`).
+      - Tests refuse to run against `zoid6`, and every casino default names `zoid6test`
+        (`30b2905`). Test runs against `zoid6` had created 442 per-test roles and 190 USAGE
+        grants on zoid6's live `engine` schema.
+      Still to do, as `jam` (both scripts are idempotent):
+      1. `psql -U jam -d zoid6 -v ON_ERROR_STOP=1 -1 -f scripts/revoke-per-test-engine-usage.sql`
+         revokes the 190 per-test USAGE grants on the live `engine` schema (`8781379`).
+         Run it first: the drop cannot finish while zoid6 still grants those roles anything.
+      2. `psql -U jam -d zoid6test -v ON_ERROR_STOP=1 -f scripts/drop-casino-test-roles.sql`
+         drops the 442 per-test roles (`bjconsole`, `bj2p`). Latest run rolled back, because
+         the live grants above were still in place.
+      Open: the drop depends on stale `pg_shdepend` rows in zoid6, which step 1 clears. Confirm
+      after step 2 that `select count(*) from pg_roles where rolname ~ '^(m_)?(bjconsole|bj2p)'`
+      returns 0.
 - [ ] **Slots broadcast**: `test_slots_flow` (`test_broadcast_publishes_to_table_channel`) and
       `test_slots_integrated` (`test_slot_spin_full_flow_with_broadcast`) assert a publish that
       the slots game never makes. Tictactoe and yahtzee publish from their handlers; slots does
