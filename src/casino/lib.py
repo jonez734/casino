@@ -801,7 +801,7 @@ def buildargs(args: Namespace | None = None, **kwargs: Any) -> argparse.Argument
     )
 
     defaults = {
-        "databasename": "zoid6",
+        "databasename": "zoid6test",
         "databasehost": "localhost",
         "databaseuser": None,
         "databaseport": 5432,

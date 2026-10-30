@@ -29,7 +29,7 @@ def _make_args(**overrides) -> argparse.Namespace:
     args = argparse.Namespace()
     args.verbose = False
     args.debug = False
-    args.databasename = "zoid6"
+    args.databasename = "zoid6test"
     args.databasehost = "localhost"
     args.databaseuser = None
     args.databaseport = 5432

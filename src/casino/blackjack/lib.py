@@ -31,7 +31,7 @@ def buildargs(args=None, **kw):
     parser.add_argument("--debug", action="store_true", dest="debug")
 
     defaults = {
-        "databasename": "zoid6",
+        "databasename": "zoid6test",
         "databasehost": "localhost",
         "databaseuser": None,
         "databaseport": 5432,

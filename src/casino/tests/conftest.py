@@ -37,10 +37,21 @@ def pytest_addoption(parser, pluginmanager):
     )
 
 
+# The only database the casino tests may write to. zoid6 is the live database: the tests create
+# roles, grant privileges, and insert members there, so a run against it is a production change.
+TEST_DATABASE = "zoid6test"
+
+
 def pytest_configure(config):
     cli = config.getoption("--databasename")
     env = os.environ.get(_dbname.DBNAME_ENV)
-    _dbname.set_active_dbname(cli or env or _dbname.DEFAULT_DBNAME)
+    name = cli or env or _dbname.DEFAULT_DBNAME
+    if name != TEST_DATABASE:
+        raise pytest.UsageError(
+            f"casino tests refuse to run against {name!r}: they write to the database, and only "
+            f"{TEST_DATABASE!r} is a test database. Use --databasename={TEST_DATABASE}."
+        )
+    _dbname.set_active_dbname(name)
 
 
 def pytest_sessionfinish(session, exitstatus):

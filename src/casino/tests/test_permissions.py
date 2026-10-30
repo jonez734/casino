@@ -17,7 +17,7 @@ def main():
     parser = argparse.ArgumentParser(description="Test casino schema permissions")
     parser.add_argument("--debug", action="store_true", help="Enable debug output")
     parser.add_argument(
-        "--database", dest="databasename", default="zoid6", help="Database name"
+        "--database", dest="databasename", default="zoid6test", help="Database name (default: the test database)"
     )
     parser.add_argument(
         "--dbuser", dest="databaseuser", default=os.environ.get("USER", "jam"), help="Database user"

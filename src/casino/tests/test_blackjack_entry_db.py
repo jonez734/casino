@@ -69,7 +69,7 @@ class TestDatabaseFlagsReachBlackjack(unittest.TestCase):
         captured, *_ = self._run_with(["blackjack"])
         bj_args = captured["getpool_args"]
         # No top-level override: the blackjack parser's default stands.
-        self.assertEqual(bj_args.databasename, "zoid6")
+        self.assertEqual(bj_args.databasename, "zoid6test")
         self.assertIsNone(bj_args.databaseuser)
 
 

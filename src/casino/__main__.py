@@ -187,7 +187,7 @@ def _run_test_data(args: Namespace) -> int:
     """
     from casino import test_data
 
-    # The parser defaults --databasename to zoid6, so the scratch database is used unless the
+    # The parser defaults --databasename to zoid6test, so the scratch database is used unless the
     # operator passed --databasename explicitly (sys.argv records that).
     explicit = any(a == "--databasename" or a.startswith("--databasename=") for a in sys.argv)
     database_name = args.databasename if explicit else test_data.DEFAULT_DATABASE
