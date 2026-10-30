@@ -3294,8 +3294,16 @@ Stage 8 moves casino's menus onto that seam, in parts.
 - [x] **8b: client submenus** in `casino/client/casino_client.py` (channels, bank, source
       picker) call `host.choose`. Commit `586427a`. Submenus compare on lowercase so hosted
       (as stored) and standalone (uppercase) match.
-- [ ] **8c: door-mode `main.py`** calls `host.choose`.
+- [x] **8c: door-mode `main.py`** calls `host.choose`. Commit `7f8a080`. The answer is
+      lowercased once and the choice string is lowercase, so hosted and standalone match.
+      This also fixed a standalone bug: the loop compared lowercase letters to
+      `inputchoice`'s uppercase answer, so no option could be dispatched from the standalone
+      door menu. Covered by `tests/test_door_menu_host_choose.py` (4 of 5 fail on the old code).
 - [ ] **8d: game prompts** (blackjack, slots, yahtzee, tictactoe) call `host.choose`.
+- [ ] **Deprecated `screen.init` shim**: `casino/__main__.py`, the blackjack, yahtzee, and
+      tictactoe entry points, and `auth.init_remote_client_screen` (called from the door loop)
+      still call `bbsengine6.screen.init`, which warns. Move them to `bbsengine6.bottombar.init`.
+      Hosted casino should not call it at all (LO owns the screen).
 - [ ] **Hosted `init`**: casino does its own `getpool` and `session.start` when hosted. It
       should use the host's pool and identity instead.
 
