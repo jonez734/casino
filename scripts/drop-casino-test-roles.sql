@@ -113,9 +113,14 @@ begin
         select rolname from _casino_test_roles order by rolname
     loop
         begin
+            -- DROP OWNED clears what the role still depends on, including shared-dependency
+            -- entries left behind by schemas that were dropped without them. It runs inside this
+            -- transaction, so a failure rolls it back with everything else.
+            execute format('drop owned by %I', t.rolname);
             execute format('drop role %I', t.rolname);
             dropped := dropped + 1;
-        exception when dependent_objects_still_exist or invalid_grant_operation then
+        exception when dependent_objects_still_exist or invalid_grant_operation
+                     or insufficient_privilege then
             skipped := skipped || ' ' || t.rolname;
         end;
     end loop;
