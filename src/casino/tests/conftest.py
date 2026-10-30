@@ -32,7 +32,7 @@ def pytest_addoption(parser, pluginmanager):
         default=None,
         help=(
             "PostgreSQL database name for casino tests. "
-            "Falls back to env var BBSENGINE6_DBNAME, then default 'zoid6'."
+            "Falls back to env var BBSENGINE6_DBNAME, then default 'zoid6test'."
         ),
     )
 

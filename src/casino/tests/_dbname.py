@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import os
 
-DEFAULT_DBNAME = "zoid6"
+DEFAULT_DBNAME = "zoid6test"
 DBNAME_ENV = "BBSENGINE6_DBNAME"
 
 
