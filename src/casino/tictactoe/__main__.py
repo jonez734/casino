@@ -27,10 +27,11 @@ import sys
 import time
 from argparse import Namespace
 
-from bbsengine6 import bottombar, database, io, member, module, session
+from bbsengine6 import bottombar, io, member, module, session
 from bbsengine6.net.ping import PingUnavailable
 
 from .. import host
+from ..dal.pool import process_pool
 from . import lib
 from .service import TictactoeService
 
@@ -166,7 +167,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     try:
-        with database.getpool(args, database=args.databasename) as pool:
+        with process_pool(args, database=args.databasename) as pool:
             session.start(args, pool=pool)
 
             player_moniker = member.getcurrentmoniker(args, pool=pool)

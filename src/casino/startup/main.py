@@ -1,4 +1,5 @@
 from bbsengine6 import database, io
+from casino.dal.pool import process_pool
 
 from . import checkcasino
 
@@ -29,7 +30,7 @@ def buildargs(args, **kwargs):
 
 
 def main(args, **kwargs):
-    with database.getpool(args) as pool, database.connect(args, pool=pool) as conn:
+    with process_pool(args) as pool, database.connect(args, pool=pool) as conn:
 
         # 1. Extensions — citext is required by casino.__player.moniker,
         #    casino.__player.membermoniker, and __bank_player.player_moniker.

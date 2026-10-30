@@ -1,9 +1,10 @@
 from argparse import Namespace
 from contextlib import contextmanager
 
-from bbsengine6 import database, io, member, session, util
+from bbsengine6 import io, member, session, util
 
 from . import _version, auth, host, lib
+from .dal.pool import process_pool
 from .menu_lib import MenuOption, visible_options
 
 
@@ -19,7 +20,7 @@ def _door_pool(args: Namespace, bedsession):
     if bedsession is not None:
         yield bedsession.pool
         return
-    with database.getpool(args, database=args.databasename) as pool:
+    with process_pool(args, database=args.databasename) as pool:
         yield pool
 
 
