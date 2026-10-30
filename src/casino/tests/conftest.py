@@ -43,6 +43,18 @@ def pytest_configure(config):
     _dbname.set_active_dbname(cli or env or _dbname.DEFAULT_DBNAME)
 
 
+def pytest_sessionfinish(session, exitstatus):
+    """Close the process's cached connection pools once, after the last test.
+
+    bbsengine6 caches one pool per database, so every test shares it. Nothing else owns its end
+    of life, and a pool whose worker threads are still running at interpreter exit crashes the
+    shutdown. The session is the owner: it closes the cache here, before the interpreter exits.
+    """
+    from bbsengine6 import database
+
+    database.reset_pool_cache()
+
+
 @pytest.fixture
 def dbname() -> str:
     """Resolved --databasename value as a pytest fixture."""

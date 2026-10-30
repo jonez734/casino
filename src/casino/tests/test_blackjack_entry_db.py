@@ -49,7 +49,7 @@ class TestDatabaseFlagsReachBlackjack(unittest.TestCase):
 
         with patch.object(cm.database, "getpool", side_effect=fake_getpool), \
                 patch.object(cm.session, "start") as start, \
-                patch.object(cm.io_screen, "init"), \
+                patch.object(cm.bottombar, "init"), \
                 patch("bbsengine6.module.run") as run, \
                 patch("bbsengine6.bottombar.setbottombar") as setbb, \
                 patch.object(cm.io, "echo"), \
@@ -93,7 +93,7 @@ class TestSubcommandFlagWins(unittest.TestCase):
 
         with patch.object(cm.database, "getpool", side_effect=fake_getpool), \
                 patch.object(cm.session, "start"), \
-                patch.object(cm.io_screen, "init"), \
+                patch.object(cm.bottombar, "init"), \
                 patch("bbsengine6.module.run"), \
                 patch("bbsengine6.bottombar.setbottombar"), \
                 patch.object(cm.io, "echo"), \
@@ -117,17 +117,19 @@ class TestPoolIsPassedToSessionAndGame(unittest.TestCase):
         top, remaining = _top_args(list(argv))
         pools = []
 
+        # The entry point takes the cached pool from getpool and does not enter it, so record
+        # what getpool hands out. The game must receive that same object.
         class _Pool:
-            def __enter__(self_inner):
-                pools.append(self_inner)
-                return self_inner
+            pass
 
-            def __exit__(self_inner, *a):
-                return False
+        def fake_getpool(*a, **kw):
+            pool = _Pool()
+            pools.append(pool)
+            return pool
 
-        with patch.object(cm.database, "getpool", return_value=_Pool()), \
+        with patch.object(cm.database, "getpool", side_effect=fake_getpool), \
                 patch.object(cm.session, "start") as start, \
-                patch.object(cm.io_screen, "init"), \
+                patch.object(cm.bottombar, "init"), \
                 patch("bbsengine6.module.run") as run, \
                 patch("bbsengine6.bottombar.setbottombar") as setbb, \
                 patch.object(cm.io, "echo"), \
@@ -186,7 +188,8 @@ class TestGameSourceUsesPool(unittest.TestCase):
     def test_entry_point_opens_a_pool_for_session_and_game(self):
         src = (CASINO / "__main__.py").read_text()
         body = src[src.index("def _run_blackjack"):src.index("_BLACKJACK_SUBCOMMAND =")]
-        self.assertGreaterEqual(body.count("database.getpool"), 2)
+        # The entry point opens its pool through the process pool helper, once per scope.
+        self.assertGreaterEqual(body.count("process_pool("), 2)
         self.assertIn("session.start(bj_args, pool=pool)", body)
         self.assertIn('package="casino.blackjack", pool=pool', body)
 

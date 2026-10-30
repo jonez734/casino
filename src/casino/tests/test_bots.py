@@ -103,7 +103,7 @@ def test_bot_created_member_cannot_log_in_with_a_known_password():
     from unittest.mock import MagicMock
 
     @contextmanager
-    def fake_connect(args, pool=None):
+    def fake_connect(args, pool=None, **kwargs):
         yield MagicMock()
 
     with patch.object(bots.database, "connect", fake_connect), \

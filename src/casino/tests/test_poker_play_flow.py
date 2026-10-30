@@ -165,7 +165,7 @@ def test_submenu_offers_the_actions_a_player_needs():
     """The submenu must offer start, check, call, bet, raise, all-in, fold, table, and quit."""
     keys = []
 
-    def fake_choice(prompt, choices, default=None):
+    def fake_choice(prompt, choices, default=None, help=None, **kwargs):
         keys.append(choices)
         return "Q"
 
