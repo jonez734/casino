@@ -189,7 +189,7 @@ class TestGameSourceUsesPool(unittest.TestCase):
         src = (CASINO / "__main__.py").read_text()
         body = src[src.index("def _run_blackjack"):src.index("_BLACKJACK_SUBCOMMAND =")]
         # The entry point opens its pool through the process pool helper, once per scope.
-        self.assertGreaterEqual(body.count("process_pool("), 2)
+        self.assertGreaterEqual(body.count("context_pool("), 2)
         self.assertIn("session.start(bj_args, pool=pool)", body)
         self.assertIn('package="casino.blackjack", pool=pool', body)
 

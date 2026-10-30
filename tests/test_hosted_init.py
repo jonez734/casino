@@ -125,10 +125,12 @@ def test_hosted_with_empty_identity_is_not_a_member():
     player_cls.assert_not_called()
 
 
-def test_standalone_opens_its_own_pool_and_closes_it():
+def test_standalone_opens_its_own_pool_and_leaves_it_open():
+    """Standalone takes the process's cached pool and does not close it: the process owns the
+    pool and reset_pool_cache is its only close."""
     out = _run(None)
     out["getpool"].assert_called_once()
-    assert out["pool"].closed is True
+    assert out["pool"].closed is False
 
 
 def test_standalone_starts_the_session_and_looks_up_the_member():

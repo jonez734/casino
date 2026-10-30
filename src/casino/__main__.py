@@ -43,7 +43,6 @@ from bed.tools._routing import BedNotReachable
 from . import _routing, lib
 from .blackjack import lib as blackjack_lib
 from .client import CasinoClient
-from .dal.pool import process_pool
 
 
 def _run_direct(args: Namespace, remaining_argv: list) -> int:
@@ -52,7 +51,7 @@ def _run_direct(args: Namespace, remaining_argv: list) -> int:
         io.echo("bbsengine6 startup failed")
         return 1
 
-    with process_pool(args, database=args.databasename) as pool:
+    with database.context_pool(args, database=args.databasename) as pool:
         session.start(args, pool=pool)
 
     bottombar.init()
@@ -115,7 +114,7 @@ def _run_blackjack(args: Namespace, remaining_argv: list) -> int:
             setattr(bj_args, name, top)
 
     # Session and member lookups need a pool; door mode passes one the same way.
-    with process_pool(bj_args, database=bj_args.databasename) as pool:
+    with database.context_pool(bj_args, database=bj_args.databasename) as pool:
         session.start(bj_args, pool=pool)
 
     bottombar.init()
@@ -124,7 +123,7 @@ def _run_blackjack(args: Namespace, remaining_argv: list) -> int:
     time.tzset()
 
     try:
-        with process_pool(bj_args, database=bj_args.databasename) as pool:
+        with database.context_pool(bj_args, database=bj_args.databasename) as pool:
             # The bottombar's unread count reads the registry's args and pool. Door
             # mode sets them via setbottombar; blackjack must do the same, or it
             # falls back to the default database and role.
@@ -233,7 +232,7 @@ def _run_install(args: Namespace) -> int:
         )
         return 1
 
-    with process_pool(args, dbname=args.databasename) as pool, \
+    with database.context_pool(args, dbname=args.databasename) as pool, \
             database.connect(args, pool=pool) as conn:
         if checksuperuser.main(args, conn=conn) is not True:
             io.echo(
