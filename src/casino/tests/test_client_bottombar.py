@@ -100,8 +100,10 @@ def _emitted_line(width, **kw):
 
 
 def _visible(text):
-    # Strip markup tokens such as {savecursor} or {bottombarcolor}; what remains is what is drawn.
-    return _re.sub(r"\{[^}]*\}", "", text)
+    # Strip markup tokens such as {bottombarcolor}, and the ESC 7 / ESC 8 save and restore
+    # codes the bar wraps itself in. Neither is drawn, so what remains is what is on screen.
+    text = _re.sub(r"\{[^}]*\}", "", text)
+    return _re.sub(r"\x1b[78]", "", text)
 
 
 def test_bar_never_wider_than_the_terminal_with_a_long_right_side():
