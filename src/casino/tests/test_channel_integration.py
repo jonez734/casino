@@ -45,6 +45,25 @@ class TestChannelSubscriptionIntegration(unittest.IsolatedAsyncioTestCase):
         self.sessions = self.router.sessions
         self.channel_state = self.router.channel_state
 
+    def _ensure_channel(self, name):
+        """Create the channel if it does not exist. Returns True when this call created it."""
+        from bbsengine6.services.channel import ChannelService
+
+        svc = ChannelService(self.args)
+        if svc.get_channel(name) is not None:
+            return False
+        svc.create_channel(name, createdby="alice", description="test channel")
+        return True
+
+    def _drop_channel(self, name, created):
+        """Remove a channel this test created, so the next run starts from the same state."""
+        if not created:
+            return
+        from bbsengine6 import database
+
+        with database.connect(self.args) as conn, database.cursor(conn) as cur:
+            cur.execute(database.query("DELETE FROM $engine.__channel WHERE name = :n", n=name))
+
     async def test_disconnect_unsubscribes_all_channels(self):
         """Session disconnect should unsubscribe from all channels."""
         from bbsengine6.net import channel_get_session_channels, channel_subscribe
@@ -67,6 +86,12 @@ class TestChannelSubscriptionIntegration(unittest.IsolatedAsyncioTestCase):
         """subscribe_channel message type should work."""
         from bbsengine6.channel.api.handler import ChannelServiceHandler
         from bbsengine6.net import channel_get_session_channels
+
+        # system:shout is a message type the product seeds, but not a channel row in the test
+        # database. The subscribe needs the channel to exist, so create it through the channel
+        # service, and remove it afterwards.
+        created = self._ensure_channel("system:shout")
+        self.addCleanup(self._drop_channel, "system:shout", created)
 
         channel_service = ChannelServiceHandler(
             self.args, self.sessions, self.channel_state
