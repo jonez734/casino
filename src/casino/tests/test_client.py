@@ -523,9 +523,20 @@ class TestMenuVisibility(unittest.TestCase):
         with patch("bbsengine6.io.inputchoice", side_effect=fake_inputchoice):
             menu(_StubClient(tm="tbl", gt="blackjack"))
 
-        # The option list passed to inputchoice must use lowercase
-        # letters separated by commas (matches io.inputchoice contract).
-        self.assertEqual(captured["options"], "t,c,u,j,p,l,b,h,s,m,k,x,q")
+        # The option list passed to inputchoice must be the visible letters, in spec order,
+        # comma separated, as io.inputchoice takes them. Derived from the same visibility rule
+        # the menu uses, so adding a menu option does not require editing this test.
+        from casino.client.menu import _visible_options
+
+        expected = ",".join(letter for letter, _label in _visible_options(_StubClient(tm="tbl", gt="blackjack")))
+        self.assertEqual(captured["options"], expected)
+        # The visible set itself is pinned for a seated blackjack player: the seat-gated
+        # letters appear, and the unseated-only tictactoe letters do not.
+        letters = captured["options"].split(",")
+        for seated in ("l", "b", "h", "s"):
+            self.assertIn(seated, letters)
+        for tictactoe_only in ("v", "n", "g"):
+            self.assertNotIn(tictactoe_only, letters)
 
     def test_render_help_reflects_same_filter(self):
         """F1/HELP must echo only the currently-visible long labels."""

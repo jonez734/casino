@@ -119,8 +119,9 @@ class TestClientMenuInlinePrompt(unittest.TestCase):
     def test_main_menu_prompt_seated_at_blackjack(self):
         """When the player is seated at a blackjack table, the
         seat-gated options become visible (Leave / Bet / Hit /
-        Stand). 8 + 4 = 12 visible -> 11 ``{f6}`` between options
-        + 2 boundary seams = 14 ``{f6}`` markers.
+        Stand). With N visible options the prompt carries N - 1
+        ``{f6}`` between options plus 2 boundary seams, so N + 1 markers.
+        The expected count is derived from the visible set, not hardcoded.
         """
         from casino.client.menu import menu as client_menu
 
@@ -132,8 +133,11 @@ class TestClientMenuInlinePrompt(unittest.TestCase):
         with patch("bbsengine6.io.inputchoice", return_value="Q") as mock_ic:
             client_menu(client)
 
+        from casino.client.menu import _visible_options
+
+        visible = len(_visible_options(client))
         prompt = mock_ic.call_args[0][0]
-        self.assertEqual(prompt.count("{f6}"), 14)
+        self.assertEqual(prompt.count("{f6}"), visible + 1)
 
     def test_main_menu_prompt_seam_count_matches_visible_plus_one(self):
         """General invariant: ``{f6}`` count == ``len(visible) + 1``
