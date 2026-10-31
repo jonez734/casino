@@ -95,9 +95,13 @@ class WebSocketTestClient:
         await self.ws.send(json.dumps(message))
 
     async def receive(self, timeout: Optional[float] = None) -> dict:
-        return await asyncio.wait_for(
-            self._message_queue.get(), timeout=timeout or self.timeout
-        )
+        """Receive the next reply, skipping owns_tables pushes (a flag update, not a reply)."""
+        while True:
+            msg = await asyncio.wait_for(
+                self._message_queue.get(), timeout=timeout or self.timeout
+            )
+            if msg.get("type") != "owns_tables":
+                return msg
 
     async def receive_messages(self, max_count: int = 10, timeout: float = 5.0) -> list:
         messages: list = []

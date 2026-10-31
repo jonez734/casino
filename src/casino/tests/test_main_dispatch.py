@@ -48,7 +48,7 @@ def _make_args(**overrides) -> argparse.Namespace:
 class TestMainParserShape(unittest.TestCase):
     """``casino.lib.buildargs()`` registers the merged CLI's flags."""
 
-    def test_buildargs_registers_bed_and_direct_flags(self):
+    def test_buildargs_registers_bed_flags(self):
         from casino.lib import buildargs
 
         parser = buildargs()
@@ -59,7 +59,6 @@ class TestMainParserShape(unittest.TestCase):
                 "--bed-path", "/ws",
                 "--bed-call-timeout", "7.0",
                 "--bed-probe-timeout", "0.5",
-                "--direct",
             ]
         )
         self.assertEqual(ns.bed_host, "h")
@@ -67,7 +66,15 @@ class TestMainParserShape(unittest.TestCase):
         self.assertEqual(ns.bed_path, "/ws")
         self.assertEqual(ns.bed_call_timeout, 7.0)
         self.assertEqual(ns.bed_probe_timeout, 0.5)
-        self.assertTrue(ns.direct)
+
+    def test_direct_flag_is_not_recognised(self):
+        """Casino has no door mode: --direct is not a parsed option, so it is left over."""
+        from casino.lib import buildargs
+
+        parser = buildargs()
+        ns, leftover = parser.parse_known_args(["--direct"])
+        self.assertIn("--direct", leftover)
+        self.assertFalse(hasattr(ns, "direct"))
 
     def test_buildargs_defaults(self):
         from casino.lib import buildargs
@@ -79,7 +86,6 @@ class TestMainParserShape(unittest.TestCase):
         self.assertEqual(ns.bed_path, "/")
         self.assertEqual(ns.bed_call_timeout, 5.0)
         self.assertEqual(ns.bed_probe_timeout, 0.25)
-        self.assertFalse(ns.direct)
 
 
 class TestMainDispatchBedUnreachable(unittest.TestCase):
@@ -138,41 +144,6 @@ class TestMainDispatchBedReachable(unittest.TestCase):
         self.assertEqual(rc, 1)
 
 
-class TestMainDispatchDirect(unittest.TestCase):
-    """--direct branch: door mode is invoked; no CasinoClient is constructed."""
-
-    def test_direct_branch_runs_door_mode(self):
-        from casino.__main__ import main
-
-        args = _make_args(direct=True)
-
-        with patch("casino._routing.select_backend", return_value="direct") as sel, \
-             patch("casino._routing.build_client_args"), \
-             patch("casino.lib.buildargs", return_value=_StubParser(args)), \
-             patch("casino.__main__._run_direct", return_value=0) as run_direct, \
-             patch("casino.__main__.CasinoClient") as MockClient:
-            rc = main([])
-
-        self.assertEqual(rc, 0)
-        sel.assert_called_once_with(args)
-        run_direct.assert_called_once()
-        MockClient.assert_not_called()
-
-    def test_direct_branch_passes_remaining_argv(self):
-        from casino.__main__ import main
-
-        args = _make_args(direct=True)
-
-        with patch("casino._routing.select_backend", return_value="direct"), \
-             patch("casino._routing.build_client_args"), \
-             patch("casino.lib.buildargs", return_value=_StubParser(args, leftover=["foo", "bar"])), \
-             patch("casino.__main__._run_direct", return_value=0) as run_direct, \
-             patch("casino.__main__.CasinoClient"):
-            main(["foo", "bar"])
-
-        run_direct.assert_called_once_with(args, ["foo", "bar"])
-
-
 class _NoopPool:
     """Stands in for a database pool in the blackjack dispatch tests."""
 
@@ -181,93 +152,6 @@ class _NoopPool:
 
     def __exit__(self, *a):
         return False
-
-
-class TestMainDispatchBlackjackSubcommand(unittest.TestCase):
-    """``casino blackjack [...]`` short-circuits before any backend probe.
-
-    Blackjack has no bed counterpart -- it is door-mode only. The
-    dispatcher must skip ``_routing.select_backend`` and ``probe_bed``
-    on the blackjack branch, otherwise an unreachable bed daemon would
-    block the door-mode startup.
-    """
-
-    def test_blackjack_subcommand_skips_bed_probe(self):
-        # See the comment on ``test_blackjack_subcommand_passes_remaining_argv``
-        # for why we import ``session`` and ``io_screen`` from
-        # ``casino.__main__`` rather than ``bbsengine6`` directly:
-        # pytest 9's import system creates a distinct module object for
-        # ``bbsengine6.session`` / ``bbsengine6.screen`` inside the test
-        # run's ``casino.__main__`` scope, so patching the bare
-        # ``bbsengine6.session.start`` / ``bbsengine6.io.screen.init``
-        # attributes lands on the wrong module and the patches don't
-        # stick. ``patch.object`` on the specific module reference
-        # that ``casino.__main__`` actually imported is the fix.
-        from casino.__main__ import main, session as _cm_session
-
-        args = _make_args()
-
-        with patch("casino._routing.probe_bed") as probe, \
-             patch("casino._routing.select_backend") as sel, \
-             patch("casino._routing.build_client_args"), \
-             patch("casino.lib.buildargs", return_value=_StubParser(args, leftover=["blackjack"])), \
-             patch.object(_cm_session, "start") as session_start, \
-             patch.object(bottombar, "init"), \
-             patch("bbsengine6.module.run") as module_run, \
-             patch("bbsengine6.io.echo"), \
-             patch("bbsengine6.io.terminal") as terminal, \
-             patch("locale.setlocale"), \
-             patch("time.tzset"), \
-             patch("casino.__main__.database.getpool", return_value=_NoopPool()), \
-             patch("bbsengine6.bottombar.setbottombar"), \
-             patch("casino.__main__.CasinoClient") as MockClient:
-            terminal.height.return_value = 24
-            rc = main(["blackjack"])
-
-        self.assertEqual(rc, 0)
-        probe.assert_not_called()
-        sel.assert_not_called()
-        MockClient.assert_not_called()
-        session_start.assert_called_once()
-        module_run.assert_called_once()
-
-    def test_blackjack_subcommand_passes_remaining_argv(self):
-        """Args after ``blackjack`` flow into casino.blackjack.lib.buildargs()."""
-        # See ``test_blackjack_subcommand_skips_bed_probe`` for why
-        # we patch ``casino.__main__.session`` and
-        # ``casino.__main__.io_screen`` instead of
-        # ``bbsengine6.session.start`` / ``bbsengine6.io.screen.init``.
-        from casino.__main__ import main, session as _cm_session
-
-        args = _make_args()
-
-        with patch("casino._routing.probe_bed") as probe, \
-             patch("casino._routing.select_backend") as sel, \
-             patch("casino._routing.build_client_args"), \
-             patch("casino.lib.buildargs", return_value=_StubParser(args, leftover=["blackjack", "--databasename", "bjdb"])), \
-             patch.object(_cm_session, "start") as session_start, \
-             patch.object(bottombar, "init"), \
-             patch("bbsengine6.module.run") as module_run, \
-             patch("bbsengine6.io.echo"), \
-             patch("bbsengine6.io.terminal") as terminal, \
-             patch("locale.setlocale"), \
-             patch("time.tzset"), \
-             patch("casino.__main__.database.getpool", return_value=_NoopPool()), \
-             patch("bbsengine6.bottombar.setbottombar"), \
-             patch("casino.__main__.CasinoClient"):
-            terminal.height.return_value = 24
-            rc = main(["blackjack", "--databasename", "bjdb"])
-
-        self.assertEqual(rc, 0)
-        probe.assert_not_called()
-        sel.assert_not_called()
-
-        bj_args = session_start.call_args[0][0]
-        self.assertEqual(bj_args.databasename, "bjdb")
-
-        module_args = module_run.call_args[0][0]
-        self.assertEqual(module_args.databasename, "bjdb")
-        self.assertEqual(module_run.call_args.kwargs.get("package"), "casino.blackjack")
 
 
 class TestMainDispatchVersionAndHelp(unittest.TestCase):

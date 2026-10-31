@@ -101,14 +101,21 @@ class WebSocketTestClient:
             raise ConnectionError("Connection closed during send")
 
     async def receive(self, timeout: Optional[float] = None) -> dict:
-        """Receive a message with timeout."""
+        """Receive the next reply, skipping owns_tables pushes.
+
+        The server pushes ``owns_tables`` to a table creator's socket. The casino client
+        handles it as a flag update, not a reply, so this client skips it too.
+        """
         if not self._running:
             raise ConnectionError("Not connected")
 
         timeout = timeout or self.timeout
 
         try:
-            return await asyncio.wait_for(self._message_queue.get(), timeout=timeout)
+            while True:
+                msg = await asyncio.wait_for(self._message_queue.get(), timeout=timeout)
+                if msg.get("type") != "owns_tables":
+                    return msg
         except asyncio.TimeoutError:
             raise TimeoutError(f"Receive timed out after {timeout}s")
 
@@ -307,7 +314,12 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(row["playermoniker"], "oc_test_blackjack", "Player moniker should be 'oc_test_blackjack'")
                 self.assertEqual(row["cardtablemoniker"], table_moniker, "Table moniker should match")
                 self.assertEqual(row["amount"], expected_amount, f"Bet amount should be {expected_amount}")
-                self.assertEqual(row["status"], "pending", "Bet status should be 'pending'")
+                # A dealer natural on the deal settles the bet at once (dealer peek), so the logged
+                # status is "lost" then, and "pending" otherwise. Any other status is a bug.
+                self.assertIn(
+                    row["status"], ("pending", "lost"),
+                    f"Bet status should be 'pending', or 'lost' after a dealer natural, got {row['status']!r}",
+                )
 
                 # Check currenthand if it exists, otherwise skip the card check
                 currenthand = row.get("currenthand") or ""

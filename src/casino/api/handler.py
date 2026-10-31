@@ -1,6 +1,7 @@
 # casino/api/handler.py
 # WebSocket message handler - routes messages to services using bbsengine6.net service registry
 
+import asyncio
 import json
 from casino.dal import conn as casino_conn
 from datetime import datetime, timezone
@@ -41,6 +42,18 @@ def _resolve_pool(args: Any) -> Any:
     if pool is not None:
         return pool
     return database.getpool(args)
+
+
+async def _push_owns_tables(websocket: Any, owns: bool) -> None:
+    """Send the owns_tables flag to one player's socket.
+
+    Runs as its own task so the handler's reply goes out first. A failed send is
+    logged; the table operation that caused it has already succeeded.
+    """
+    try:
+        await websocket.send(json.dumps({"type": "owns_tables", "owns_tables": owns}))
+    except Exception as e:
+        io.echo(f"owns_tables push failed: {e}", level="warning")
 
 
 async def _resolve_async_pool(args: Any) -> Any:
@@ -342,6 +355,7 @@ class AuthService(BaseService):
                 "moniker": moniker,
                 "balance": balance,
                 "message": "Authenticated",
+                "is_sysop": is_sysop,
                 "pending_messages": pending_messages,
                 "unread_count": unread_count,
             }
@@ -396,6 +410,8 @@ class TableServiceHandler(BaseService):
 
         if msg_type == "list_tables":
             return await self._handle_list_tables(websocket, message)
+        elif msg_type == "table_info":
+            return await self._handle_table_info(websocket, message)
         elif msg_type == "create_table":
             return await self._handle_create_table(websocket, message)
         elif msg_type == "join_table":
@@ -460,6 +476,36 @@ class TableServiceHandler(BaseService):
             tables.extend(self.poker_service_handler.list_tables())
         return {"type": "table_list", "tables": tables}
 
+    async def _handle_table_info(
+        self, websocket: Any, message: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Look up a table's game type and owner before the player joins it.
+
+        Checks the in-memory poker tables first, then the database. A missing table
+        replies ``found: false`` and is not an error, so the client can say "not found".
+        """
+        moniker = message.get("moniker")
+        if not moniker:
+            return {"type": "error", "code": "invalid_request", "message": "moniker required"}
+
+        if self.poker_service_handler is not None:
+            for t in self.poker_service_handler.list_tables():
+                if t.get("moniker") == moniker:
+                    return {
+                        "type": "table_info", "found": True, "moniker": moniker,
+                        "game_type": t.get("type", "poker"), "owner": t.get("owner"),
+                    }
+
+        row = await async_dal_table.get_table(
+            self.args, moniker, pool=await _resolve_async_pool(self.args)
+        )
+        if row is None:
+            return {"type": "table_info", "found": False, "moniker": moniker}
+        return {
+            "type": "table_info", "found": True, "moniker": moniker,
+            "game_type": row.get("type"), "owner": row.get("ownermoniker"),
+        }
+
     async def _handle_create_table(
         self, websocket: Any, message: dict[str, Any]
     ) -> dict[str, Any]:
@@ -485,6 +531,12 @@ class TableServiceHandler(BaseService):
             # Every table has an events channel and a chat channel, created with the table.
             from casino.services import table_channels as _tc
             _tc.create_table_channels(self.args, result["table"]["moniker"], owner=state.moniker)
+            # The creator now owns a table, so the client's table update gate must open. The
+            # push is sent after this handler returns, so table_created goes out first; a failed
+            # send is logged and does not fail the create.
+            asyncio.get_running_loop().create_task(
+                _push_owns_tables(websocket, True)
+            )
             return {
                 "type": "table_created",
                 "moniker": result["table"]["moniker"],

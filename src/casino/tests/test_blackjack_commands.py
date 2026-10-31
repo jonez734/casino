@@ -282,25 +282,5 @@ class TestEndToEndDispatch(unittest.TestCase):
         self.assertIs(m, game)
 
 
-class TestMainmenuHookup(unittest.TestCase):
-    """The main menu entry ``("B", "Blackjack", "blackjack.play")`` must
-    parse cleanly and resolve to a callable subcommand. This guards against
-    the original regression where pressing B crashed with
-    ``ModuleNotFoundError: No module named 'casino.commands.blackjack'``."""
-
-    def test_mainmenu_path_loads(self):
-        from casino.commands import blackjack
-
-        self.assertTrue(hasattr(blackjack, "main"))
-        self.assertTrue(callable(blackjack.main))
-
-    def test_parse_module_path_yields_blackjack_play(self):
-        from casino.main import parse_module_path
-
-        module, subcommand = parse_module_path("blackjack.play")
-        self.assertEqual(module, "blackjack")
-        self.assertEqual(subcommand, "play")
-
-
 if __name__ == "__main__":
     unittest.main()

@@ -168,13 +168,13 @@ def buildargs(args=None, **kw):
     parser.add_argument("--debug", action="store_true", dest="debug")
     parser.add_argument(
         "--mode",
-        choices=("human", "auto"),
-        default="human",
+        choices=("auto",),
+        default="auto",
         help=(
-            "human = interactive door-mode play loop (default); "
             "auto = zero-player, the house plays a full 13-round game "
             "with greedy scoring and echoes every roll + category to "
-            "the terminal. Useful for stress-testing the score engine."
+            "the terminal. Useful for stress-testing the score engine. "
+            "Play against the bed is through 'casino yahtzee'."
         ),
     )
 

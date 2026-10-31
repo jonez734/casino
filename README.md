@@ -4,15 +4,17 @@
 
 `casino` is a Python package that ships five casino-style games
 (blackjack, poker, slots, yahtzee, tic-tac-toe) as a
-[bbsengine6](../bbsengine6/) BBS module and as a separate
-WebSocket-driven real-time game server. It runs in three modes:
+WebSocket-driven real-time game server and client. Everything runs through
+the bed daemon: the menu, the commands, and the games need bed to be up.
 
-1. **Door-mode BBS module** (`python -m casino`) — interactive ttyio
-   menu in a BBS session.
-2. **WebSocket game server** — registered with bed via
+1. **WebSocket game server** — registered with bed via
    `casino.api.handler.MessageRouter`.
-3. **Standalone TUI client** (`casino`, default branch) — long-lived
-   WebSocket client for sysops and CI.
+2. **TUI client** (`casino`) — the menu, and one-shot commands such as
+   `casino table join <moniker>`.
+3. **Console scripts** (`poker`, `casino`) — `poker` is `casino poker`.
+
+Casino has no door mode. Without a reachable bed daemon, the client exits
+with the bed-unreachable error.
 
 > **See [`handbook/SPEC.md`](handbook/SPEC.md)** for the architecture: the layered
 > services / DAL / games stack, the message types, the poker variant
@@ -89,30 +91,23 @@ Protection (Reference)" for the full reference list.
 ```bash
 pip install -e .
 
-# 1. Door-mode: run as a BBS module
-bbsengine6    # start the BBS
-# log in, choose Casino from the BBS menu
+# 1. Run the WebSocket server (bed loads MessageRouter)
+pip install -e . -e ../bbsengine6/py -e ../bed -e ../zoid6/src
+zoid6                                 # casino block is enabled by default (packaged config)
 
-# 2. Or run casino standalone (default: bed WebSocket client)
+# 2. Run the menu (needs bed up)
 python -m casino
 # or against a non-default daemon:
 python -m casino --bed-host H --bed-port P
 
-# 3. Or run the WebSocket server (bed will load MessageRouter)
-pip install -e . -e ../bbsengine6/py -e ../bed -e ../zoid6/src
-zoid6                                 # casino block is enabled by default (packaged config)
-
-# 4. Or run the door-mode CLI (talks to local Postgres directly)
-python -m casino --direct
-# or with overridden DB args:
-python -m casino --direct --databasename foo
-
-# 5. Legacy direct entry points (still work)
-python -m casino.client_cli
-
-# 6. Door-mode blackjack (equivalent to `bin/blackjack`)
-python -m casino blackjack
+# 3. Run one command (needs bed up)
+casino table join <moniker>
+casino admin watch <moniker>
+poker                                 # same as: casino poker
 ```
+
+Casino has no `--direct` or door mode. Each game and the menu need the bed
+daemon; without it, the client reports that bed is unreachable.
 
 ## Games
 
@@ -144,13 +139,12 @@ Each game ships a `README.md` with its wire protocol:
 casino/
 ├── pyproject.toml                Python manifest (console scripts + 4 poker variants)
 ├── src/casino/                   The installable package
-│   ├── __main__.py               `python -m casino` entry
-│   ├── main.py                   Door-mode menu
+│   ├── __main__.py               `python -m casino` entry (bed client and command routing)
 │   ├── auth.py                   BED auth + BBS entry points
 │   ├── lib.py                    Card / Hand / Shoe / Casino / CasinoPlayer + bottombar
 │   ├── config.py                 Env-var config loader
-│   ├── _routing.py               bed / direct backend selector
-│   ├── client_cli.py             legacy `python -m casino.client_cli` entry
+│   ├── _routing.py               bed backend selector
+│   ├── client_cli.py             standalone bed client (`casino-client`)
 │   ├── startup/                  Casino-specific bootstrap subpackage
 │   │   ├── __init__.py           Re-exports `init`/`access`/`buildargs`/`main` + checkcasino
 │   │   ├── main.py               citext install → checkcasino → schema.sql → manage_schema_priv grants → class imports
@@ -158,7 +152,7 @@ casino/
 │   ├── api/
 │   │   ├── handler.py            MessageRouter + CasinoSessionManager + all services
 │   │   └── messages.py           WebSocket MessageType enum + dataclasses
-│   ├── blackjack/                Door-mode blackjack
+│   ├── blackjack/                Blackjack game (bed-side)
 │   ├── cards/                    Card dataclass + png resource loader
 │   ├── client/                   Long-lived WebSocket client (CasinoClient)
 │   ├── commands/                 BBS CLI subcommands (admin, bank, chat, game, poker, table)

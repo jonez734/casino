@@ -90,6 +90,10 @@ class CasinoClient:
         self.watched_tables: set[str] = set()
         self.current_table_game_type: str | None = None
         self.current_table_players: int = 0
+        # Set from the login reply and kept current by the owns_tables push. They gate the
+        # sysop commands and table update in the menu.
+        self.is_sysop: bool = False
+        self.owns_tables: bool = False
         self.last_available_actions: list[str] = []
         self._receive_task: asyncio.Task | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -197,6 +201,10 @@ class CasinoClient:
                 self.authenticated = True
                 self.moniker = msg.get("moniker", "")
                 self.balance = msg.get("balance", 0)
+                # Sysop status and table ownership gate the menu. Both arrive in the reply and
+                # are updated by the owns_tables push when the player creates or loses a table.
+                self.is_sysop = bool(msg.get("is_sysop", False))
+                self.owns_tables = bool(msg.get("owns_tables", False))
                 # Stash the bearer token so ``send`` auto-injects it
                 # on every subsequent wire call. Bed's AuthService
                 # mints the token at auth time (and rotates it on
@@ -277,6 +285,10 @@ class CasinoClient:
                 f"{{var:labelcolor}}note:        "
                 f"use {{var:optioncolor}}[J]{{var:labelcolor}} Join with this moniker to sit down"
             )
+
+        elif msg_type == "owns_tables":
+            # Pushed to the owner's socket when a table is created, deleted, or changes owner.
+            self.owns_tables = bool(msg.get("owns_tables", False))
 
         elif msg_type == "table_exists":
             label_for_key = {

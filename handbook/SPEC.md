@@ -14,7 +14,7 @@
 2. [Architecture](#2-architecture)
 3. [Layered package layout](#3-layered-package-layout)
 4. [WebSocket services](#4-websocket-services)
-5. [Door-mode BBS module](#5-door-mode-bbs-module)
+5. [No door mode](#5-no-door-mode)
 6. [Standalone TUI client](#6-standalone-tui-client)
 7. [Poker variant plugin system](#7-poker-variant-plugin-system)
 8. [SQL schema](#8-sql-schema)
@@ -75,14 +75,14 @@ It does **not** own:
                 │                                              │
                 │   sql/   (casino.* schema)                   │
                 └──────────────────────────────────────────────┘
-                       ▲                          ▲
-                       │ (door-mode)              │ (TUI client)
-                       │                          │
-┌──────┴─────────┐         ┌──────┴─────────┐
-                 │ main.py menu   │         │ CasinoClient   │
-                 │ --direct flag  │         │ default branch │
-                 │ bbsengine6 BBS │         │ ws://bed:8765/ │
-                 └────────────────┘         └────────────────┘
+                        ▲
+                        │ (TUI client, via bed)
+                        │
+                 ┌──────┴─────────┐
+                 │ CasinoClient   │
+                 │ menu + command │
+                 │ ws://bed:8765/ │
+                 └────────────────┘
 ```
 
 ### 2.1 Member vs casino player
@@ -212,46 +212,38 @@ The resolved pool is threaded through `verifyMemberFound`,
 backs the whole credential check. Omitting the pool triggers
 `bbsengine6.member._verify_member.100: pool is required`.
 
-## 5. Door-mode BBS module
+## 5. No door mode
 
-The door-mode entry is `python -m casino` (`__main__.py`). It:
+Casino has no door mode. The door-mode menu (`casino/main.py`), the `--direct` flag, and the
+standalone game door loops (`casino blackjack`, `slots --door`, yahtzee `--mode human`, and the
+tictactoe `__main__`) have been removed. Every menu and game runs through the bed daemon.
 
-1. Runs `bbsengine6.startup` to verify the database schema.
-2. Opens a BBS session (`bbsengine6.session.SessionRegistry`).
-3. Enters `main.py:main`, a ttyio-based menu offering:
-   - Blackjack
-   - Poker
-   - Slots
-   - Connect-to-BED
-   - Table list / join / view
-   - Watch / unwatch tables (the member menu's `W` spectates a table's events and chat)
-   - Bet / hit / stand
-   - Poker: `poker play` seats a new table and opens the poker menu (start, check, call,
-     bet, raise, all-in, fold, table). Replies render the board, pot, turn, your cards, and each
-     hand's result, including every showdown hand and split share.
-   - Table chat (`M`) posts to the table's chat channel
-   - Global chat
-   - Bank
-   - Maintenance (sysop only)
+Two entry points remain, and both need bed:
+
+- `casino` with no arguments opens the menu (section 6).
+- `casino <command> [...]` runs one command package against a connected client, for example
+  `casino table join <moniker>`, `casino admin watch <moniker>`, or `poker`. `casino <command>
+  --version` prints that package's version and does not connect.
+
+Offline checks that never reach a game are kept: `casino slots --demo N` runs a flat-bet
+simulation, and `casino yahtzee --mode auto` plays the house's zero-player game. They do not touch
+the database or bed.
 
 ## 6. Standalone TUI client (merged `casino` default branch)
 
-The merged `casino` CLI is the standalone entry. It exposes the same
-bed-style flag set as every other tool under `bed.tools`
-(`--bed-host`, `--bed-port`, `--bed-path`, `--bed-call-timeout`,
-`--bed-probe-timeout`, plus `--direct` to opt out of the daemon).
+The merged `casino` CLI is the standalone entry. It exposes the bed-style flag
+set (`--bed-host`, `--bed-port`, `--bed-path`, `--bed-call-timeout`,
+`--bed-probe-timeout`).
 
-Default branch: bed WebSocket client. `casino.__main__:main` probes
-the bed daemon on the configured `--bed-host`/`--bed-port`; if
-reachable, instantiates `CasinoClient`
-(`src/casino/client/casino_client.py`) and runs the terminal UI
-loop. If unreachable and `--direct` was not passed, raises
-`bed.tools._routing.BedNotReachable` and exits non-zero with the
-bundled "rerun with --direct" hint.
+Menu branch (no command): `casino.__main__:main` probes the bed daemon on the
+configured `--bed-host`/`--bed-port`; if reachable, it instantiates `CasinoClient`
+(`src/casino/client/casino_client.py`) and runs the terminal UI loop. If
+unreachable, it raises `bed.tools._routing.BedNotReachable` and exits non-zero.
 
-`--direct` branch: door mode. Opens a Postgres connection pool via
-`bbsengine6.database`, starts a BBS session, runs `casino.main` —
-the interactive menu. Mirrors the pre-merge `casino` shim's behavior.
+Command branch (`casino <command> [...]`): the same probe and connect, then one
+command package's `main()` runs with the connected client through
+`CasinoClient.run_once`, and the client disconnects. `casino <command> --version`
+prints the package version without connecting.
 
 `CasinoClient` authenticates with the BED server and exposes table
 management, blackjack, poker, tic-tac-toe, chat, and bank operations
@@ -328,8 +320,7 @@ was just selected before the handler's output (e.g. `io.echo("Bank")`
 fires before `cmd_bank_menu()` runs). `[Q]uit` does not emit a
 label since it breaks the loop without invoking a handler.
 
-The F1 help callback (`_render_help`, `client/menu.py:55-69`) and
-the door-mode `mainmenuhelp` (`main.py:88-103`) are not affected —
+The F1 help callback (`_render_help`, `client/menu.py:55-69`) is not affected —
 both already use one `io.echo()` per option, and `io.echo` appends
 `\n` via `end=ECHO_END`, so each option naturally lands on its
 own line. The inline-prompt case is the one that needs an explicit
@@ -363,8 +354,7 @@ through `casino.client.table_render.render_table`. The contract:
   `ECHO_END` per line (see AGENTS.md, "f-string markup" note).
 - Locale is initialized once on the WS-client path via
   `locale.setlocale(LC_ALL, "")` in `_run_bed`
-  (`casino/__main__.py`), matching the `_run_direct` and
-  `_run_blackjack` branches. The empty-string form is a no-op
+  (`casino/__main__.py`), matching the command branch. The empty-string form is a no-op
   when locale is already set.
 
 Tests pin these contracts in
@@ -694,8 +684,7 @@ whether or not the flag is set. `--audit` is read from the command line into `ar
 
 `MessageRouter.__init__` calls `_bootstrap_casino_config(args)`,
 which auto-discovers the `casino` section from `args.config_file`
-when bed has not wired it explicitly. This keeps door-mode and
-standalone tests working with the `0.5` default without requiring
+when bed has not wired it explicitly. This keeps standalone tests working with the `0.5` default without requiring
 a bed wiring change. When bed later wires the section explicitly
 (planned), the auto-discovery short-circuits on the wired value.
 
@@ -705,8 +694,7 @@ a bed wiring change. When bed later wires the section explicitly
 |------------------------------------|-----------------------------------------------|
 | MessageRouter                      | `src/casino/api/handler.py`                   |
 | Message types                      | `src/casino/api/messages.py`                  |
-| Door-mode menu                     | `src/casino/main.py`                          |
-| Door-mode entry                    | `src/casino/__main__.py`                      |
+| Command and menu entry             | `src/casino/__main__.py`                      |
 | Standalone client                  | `src/casino/client/casino_client.py`          |
 | Client auth                        | `src/casino/auth.py`                          |
 | Card / Hand / Shoe                 | `src/casino/lib.py`                           |
@@ -730,7 +718,7 @@ a bed wiring change. When bed later wires the section explicitly
 | Tic-tac-toe engine                 | `src/casino/tictactoe/{api_handler,dealer,lib,service}.py` |
 | Yahtzee protocol                   | `src/casino/yahtzee/README.md`                |
 | Yahtzee engine                     | `src/casino/yahtzee/{api_handler,dealer,lib,service}.py` |
-| Slots door                         | `src/casino/slots/{__main__,dealer,game,lib,play,player}.py` |
+| Slots game (demo and smoke runs)   | `src/casino/slots/{__main__,dealer,game,lib,play,player}.py` |
 | Sysop maintenance                  | `src/casino/maint/__main__.py`                |
 | Per-game BBS commands              | `src/casino/commands/{admin,bank,chat,game,poker,table}/` |
 | Schema (current)                   | `src/casino/sql/`                             |
@@ -745,7 +733,6 @@ a bed wiring change. When bed later wires the section explicitly
 | `pyproject.toml`                                  | Manifest (1 console script + 4 poker variants) |
 | `src/casino/__init__.py`                          | Package init (BBS module entry)      |
 | `src/casino/__main__.py`                          | `python -m casino` entry              |
-| `src/casino/main.py`                              | Door-mode menu                        |
 | `src/casino/auth.py`                              | BED auth + BBS entry                  |
 | `src/casino/lib.py`                               | Card / Hand / CasinoPlayer + bottombar; `buildargs` (incl. `--audit`) |
 | `src/casino/shoe.py`                              | Shared card shoe (`Shoe`, `build_cards`) |
@@ -753,7 +740,7 @@ a bed wiring change. When bed later wires the section explicitly
 | `src/casino/dal/poker_state.py`                   | Poker table state document (`casino.__poker_state`) |
 | `src/casino/config.py`                            | Env-var config loader + bed.json `casino` block helpers (`get_casino_config`, `get_surrender_multiplier`) |
 | `src/casino/client_cli.py`                        | legacy `python -m casino.client_cli` entry |
-| `src/casino/_routing.py`                          | bed / direct backend selector         |
+| `src/casino/_routing.py`                          | bed backend selector                  |
 | `src/casino/startup/`                             | Casino-specific bootstrap subpackage (extension install + schema ownership + schema.sql import + class import) |
 | `src/casino/startup/main.py`                      | Orchestrates citext install, `checkcasino`, schema.sql, `manage_schema_priv` grants, and class imports |
 | `src/casino/startup/checkcasino.py`               | Mirrors `bbsengine6.backend.checkengine`/`checkbank`'s schema-ownership block for the `casino` schema; verifies the 5 SECURITY DEFINER helper owners against the `("zoid6", "postgres")` allow-list |
@@ -830,8 +817,7 @@ a bed wiring change. When bed later wires the section explicitly
 - **Per-member PostgreSQL role provisioning** — `bbsengine6.pgrole`.
 - **The PHP framework** — the `www/` landing page is a Smarty
   template consumed by bbsengine6's PHP web layer, not a casino
-  service. The actual casino UI runs in the BBS door or the
-  WebSocket client.
+  service. The actual casino UI is the WebSocket client.
 - **Real-money gambling** — see the regulatory notice in `README.md`.
   This software is for development, testing, and demonstration only.
 - **The `zoidweb2-casino.sql` snapshot** — orphaned Dec-2025

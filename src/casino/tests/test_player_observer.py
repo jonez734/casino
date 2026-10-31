@@ -109,7 +109,10 @@ class WebSocketTestClient:
         timeout = timeout or self.timeout
 
         try:
-            return await asyncio.wait_for(self._message_queue.get(), timeout=timeout)
+            while True:
+                msg = await asyncio.wait_for(self._message_queue.get(), timeout=timeout)
+                if msg.get("type") != "owns_tables":
+                    return msg
         except asyncio.TimeoutError:
             raise TimeoutError(f"Receive timed out after {timeout}s")
 

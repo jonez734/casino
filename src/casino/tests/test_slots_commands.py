@@ -568,24 +568,5 @@ class TestEndToEndDispatch(unittest.TestCase):
         self.assertTrue(callable(SUBCOMMANDS["spin"]))
 
 
-class TestMainmenuHookup(unittest.TestCase):
-    """The main menu entry ('S', 'Slots', 'slots') must parse cleanly
-    and resolve to a callable subcommand. ``slots`` (no subcommand)
-    drops into the WS-backed submenu in ``commands/slots/lib.py:menu``."""
-
-    def test_mainmenu_path_loads(self):
-        from casino.commands import slots
-
-        self.assertTrue(hasattr(slots, "main"))
-        self.assertTrue(callable(slots.main))
-
-    def test_parse_module_path_yields_slots(self):
-        from casino.main import parse_module_path
-
-        module, subcommand = parse_module_path("slots")
-        self.assertEqual(module, "slots")
-        self.assertIsNone(subcommand)
-
-
 if __name__ == "__main__":
     unittest.main()

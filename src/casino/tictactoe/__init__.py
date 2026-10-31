@@ -25,10 +25,7 @@ def buildargs(args, **kw):
 
 
 def main(args, **kw):
-    """Standalone door-mode entry. ``casino.tictactoe.__main__.main``
-    runs a single game (mode 0 = 2 AI self-play, mode 1 = human vs AI)
-    using the local Postgres pool. The BED surface
-    (``casino.tictactoe.api_handler``) is still the primary v1 entry
-    point for multi-player and live state broadcast; this shim is for
-    quick games without the bed daemon."""
+    """Tictactoe plays only through bed. The bed surface
+    (``casino.tictactoe.api_handler``) serves the games; there is no
+    standalone door mode."""
     return True

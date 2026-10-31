@@ -31,7 +31,7 @@ from typing import Literal
 from bed.client.probe import probe_bed
 from bed.tools._routing import BedNotReachable
 
-Backend = Literal["bed", "direct"]
+Backend = Literal["bed"]
 
 
 def build_client_args(parentparser: argparse.ArgumentParser) -> None:
@@ -70,30 +70,15 @@ def build_client_args(parentparser: argparse.ArgumentParser) -> None:
         default=0.25,
         help="bed TCP probe timeout in seconds (default: 0.25)",
     )
-    group.add_argument(
-        "--direct",
-        dest="direct",
-        action="store_true",
-        default=False,
-        help=(
-            "Talk to the local database directly via bbsengine6 "
-            "instead of routing through the bed daemon. Use when "
-            "bed is not running."
-        ),
-    )
 
 
 def select_backend(args) -> Backend:
     """Pick the backend for ``args``.
 
-    Returns ``"direct"`` when ``--direct`` is set, regardless of bed
-    reachability (the probe is skipped). Returns ``"bed"`` when bed is
-    reachable on the configured host/port. Raises
-    :class:`bed.tools._routing.BedNotReachable` when bed is
-    unreachable and ``--direct`` was not requested.
+    Returns ``"bed"`` when bed is reachable on the configured host/port. Raises
+    :class:`bed.tools._routing.BedNotReachable` when it is not. Casino has no
+    door mode: the games and the menu run only through bed.
     """
-    if getattr(args, "direct", False):
-        return "direct"
     if probe_bed(args):
         return "bed"
     raise BedNotReachable(

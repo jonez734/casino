@@ -468,21 +468,17 @@ def _casino_credits_fragment(**kwargs) -> str:
 
 
 def _casino_host_fragment(**kwargs) -> str:
-    """Right-side fragment: ``"<host>:<port>"`` or ``"direct"``.
+    """Right-side fragment: the bed daemon's ``"<host>:<port>"``.
 
     Reads ``args.bed_host`` and ``args.bed_port`` from the cached
     ``_casino_registry.args`` (stashed by :func:`setbottombar`).
     Falls back to the routing defaults (``127.0.0.1:8765``) when the
-    args object does not carry the bed routing attributes. Returns
-    ``"direct"`` when ``args._backend == "direct"`` so the operator
-    can tell at a glance whether the menu is wired to a BED daemon
-    or running straight against the local DB.
+    args object does not carry the bed routing attributes. Casino has
+    no direct backend, so the fragment always names the bed daemon.
     """
     args = _casino_registry.args
     if args is None:
         return ""
-    if getattr(args, "_backend", None) == "direct":
-        return "direct"
     host = getattr(args, "bed_host", "127.0.0.1") or "127.0.0.1"
     port = int(getattr(args, "bed_port", 8765) or 8765)
     return f"{host}:{port}"

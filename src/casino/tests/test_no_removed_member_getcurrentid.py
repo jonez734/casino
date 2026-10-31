@@ -1,4 +1,4 @@
-"""casino's game and tictactoe entry points use member.getcurrentmoniker, not the removed getcurrentid."""
+"""casino's game entry points use member.getcurrentmoniker, not the removed getcurrentid."""
 
 from pathlib import Path
 
@@ -6,7 +6,6 @@ import pytest
 
 CASINO = Path(__file__).resolve().parents[1]
 FILES = [
-    "tictactoe/__main__.py",
     "blackjack/game.py",
     "slots/game.py",
     "yahtzee/game.py",

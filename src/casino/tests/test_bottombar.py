@@ -128,15 +128,6 @@ class TestCasinoBottombarFragments:
         lib._casino_registry.player = _make_player()
         assert lib._casino_host_fragment() == "h:9999"
 
-    def test_host_fragment_direct_mode_shows_direct(
-        self, _save_casino_state
-    ):
-        lib = _save_casino_state
-        args = _make_args(bed_host="h", bed_port=9999)
-        args._backend = "direct"
-        lib._casino_registry.args = args
-        lib._casino_registry.player = _make_player()
-        assert lib._casino_host_fragment() == "direct"
 
     def test_host_fragment_uses_defaults_when_attrs_missing(
         self, _save_casino_state
