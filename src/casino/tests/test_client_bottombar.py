@@ -67,7 +67,7 @@ def test_attach_registers_and_detach_unregisters_the_fragments():
 
 
 def test_menu_loop_attaches_the_bar_and_detaches_on_exit():
-    src = inspect.getsource(cc.CasinoClient.run)
+    src = inspect.getsource(cc.CasinoClient._session)
     assert "_bar.attach(lambda: self)" in src
     assert "_bar.detach()" in src
     menu = inspect.getsource(cc.CasinoClient._run_menu_loop)

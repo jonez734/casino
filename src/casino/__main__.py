@@ -252,6 +252,41 @@ def _run_install(args: Namespace) -> int:
 
 _BLACKJACK_SUBCOMMAND = "blackjack"
 
+# Command packages reachable as ``casino <name> [...]`` from the command line.
+# ``blackjack`` is routed separately (door mode, no bed).
+_COMMAND_PACKAGES = (
+    "admin", "bank", "chat", "game", "poker", "slots", "table", "yahtzee",
+)
+
+
+def _print_command_version(name: str) -> int:
+    """Print ``casino <name> <version>`` and return 0. Does not connect."""
+    import importlib
+
+    pkg = importlib.import_module(f"casino.commands.{name}")
+    io.echo(f"casino {name} {pkg.__version__}")
+    return 0
+
+
+def _run_command(name: str, args: Namespace, cmd_argv: list) -> int:
+    """``casino <name> [...]``: run one command package against a connected client.
+
+    Connects and authenticates through the bed WebSocket, runs the package's
+    ``main()`` with the connected client, then disconnects. ``args`` is the
+    top-level parse (bed host and port, token file).
+    """
+    from bbsengine6 import module
+
+    client = CasinoClient(args)
+
+    def run() -> None:
+        subcommand = cmd_argv[0] if cmd_argv else None
+        kw = {"subcommand": subcommand, "client": client}
+        module.run(args, "main", package=f"casino.commands.{name}", **kw)
+
+    client.run_once(run)
+    return 0 if getattr(client, "authenticated", False) else 1
+
 
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
@@ -265,6 +300,12 @@ def main(argv: list[str] | None = None) -> int:
     if argv and argv[0] == _BLACKJACK_SUBCOMMAND and \
             ("--help" in argv[1:] or "-h" in argv[1:]):
         blackjack_lib.buildargs().parse_args(argv[1:])
+
+    # ``casino <command> --version`` prints that command's version. Routed before the
+    # top-level parse, whose own --version action would otherwise print the casino
+    # version and exit first.
+    if len(argv) >= 2 and argv[0] in _COMMAND_PACKAGES and argv[1] == "--version":
+        return _print_command_version(argv[0])
 
     parser: argparse.ArgumentParser = lib.buildargs()
     args: Namespace
@@ -295,6 +336,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if remaining_argv and remaining_argv[0] == _BLACKJACK_SUBCOMMAND:
         return _run_blackjack(args, remaining_argv[1:])
+
+    if remaining_argv and remaining_argv[0] in _COMMAND_PACKAGES:
+        return _run_command(remaining_argv[0], args, remaining_argv[1:])
 
     backend = _routing.select_backend(args)
 

@@ -63,7 +63,7 @@ def test_run_falls_back_to_the_login_prompt_when_the_token_is_rejected():
     import inspect
     from casino.client import casino_client as cc
 
-    src = inspect.getsource(cc.CasinoClient.run)
+    src = inspect.getsource(cc.CasinoClient._session)
     # A rejected or expired stored token leads to the prompt path, not a bare auth_failed exit.
     assert "_stored_token_is_usable" in src or "token_rejected" in src
     assert "self.connect()" in src

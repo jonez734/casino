@@ -16,7 +16,7 @@ def _run_source():
     import ast
     import textwrap
 
-    tree = ast.parse(textwrap.dedent(inspect.getsource(cc.CasinoClient.run)))
+    tree = ast.parse(textwrap.dedent(inspect.getsource(cc.CasinoClient._session)))
     fn = tree.body[0]
     body = fn.body[1:] if isinstance(fn.body[0], ast.Expr) and isinstance(getattr(fn.body[0], "value", None), ast.Constant) else fn.body
     return "\n".join(ast.unparse(stmt) for stmt in body)

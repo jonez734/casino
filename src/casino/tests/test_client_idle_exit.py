@@ -63,7 +63,7 @@ def test_a_normal_close_keeps_its_own_reason():
 @pytest.mark.unit
 def test_exit_path_records_idle_from_the_close_code():
     import inspect
-    src = inspect.getsource(cc.CasinoClient.run)
+    src = inspect.getsource(cc.CasinoClient._session)
     assert "self._close_code == 1011" in src
     assert 'self._exit_reason = "idle"' in src
 
@@ -96,7 +96,7 @@ def test_normal_or_keepalive_close_is_not_a_websocket_failure(code):
 @pytest.mark.unit
 def test_exit_path_records_ws_error_only_after_login():
     import inspect
-    src = inspect.getsource(cc.CasinoClient.run)
+    src = inspect.getsource(cc.CasinoClient._session)
     # ws_error is set for an abnormal close, and only when the session was authenticated.
     assert 'self._exit_reason = "ws_error"' in src
     assert "self._ws_failed and self.authenticated" in src
@@ -107,6 +107,6 @@ def test_exit_path_records_ws_error_only_after_login():
 @pytest.mark.unit
 def test_ws_error_is_a_client_exit_reason_in_the_client():
     import inspect
-    src = inspect.getsource(cc.CasinoClient.run)
+    src = inspect.getsource(cc.CasinoClient._session)
     assert "ws_error" in src
     assert "ws_error" in ("quit", "eof", "intr", "idle", "ws_error", "auth_failed", "error")

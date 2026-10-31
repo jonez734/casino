@@ -107,7 +107,7 @@ def test_auth_failure_before_the_menu_records_auth_failed():
 
 
 def test_run_wraps_the_whole_body_in_try_with_cleanup_in_finally():
-    src = inspect.getsource(cc.CasinoClient.run)
+    src = inspect.getsource(cc.CasinoClient._session)
     outer_try = src.index("        try:\n            token_path")
     assert outer_try < src.index("        except EOFError:")
     # The outer finally is the last one; cleanup lives there, after the excepts.

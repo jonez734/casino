@@ -82,7 +82,7 @@ def test_stop_receiver_cancels_the_background_task_first():
 
 
 def test_run_reports_the_exit_in_the_finally_before_disconnect():
-    src = inspect.getsource(cc.CasinoClient.run)
+    src = inspect.getsource(cc.CasinoClient._session)
     tail = src[src.rindex("        finally:"):]
     assert tail.index("_stop_receiver()") < tail.index("_report_exit(")
     assert tail.index("_report_exit(") < tail.index("disconnect())")

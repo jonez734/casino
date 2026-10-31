@@ -20,6 +20,22 @@ def get_client(moniker: str | None = None) -> CasinoClient | None:
     return _clients.get(moniker)
 
 
+def register_client(client: CasinoClient) -> None:
+    """Make ``client`` the current client, keyed by its moniker."""
+    global _current_moniker
+    _clients[client.moniker] = client
+    _current_moniker = client.moniker
+
+
+def unregister_client(client: CasinoClient) -> None:
+    """Remove ``client`` from the registry. Clears the current moniker if it matches."""
+    global _current_moniker
+    if _clients.get(client.moniker) is client:
+        del _clients[client.moniker]
+    if _current_moniker == client.moniker:
+        _current_moniker = None
+
+
 def get_current_moniker() -> str | None:
     """Get the current active moniker."""
     return _current_moniker

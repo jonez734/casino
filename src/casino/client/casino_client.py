@@ -1247,17 +1247,31 @@ class CasinoClient:
             self._loop.run_until_complete(asyncio.sleep(0.1))
 
     def run(self) -> None:
-        """Run the client - auto-connect, direct to auth.
+        """Run the client - auto-connect, direct to auth, then the menu loop."""
+        self._session(lambda: self._run_menu_loop())
 
-        When ``args.token_file`` points at a non-empty token file (set
-        either by ``--token-file`` on the merged CLI or by
-        :func:`bed.tools._token.ensure_token_file_arg`'s default-path
-        resolution in :func:`casino.__main__.main`), bind the existing
-        bearer token via :func:`casino.auth._connect_with_token`
-        (which mirrors ``bed tools bank``'s ``auth reconnect`` flow).
-        Otherwise fall back to the legacy prompt-based flow:
-        ``self.connect()`` then ``self.cmd_auth()``.
+    def run_once(self, command) -> None:
+        """Connect and authenticate, run one ``command()``, then disconnect.
+
+        Used by ``casino <command> ...`` on the command line. The same connect,
+        auth, and cleanup as :meth:`run` is used; the menu loop is replaced by
+        the single command. The client is registered for the command's
+        duration, so ``get_client()`` in the command libs finds it.
         """
+
+        def body() -> None:
+            from . import registry as _registry
+
+            _registry.register_client(self)
+            try:
+                command()
+            finally:
+                _registry.unregister_client(self)
+
+        self._session(body)
+
+    def _session(self, body) -> None:
+        """Connect, authenticate, call ``body()``, and clean up on every path."""
         from .. import auth
         from . import bottombar as _bar
 
@@ -1297,7 +1311,7 @@ class CasinoClient:
 
             _bar.attach(lambda: self)
             try:
-                self._run_menu_loop()
+                body()
             finally:
                 _bar.detach()
         except EOFError:
