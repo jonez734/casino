@@ -422,15 +422,14 @@ class TestPlayerAndObserver(unittest.IsolatedAsyncioTestCase):
             print("\n=== Step 3: Player hits, observer receives update ===")
 
             await self.player_client.send({"type": "hit"})
-            messages = await self.player_client.receive_messages(max_count=10, timeout=5.0)
+            # The hit broadcasts the table state (no per-player hand) as well as this player's
+            # reply. Wait for the reply that carries the player's hand, up to a deadline.
+            from casino.tests._ws_replies import receive_until
 
-            # The hit broadcasts the table state (no per-player hand) as well as this player's reply.
-            # Take the reply that carries the player's hand.
-            player_game_state = None
-            for msg in messages:
-                if msg.get("type") == "game_state" and msg.get("player_hand"):
-                    player_game_state = msg
-                    break
+            player_game_state = await receive_until(
+                self.player_client,
+                lambda m: m.get("type") == "game_state" and bool(m.get("player_hand")),
+            )
 
             self.assertIsNotNone(player_game_state, "Player should receive game_state with a hand after hit")
             player_hand = player_game_state.get("player_hand", [])

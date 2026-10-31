@@ -41,6 +41,32 @@ and five more full runs were clean in four of five. The fifth had two different 
 `test_surrender_integration` and `test_player_observer`, which both depend on the WebSocket
 server and the database. Record the betlog failure with its full output if it returns.
 
+## Surrender flake: `test_new_features_integration.py::TestSurrenderIntegration::test_surrender_integration`
+
+- Measured: 6 failures in 60 runs when run alone (about 10%).
+- Evidence: the failing run's surrender reaches the handler with `session_id` set and an empty
+  `table_moniker`, so the handler returns `not_at_table`. The test saw only `error`.
+- The test's join reply is sent after the seat is set (`_set_seated` runs before the
+  `joined_table` reply), so a plain join-then-act race does not explain it on paper.
+- Open: why the action's session lookup has no table in some runs. Compare the key `_set_seated`
+  writes with the key `_check_access` reads, under the test server's session manager, on a
+  failing run.
+- The test now waits for its reply with `receive_until` (`tests/_ws_replies.py`), so a failure
+  names what arrived instead of a generic timeout.
+
+## Player-observer flake: `test_player_observer.py::TestPlayerAndObserver::test_player_and_observer`
+
+- Measured: 3 failures in 60 runs when run alone (about 5%).
+- Evidence: after the player's `hit`, no `game_state` carrying a `player_hand` arrived within the
+  window. The same deadline-based wait applies now.
+- Open: not yet traced. Likely the same session-binding question as the surrender flake, since
+  both act on a seated player. Check it on a failing run before drawing a conclusion.
+
+## Seen once in a full run: `test_blackjack_flow.py::test_stand_after_bet`
+
+Failed once in a full staged run, passed 20 of 20 alone. Not investigated further. Record it
+with full output if it recurs.
+
 ## Remaining risk
 
 The natural test forces its shoe on the bet service's own `GameService`. If the bet and
