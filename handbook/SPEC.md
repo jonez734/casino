@@ -290,6 +290,18 @@ The legacy `casino-client` shell shim and console-script entry point
 were removed; `python -m casino.client_cli` still works for callers
 that imported the entry point directly.
 
+### 6.00 Debug level
+
+`--debug` is an integer level. It defaults to 1, a bare `--debug` means 1, and
+`--debug 0` is quiet.
+
+- Level 1 and above prints the path of the loaded `casino.auth` module once at startup,
+  from `main()` after the arguments are parsed. It also shows a `| debug` badge in the
+  bottombar.
+- Level 0 prints neither.
+
+The level is read from the parsed arguments. Nothing prints on import.
+
 ### 6.0 Hosted and standalone menus
 
 Casino's menus are read through a seam in `src/casino/host.py`, so the same menus

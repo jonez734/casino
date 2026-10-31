@@ -29,7 +29,7 @@ from argparse import Namespace
 from bbsengine6 import bottombar, database, io, session
 from bed.tools._routing import BedNotReachable
 
-from . import _routing, lib
+from . import _routing, auth, lib
 from .client import CasinoClient
 
 
@@ -214,6 +214,7 @@ def main(argv: list[str] | None = None) -> int:
     args: Namespace
     remaining_argv: list
     args, remaining_argv = parser.parse_known_args(argv)
+    auth.report_loaded_from(args)
 
     # Auto-detect the default token-file path (``$XDG_RUNTIME_DIR/bed.token``
     # or ``/tmp/bed-<uid>/bed.token``) when the operator did not pass

@@ -555,7 +555,7 @@ def setarea(args: Namespace, left: str, player: Any = None) -> None:
         if currentmember is None:
             return ""
         rightbuf = f"| {currentmember['moniker']} | {util.pluralize(currentmember['credits'], 'credit', 'credits')}"
-        if args.debug is True:
+        if (getattr(args, "debug", 0) or 0) >= 1:
             rightbuf += " | debug"
         return rightbuf
 
@@ -721,7 +721,10 @@ def buildargs(args: Namespace | None = None, **kwargs: Any) -> argparse.Argument
         version=f"casino {casino_version.version}",
     )
     parser.add_argument("--verbose", action="store_true", dest="verbose")
-    parser.add_argument("--debug", action="store_true", dest="debug")
+    parser.add_argument(
+        "--debug", type=int, nargs="?", const=1, default=1, dest="debug",
+        help="debug level: 0 quiet, 1 (default) show startup diagnostics, 2+ more",
+    )
     parser.add_argument(
         "--audit",
         action="store_true",

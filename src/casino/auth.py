@@ -47,21 +47,16 @@ if TYPE_CHECKING:
 
 # ---- Operator-side source-resolution trace ---------------------------
 #
-# Emit the resolved file path of THIS module on import, so when an
-# operator runs ``casino`` they immediately see WHICH tree of the
-# source they are actually executing. This came up when a parallel
-# /srv/work/casino checkout diverged from the dev tree and silently
-# picked up the unfixed auth.py -- the operator saw
-# ``token_revoked`` on the second casino call, and our diagnostics
-# were running in the wrong source tree.
-#
-# Always-on (no --debug gate) -- bbsengine6's io.echo defaults are
-# loud enough that this surfaces in the operator's normal log stream.
+# Startup diagnostic: which file of this module is loaded. It is printed only at
+# debug level 1 or above, from main() once the arguments are parsed, so an operator
+# sees it when they ask for debug output and not on every run.
 from bbsengine6 import io as _bbs_io  # noqa: E402
 
-_bbs_io.echo(
-    f"casino.auth loaded from: {__file__}"
-)
+
+def report_loaded_from(args) -> None:
+    """Echo this module's path when ``args.debug`` is 1 or more."""
+    if (getattr(args, "debug", 0) or 0) >= 1:
+        _bbs_io.echo(f"casino.auth loaded from: {__file__}")
 
 
 # ---- Auth prompt: the single override point --------------------------
