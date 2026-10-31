@@ -355,6 +355,15 @@ def blackjack_main(argv: list[str] | None = None) -> int:
     return main([_BLACKJACK_SUBCOMMAND, *(argv if argv is not None else sys.argv[1:])])
 
 
+def poker_main(argv: list[str] | None = None) -> int:
+    """Thin entry point for the ``poker`` console-script.
+
+    Equivalent to invoking ``casino poker [...argv]``, which connects through
+    bed and runs the poker command package.
+    """
+    return main(["poker", *(argv if argv is not None else sys.argv[1:])])
+
+
 if __name__ == "__main__":
     try:
         raise SystemExit(main())

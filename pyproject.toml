@@ -57,6 +57,7 @@ Issues = "https://github.com/jonez734/casino/issues"
 script-files = [
     "bin/casino",
     "bin/blackjack",
+    "bin/poker",
     "bin/yahtzee",
     "bin/tictactoe",
     "bin/slots",
