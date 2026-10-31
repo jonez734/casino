@@ -712,11 +712,17 @@ class CasinoClient:
             for o in settled.get("outcomes", []):
                 net = int(o.get("net", 0))
                 sign = "+" if net > 0 else ""
-                io.echo(
-                    f"Result: {o.get('result', '?')} with {o.get('total', '?')} "
-                    f"(dealer {settled.get('dealer_total', '?')}), bet {o.get('bet', '?')}, "
-                    f"net {sign}{net}{{f6}}"
-                )
+                # The server writes the ending ("dealer natural blackjack, bet 10, net -10"). Older
+                # servers do not send it, so fall back to the plain result line.
+                text = o.get("text")
+                if text:
+                    io.echo(f"Result ({o.get('player', '?')}): {text}{{f6}}")
+                else:
+                    io.echo(
+                        f"Result: {o.get('result', '?')} with {o.get('total', '?')} "
+                        f"(dealer {settled.get('dealer_total', '?')}), bet {o.get('bet', '?')}, "
+                        f"net {sign}{net}{{f6}}"
+                    )
             total = int(settled.get("net", 0))
             sign = "+" if total > 0 else ""
             io.echo(f"Round net: {sign}{total}{{f6}}")

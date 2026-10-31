@@ -252,7 +252,7 @@ class TestBlackjackPlayer(unittest.TestCase):
         p = BlackjackPlayer()
         self.assertIn("blackjack", p.stats)
         bucket = p.stats["blackjack"]
-        for key in ("win", "loss", "draw", "bust", "blackjack", "naturalblackjack"):
+        for key in ("win", "loss", "push", "bust", "blackjack", "naturalblackjack"):
             self.assertEqual(bucket.get(key), 0)
 
     def test_incstat_uses_blackjack_namespace(self):

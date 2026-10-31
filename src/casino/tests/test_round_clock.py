@@ -112,7 +112,7 @@ def test_a_running_clock_does_not_block_an_action():
 
 
 @pytest.mark.unit
-def test_expire_round_remove_returns_the_stake_and_marks_the_hand_removed():
+def test_expire_round_remove_returns_the_stake_and_marks_the_hand_standup():
     svc = _service()
     hand = {"id": 11, "playermoniker": "alice", "is_bot": False}
     bet = {"id": 99, "amount": 25, "status": "pending"}
@@ -125,7 +125,7 @@ def test_expire_round_remove_returns_the_stake_and_marks_the_hand_removed():
          patch.object(rc, "log_expiry") as log:
         out = rc.expire_round(svc, "t1")
     settle.assert_called_once_with(svc.args, 99, True, 25, pool=None)
-    status.assert_called_once_with(svc.args, 11, "removed", pool=None)
+    status.assert_called_once_with(svc.args, 11, "standup", pool=None)
     log.assert_called_once()
     assert out == {"success": True, "expired": 1, "penalty": "remove"}
 
@@ -164,7 +164,7 @@ def test_expire_round_penalises_a_bot_hand_like_a_human_hand():
         out = rc.expire_round(svc, "t1")
     assert out["expired"] == 1
     settle.assert_called_once()  # remove: the stake is returned
-    status.assert_called_once_with(svc.args, 11, "removed", pool=None)
+    status.assert_called_once_with(svc.args, 11, "standup", pool=None)
     log.assert_called_once()
 
 

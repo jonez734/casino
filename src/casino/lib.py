@@ -586,7 +586,7 @@ class CasinoPlayer:
     Mirrors the duck-typed attrs the WS-client ``CasinoClient`` exposes
     (``moniker``, ``credits``, ``current_table_moniker``,
     ``current_table_game_type``, ``connected``) so the visibility
-    filter in :func:`casino.menu_lib.visible_options` works against
+    filter in :func:`bbsengine6.menu_next.visible_options` works against
     either object without branching.
 
     Construction idempotently materializes the matching
@@ -615,7 +615,7 @@ class CasinoPlayer:
         self.current_table_game_type: str | None = None
         # WS-connection state for the door-mode ``casino.main`` loop:
         # ``None`` before ``auth.connect`` succeeds, ``True`` after. The
-        # ``requires_connected`` gate in ``casino.menu_lib`` uses this
+        # ``requires_connected`` gate in ``bbsengine6.menu_next`` uses this
         # to hide the ``[X] Disconnect`` option until a connection is
         # open.
         self.connected: bool = False

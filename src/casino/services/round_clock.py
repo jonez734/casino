@@ -45,7 +45,10 @@ def penalty_for(table: dict[str, Any]) -> str:
 
 # Hand states that mean the seat has finished acting. Shared with GameService so the round and the
 # clock agree on what "acted" means.
-ACTED_STATUSES = ("standing", "surrendered", "bust", "charlie", "done", "split_1", "split_2")
+ACTED_STATUSES = ("standing", "surrendered", "bust", "charlie", "done", "split_1", "split_2", "standup")
+
+# Hand status for a seat the round clock stood up from this round (see expire_round).
+STANDUP_STATUS = "standup"
 
 
 def is_bot_seat(seat: dict[str, Any]) -> bool:
@@ -108,9 +111,11 @@ def expire_round(game_service: Any, table_moniker: str, *, pool: Any = None) -> 
         if not bet or bet.get("status") != "pending":
             continue
         if penalty == "remove":
-            # Return the stake in full, as a push does, and take the hand out of the round.
+            # Standup: refund the stake in full and take the seat out of this round only. The seat
+            # stays at the table and is dealt in the next round. Nothing is counted as a win, loss,
+            # push, or hand played; settle_game records the seat as "standup".
             dal_bet.settle_bet(args, bet["id"], True, bet["amount"], pool=pool)
-            dal_game.update_hand_status(args, hand_id, "removed", pool=pool)
+            dal_game.update_hand_status(args, hand_id, STANDUP_STATUS, pool=pool)
         # skip: nothing to change; the hand settles on its current cards with the round.
         log_expiry(args, table_moniker, game["id"], hand_id, penalty,
                    pool=pool, member_moniker=player)

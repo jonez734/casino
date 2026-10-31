@@ -65,6 +65,22 @@ async def _resolve_async_pool(args: Any) -> Any:
     return await database.get_async_pool(args)
 
 
+def _round_settled_payload(settled: dict[str, Any], moniker: Optional[str]) -> dict[str, Any]:
+    """The settled round as sent to clients, shared by every reply and broadcast that announces it.
+
+    ``moniker`` set: that player's own net (acting-player reply). ``None``: the whole table
+    (broadcast), where each seat's ``text`` is what every reader sees.
+    """
+    outcomes = settled.get("outcomes", [])
+    net = sum(o["net"] for o in outcomes if moniker is not None and o["player"] == moniker)
+    return {
+        "outcomes": outcomes,
+        "dealer_total": settled.get("dealer_total"),
+        "dealer_cards": settled.get("dealer_cards"),
+        "net": net,
+    }
+
+
 class CasinoSessionManager(SessionManager):
     """Extends base SessionManager with table/spectator tracking.
 
@@ -1079,33 +1095,36 @@ class GameServiceHandler(BaseService):
         elif action == "double":
             hand_id = message.get("hand_id") if message else None
             result = self.game_service.double(table_moniker, moniker, hand_id)
-            self.game_service.settle_game(table_moniker)
+            settled = self.game_service.settle_game(table_moniker)
         elif action == "split":
             hand_id = message.get("hand_id") if message else None
             result = self.game_service.split(table_moniker, moniker, hand_id)
         elif action == "surrender":
             result = self.game_service.surrender(table_moniker, moniker)
             if result and result.get("success"):
-                self.game_service.settle_game(table_moniker)
+                settled = self.game_service.settle_game(table_moniker)
 
         if result and not result.get("success", True):
             return {"type": "error", "code": "action_failed", "message": result.get("message", "")}
+
+        # A round the round clock settled while this action was checked is announced too.
+        if settled is None:
+            settled = self.game_service.take_settled_round(table_moniker)
 
         # Return game state directly to player
         game_state = self.game_service.get_game_state(table_moniker, moniker)
         game_state["type"] = "game_state"
         if settled and settled.get("outcomes"):
             # The round ended: tell the player each hand's result and the money that moved.
-            game_state["round_settled"] = {
-                "outcomes": settled["outcomes"],
-                "dealer_total": settled.get("dealer_total"),
-                "net": sum(o["net"] for o in settled["outcomes"] if o["player"] == moniker),
-            }
+            game_state["round_settled"] = _round_settled_payload(settled, moniker)
 
         # Broadcast game_state to all at the table (including spectators)
         if server and table_moniker:
             broadcast_state = self.game_service.get_game_state(table_moniker, "")
             broadcast_state["type"] = "game_state"
+            if settled and settled.get("outcomes"):
+                # Every seat and spectator sees each hand's ending, not only the acting player.
+                broadcast_state["round_settled"] = _round_settled_payload(settled, None)
             observer_count = len(self._get_observers(table_moniker))
             player_count = self._get_player_count(table_moniker)
             from casino.services.table_channels import events_channel as events_channel_name
@@ -1237,6 +1256,12 @@ class BetServiceHandler(BaseService):
             game_state["type"] = "game_state"
             io.echo(f"_handle_bet: SUCCESS: {moniker} bet {amount} at {table_moniker}", level="info")
 
+            # A dealer natural settled the round inside place_bet (the peek). Announce it like any
+            # other settled round.
+            settled = self.game_service.take_settled_round(table_moniker)
+            if settled and settled.get("outcomes"):
+                game_state["round_settled"] = _round_settled_payload(settled, moniker)
+
             # Send the per-player view to the sender FIRST so its
             # websocket receive queue orders it before any broadcast
             # that follows. Returning None here keeps the framework
@@ -1250,6 +1275,8 @@ class BetServiceHandler(BaseService):
             if server and table_moniker:
                 broadcast_state = self.game_service.get_game_state(table_moniker, "")
                 broadcast_state["type"] = "game_state"
+                if settled and settled.get("outcomes"):
+                    broadcast_state["round_settled"] = _round_settled_payload(settled, None)
                 observer_count = len(self._get_observers(table_moniker))
                 player_count = self._get_player_count(table_moniker)
                 from casino.services.table_channels import events_channel as events_channel_name

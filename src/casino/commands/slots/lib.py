@@ -19,9 +19,9 @@ from types import SimpleNamespace
 from typing import Any, Dict, Optional
 
 from bbsengine6 import io, util
+from bbsengine6.menu_next import MenuOption, visible_options
 from casino import host
 from casino.access import access as _casino_access
-from casino.menu_lib import MenuOption, visible_options
 
 from casino.commands._auth import _require_authenticated_client
 
@@ -247,7 +247,7 @@ _SLOTS_OPTIONS_SPEC = (
 def _visible_slots_options(client):
     """Yield ``(letter, label)`` tuples the player may pick.
 
-    Thin shim around :func:`casino.menu_lib.visible_options`. Kept so
+    Thin shim around :func:`bbsengine6.menu_next.visible_options`. Kept so
     callers (including tests) that import ``_visible_slots_options``
     from this module keep working unchanged.
     """

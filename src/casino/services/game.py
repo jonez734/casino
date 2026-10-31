@@ -9,12 +9,13 @@ from typing import Any, Optional
 from bbsengine6 import io
 
 from casino.blackjack import Hand
+from casino.blackjack.settle import classify_hand, describe, dealer_peek_applies, dealer_peek_natural
 from casino.config import get_surrender_multiplier
 from casino.dal import bet as dal_bet
 from casino.dal import game as dal_game
 from casino.dal import player as dal_player
 from casino.dal import table as dal_table
-from casino.services.round_clock import ACTED_STATUSES
+from casino.services.round_clock import ACTED_STATUSES, STANDUP_STATUS
 from casino.dal import shoe as shoe_store
 from casino.shoe import Shoe, build_cards
 
@@ -30,6 +31,7 @@ class GameService:
         self._pool = pool
         self._shoes: dict[str, Shoe] = {}  # table_moniker -> shoe (persisted on the table row)
         self._known_rounds: set[int] = set()  # game ids this process started or has checked
+        self._last_settled: dict[str, dict[str, Any]] = {}  # table_moniker -> last settled round
 
     def _create_shoe(self, decks: int = 6) -> list[str]:
         """Create a shuffled shoe of ``decks`` decks, from the shared shoe definition."""
@@ -154,14 +156,48 @@ class GameService:
         currenthand = ", ".join(cards)
         dal_bet.update_bet_currenthand(self.args, bet["id"], currenthand, pool=self._pool)
 
+        # Deal the dealer's two cards with the first bet, then peek for a natural before any player
+        # acts. A natural ends the round here: the player is never offered hit, double, split, or
+        # surrender on a hand the dealer already has beaten.
+        peek = {"natural": False, "checked": False}
+        if game is not None:
+            peek = self._deal_dealer_and_peek(table_moniker, game)
+
         return {
             "success": True,
             "bet_id": bet["id"],
             "hand_id": hand["id"],
             "cards": cards,
             "total": self._hand_value(cards),
+            "dealer_peek": peek,
             "message": f"Bet {amount} placed",
         }
+
+    def _deal_dealer_and_peek(self, table_moniker: str, game: dict[str, Any]) -> dict[str, Any]:
+        """Deal the dealer's two cards if not yet dealt, then check the hole card for a natural.
+
+        Peek is done only when the upcard is an ace or ten (standard practice: the dealer checks
+        the hole card only when a natural is possible). A natural settles the round at once and
+        returns ``{"natural": True}``; otherwise ``{"natural": False}``.
+        """
+        dealer_hand = dal_game.get_or_create_dealer_hand(self.args, game["id"], pool=self._pool)
+        dealer_cards = list(dealer_hand["cards"]) if dealer_hand.get("cards") else []
+        if not dealer_cards:
+            dealer_cards = [self._draw_card(table_moniker), self._draw_card(table_moniker)]
+            dal_game.update_dealer_hand_cards(self.args, game["id"], dealer_cards, pool=self._pool)
+            dal_game.set_dealer_hole_card(self.args, game["id"], dealer_cards[1], pool=self._pool)
+
+        if not dealer_peek_applies(dealer_cards[0]):
+            return {"natural": False, "checked": False}
+
+        if not dealer_peek_natural(dealer_cards):
+            return {"natural": False, "checked": True}
+
+        # Dealer natural: reveal the hole card and settle the round now. Insurance settles in
+        # settle_game (2:1 on a natural; lost otherwise).
+        dal_game.reveal_dealer_hole_card(self.args, game["id"], pool=self._pool)
+        self.settle_game(table_moniker)
+        return {"natural": True, "checked": True}
 
     def _round_expired(self, table_moniker: str, game: dict[str, Any]) -> bool:
         """True (and the expiry applied) when the round's clock has run out.
@@ -934,88 +970,52 @@ class GameService:
 
             hand_attrs = hand.get("attrs") or {}
             hand_status = hand_attrs.get("status")
-
-            if hand_status == "surrendered":
-                dal_player.increment_stat(self.args, player_moniker, f"{game_type}.surrenders", 1)
-                dal_player.increment_stat(self.args, player_moniker, f"{game_type}.hands_played", 1)
-                continue
-
+            original_bet = int(bet["amount"])
             insurance_amount = dal_bet.get_insurance(self.args, bet["id"], pool=self._pool)
 
-            player_cards = list(hand["cards"])
-            player_total = self._hand_value(player_cards)
-            player_blackjack = self._is_blackjack(player_cards)
-
-            original_bet = int(bet["amount"])
-            net_change = 0
-            outcome = None
-
-            if player_blackjack and dealer_blackjack:
-                dal_bet.settle_bet(self.args, bet["id"], True, bet["amount"], pool=self._pool)
-                outcome = "push"
-            elif player_blackjack:
-                payout = int(bet["amount"] * Decimal("2.5"))
-                dal_bet.settle_bet(self.args, bet["id"], True, payout, pool=self._pool)
-                net_change = payout - original_bet
-                outcome = "blackjack"
-            elif dealer_blackjack:
-                dal_bet.settle_bet(self.args, bet["id"], False, 0, pool=self._pool)
-                net_change = -original_bet
-                outcome = "loss"
-            elif player_total > 21:
-                dal_bet.settle_bet(self.args, bet["id"], False, 0, pool=self._pool)
-                net_change = -original_bet
-                outcome = "bust"
-            elif hand_status == "charlie" or dealer_total > 21 or player_total > dealer_total:
-                payout = bet["amount"] * 2
-                dal_bet.settle_bet(self.args, bet["id"], True, payout, pool=self._pool)
-                net_change = int(payout) - original_bet
-                outcome = "win"
-            elif player_total < dealer_total:
-                dal_bet.settle_bet(self.args, bet["id"], False, 0, pool=self._pool)
-                net_change = -original_bet
-                outcome = "loss"
-            else:
-                dal_bet.settle_bet(self.args, bet["id"], True, bet["amount"], pool=self._pool)
-                outcome = "push"
-
-            if outcome == "blackjack":
-                dal_player.increment_stat(self.args, player_moniker, f"{game_type}.blackjacks", 1)
-                dal_player.increment_stat(self.args, player_moniker, "wins", 1)
-            elif outcome == "win":
-                dal_player.increment_stat(self.args, player_moniker, "wins", 1)
-            elif outcome == "loss":
-                dal_player.increment_stat(self.args, player_moniker, "losses", 1)
-            elif outcome == "push":
-                dal_player.increment_stat(self.args, player_moniker, "pushes", 1)
-            elif outcome == "bust":
-                dal_player.increment_stat(self.args, player_moniker, f"{game_type}.busts", 1)
-                dal_player.increment_stat(self.args, player_moniker, "losses", 1)
-
-            if outcome in ("win", "loss", "push", "blackjack", "bust"):
+            if hand_status == "surrendered":
+                # Settled when the player surrendered; here only the record and stats.
+                dal_player.increment_stat(self.args, player_moniker, f"{game_type}.surrenders", 1)
                 dal_player.increment_stat(self.args, player_moniker, f"{game_type}.hands_played", 1)
+                returned = self._surrender_returned(bet)
+                net_change = returned - original_bet
+                outcomes.append(self._outcome_entry(
+                    hand, player_moniker, "surrender", "surrender", bet, net_change,
+                    player_cards=list(hand["cards"] or []), dealer_cards=dealer_cards,
+                    returned=returned,
+                ))
+                self._record_settled(game["id"], "surrender", bet, net_change)
+                continue
 
-            if net_change != 0:
-                dal_player.increment_stat(self.args, player_moniker, "net", net_change)
+            if hand_status == STANDUP_STATUS:
+                # Standup: the round clock took this seat out of the round. The bet was refunded
+                # when the clock expired. Recorded so the round shows it; no win, loss, push, or
+                # hands-played stat, because the hand was never played out.
+                outcomes.append(self._outcome_entry(
+                    hand, player_moniker, "standup", "standup", bet, 0,
+                    player_cards=list(hand["cards"] or []), dealer_cards=dealer_cards,
+                ))
+                self._record_settled(game["id"], "standup", bet, 0)
+                continue
 
-            if outcome is not None:
-                outcomes.append({
-                    "hand_id": hand["id"],
-                    "player": player_moniker,
-                    "total": player_total,
-                    "result": outcome,
-                    "bet": int(bet["amount"]),
-                    "net": int(net_change),
-                })
-                dal_game.update_game_attrs(
-                    self.args, game["id"],
-                    {
-                        "outcome": outcome,
-                        "bet_amount": int(bet["amount"]),
-                        "net": int(net_change),
-                    },
-                    pool=self._pool,
-                )
+            player_cards = list(hand["cards"] or [])
+            player_total = self._hand_value(player_cards)
+
+            outcome, reason = classify_hand(
+                player_cards, dealer_cards, player_status=hand_status,
+            )
+            payout, net_change = self._payout_for(outcome, original_bet)
+            dal_bet.settle_bet(
+                self.args, bet["id"], payout > 0, payout, pool=self._pool,
+            )
+
+            self._count_stats(player_moniker, game_type, outcome)
+
+            outcomes.append(self._outcome_entry(
+                hand, player_moniker, outcome, reason, bet, net_change,
+                player_cards=player_cards, dealer_cards=dealer_cards,
+            ))
+            self._record_settled(game["id"], outcome, bet, net_change)
 
             if insurance_amount > 0:
                 if dealer_blackjack:
@@ -1026,10 +1026,96 @@ class GameService:
 
         dal_game.update_game_status(self.args, game["id"], "settled", pool=self._pool)
 
-        return {
+        settled = {
             "success": True,
             "message": "Game settled",
             "dealer_total": dealer_total,
             "dealer_cards": dealer_cards,
             "outcomes": outcomes,
         }
+        # Kept so the handler can announce the round to the table even when no player action
+        # triggered the settlement (round-clock expiry).
+        self.__dict__.setdefault("_last_settled", {})[table_moniker] = settled
+        return settled
+
+    def take_settled_round(self, table_moniker: str) -> Optional[dict[str, Any]]:
+        """Return and clear the last settled round for a table, or None if there is none."""
+        return self.__dict__.setdefault("_last_settled", {}).pop(table_moniker, None)
+
+    def _payout_for(self, outcome: str, original_bet: int) -> tuple[int, int]:
+        """``(payout, net)`` for a settled outcome. Payout is what returns to the player."""
+        if outcome == "blackjack":
+            payout = int(original_bet * Decimal("2.5"))
+        elif outcome == "win":
+            payout = original_bet * 2
+        elif outcome == "push":
+            payout = original_bet
+        else:
+            payout = 0
+        return payout, payout - original_bet
+
+    def _count_stats(self, player_moniker: str, game_type: str, outcome: str) -> None:
+        """Stats for a played-out hand. The same counts whichever mode (BED or door) settled it."""
+        if outcome == "blackjack":
+            dal_player.increment_stat(self.args, player_moniker, f"{game_type}.blackjacks", 1)
+            dal_player.increment_stat(self.args, player_moniker, "wins", 1)
+        elif outcome == "win":
+            dal_player.increment_stat(self.args, player_moniker, "wins", 1)
+        elif outcome == "loss":
+            dal_player.increment_stat(self.args, player_moniker, "losses", 1)
+        elif outcome == "push":
+            dal_player.increment_stat(self.args, player_moniker, "pushes", 1)
+        elif outcome == "bust":
+            dal_player.increment_stat(self.args, player_moniker, f"{game_type}.busts", 1)
+            dal_player.increment_stat(self.args, player_moniker, "losses", 1)
+        if outcome in ("win", "loss", "push", "blackjack", "bust"):
+            dal_player.increment_stat(self.args, player_moniker, f"{game_type}.hands_played", 1)
+
+    def _surrender_returned(self, bet: dict[str, Any]) -> int:
+        """What a surrendered bet got back. Stored on the bet's notes by surrender(); recomputed here."""
+        multiplier = get_surrender_multiplier(self.args)
+        return int(int(bet["amount"]) * multiplier)
+
+    def _outcome_entry(
+        self,
+        hand: dict[str, Any],
+        player_moniker: str,
+        outcome: str,
+        reason: str,
+        bet: dict[str, Any],
+        net_change: int,
+        *,
+        player_cards: list[str],
+        dealer_cards: list[str],
+        returned: Optional[int] = None,
+    ) -> dict[str, Any]:
+        """One seat's entry in a settled round: the stored outcome, the reason, and the text to show."""
+        return {
+            "hand_id": hand["id"],
+            "player": player_moniker,
+            "total": self._hand_value(player_cards) if player_cards else 0,
+            "result": outcome,
+            "reason": reason,
+            "text": describe(
+                reason,
+                player_cards=player_cards,
+                dealer_cards=dealer_cards,
+                bet=int(bet["amount"]),
+                net=int(net_change),
+                returned=returned,
+            ),
+            "bet": int(bet["amount"]),
+            "net": int(net_change),
+        }
+
+    def _record_settled(self, game_id: int, outcome: str, bet: dict[str, Any], net_change: int) -> None:
+        """Keep the last settled outcome on the round row, as before."""
+        dal_game.update_game_attrs(
+            self.args, game_id,
+            {
+                "outcome": outcome,
+                "bet_amount": int(bet["amount"]),
+                "net": int(net_change),
+            },
+            pool=self._pool,
+        )

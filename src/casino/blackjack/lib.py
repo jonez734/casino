@@ -14,7 +14,8 @@ class BlackjackPlayer(libcasino.Player):
         self.currentbet = 0
         self.hand = None
         self.stats["blackjack"] = {}
-        for s in ("win", "loss", "draw", "bust", "blackjack", "naturalblackjack"):
+        # Names match the persisted player stats (dal_player.increment_stat) used by BED.
+        for s in ("win", "loss", "push", "bust", "blackjack", "naturalblackjack"):
             self.stats["blackjack"][s] = 0
 
     def incstat(self, stat):

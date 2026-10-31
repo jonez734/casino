@@ -6,9 +6,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from bbsengine6 import io, util
+from bbsengine6.menu_next import MenuOption, visible_options
 
 from .. import host
-from ..menu_lib import MenuOption, visible_options
 from .registry import get_client
 
 if TYPE_CHECKING:
@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 # Each ``MenuOption`` declares visibility gates via ``requires_seated``,
 # ``allowed_game_types`` (combined with ``requires_seated``), and
 # ``requires_connected``. The runtime filter lives in
-# :func:`casino.menu_lib.visible_options`; this file is the static
+# :func:`bbsengine6.menu_next.visible_options`; this file is the static
 # spec plus the rendering loop.
 _OPTIONS_SPEC = (
     MenuOption("t", "Tables  (list open tables)",     requires_seated=False),
@@ -46,7 +46,7 @@ _DEFAULT = "q"
 def _visible_options(client: "CasinoClient | None"):
     """Yield ``(letter, label)`` tuples the client may currently pick.
 
-    Thin shim around :func:`casino.menu_lib.visible_options`. Kept so
+    Thin shim around :func:`bbsengine6.menu_next.visible_options`. Kept so
     callers (including tests) that import ``_visible_options`` from
     this module keep working unchanged.
     """

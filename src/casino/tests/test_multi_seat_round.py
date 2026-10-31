@@ -120,6 +120,9 @@ def test_a_second_seats_bet_joins_the_open_round_instead_of_starting_one():
          patch.object(game_mod.dal_bet, "update_bet_hand_id"), \
          patch.object(game_mod.dal_bet, "update_bet_currenthand"), \
          patch.object(svc, "_draw_card", return_value="2C"), \
+         patch.object(dal_game, "get_or_create_dealer_hand", return_value={"cards": ["9S", "7C"]}), \
+         patch.object(dal_game, "update_dealer_hand_cards"), \
+         patch.object(dal_game, "set_dealer_hole_card"), \
          patch.object(svc, "start_game") as start:
         result = svc.place_bet("blackjack-x", "p1", 10)
     start.assert_not_called()  # the round is already open

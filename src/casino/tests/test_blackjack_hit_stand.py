@@ -214,7 +214,7 @@ class TestDetermineWinner(unittest.TestCase):
         dealer_hand = _build_hand(["KH", "8C"])  # 18
         with patch("casino.blackjack.play.io"):
             determine_winner(player_hand, dealer_hand, player)
-        self.assertEqual(player.calls, ["draw"])
+        self.assertEqual(player.calls, ["push"])
 
     def test_player_busts_loses(self):
         player = _StubPlayer()
@@ -222,7 +222,8 @@ class TestDetermineWinner(unittest.TestCase):
         dealer_hand = _build_hand(["10H", "7D"])  # 17
         with patch("casino.blackjack.play.io"):
             determine_winner(player_hand, dealer_hand, player)
-        self.assertEqual(player.calls, ["loss"])
+        # Same as BED: a bust is recorded as a bust and a loss.
+        self.assertEqual(player.calls, ["loss", "bust"])
 
     def test_dealer_busts_player_wins(self):
         player = _StubPlayer()
