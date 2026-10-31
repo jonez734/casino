@@ -24,6 +24,7 @@ class CasinoHostMissing(RuntimeError):
 
 
 _menu: Optional[Callable[..., str]] = None
+_line_reader: Optional[Callable[..., str]] = None
 _hosted: bool = False
 
 
@@ -34,15 +35,35 @@ def register_menu(choose_fn: Callable[..., str]) -> None:
     _hosted = True
 
 
+def register_line_reader(read_fn: Optional[Callable[..., str]]) -> None:
+    """Route ``read_menu`` lines through the hosting program's reader. ``None`` keeps
+    ``io.inputstring``. Called by the hosting program with the menu seam."""
+    global _line_reader
+    _line_reader = read_fn
+
+
 def unregister_menu() -> None:
     """Return to standalone menus. Called when the hosting program is done."""
-    global _menu, _hosted
+    global _menu, _hosted, _line_reader
     _menu = None
     _hosted = False
+    _line_reader = None
 
 
 def is_hosted() -> bool:
     return _hosted
+
+
+def read_line(prompt: str, **kwargs: Any) -> str:
+    """Read one free-text line for a ``read_menu`` menu.
+
+    Hosted: the hosting program's line reader reads it, so LO owns the terminal input.
+    Standalone, or hosted without a line reader: ``io.inputstring`` reads it. ``kwargs``
+    are the ``inputstring`` arguments (``verify``, ``completer``, ``help``).
+    """
+    if _hosted and _line_reader is not None:
+        return _line_reader(prompt, **kwargs)
+    return io.inputstring(prompt, "", noneok=True, **kwargs)
 
 
 def choose(

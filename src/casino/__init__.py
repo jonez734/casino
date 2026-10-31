@@ -15,6 +15,7 @@ def init(args, **kw: dict) -> bool:
         from . import host as casino_host
 
         casino_host.register_menu(bedsession.choose)
+        casino_host.register_line_reader(getattr(bedsession, "read_line", None))
     register_module(
         name="casino",
         module_path="casino",

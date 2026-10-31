@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 from bbsengine6 import io, module, util
 from bbsengine6.menu_next import Choice, MenuOption, menu_entries, read_menu, visible_options
 
+from .. import host as _host
 from .registry import get_client
 
 if TYPE_CHECKING:
@@ -194,4 +195,5 @@ def menu(client: "CasinoClient | None" = None, **kwargs) -> Choice:
         check=_checker(client),
         default=_DEFAULT,
         help=lambda **kw: _render_help(client=client, **kw),
+        reader=_host.read_line,
     )

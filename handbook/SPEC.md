@@ -284,6 +284,25 @@ The legacy `casino-client` shell shim and console-script entry point
 were removed; `python -m casino.client_cli` still works for callers
 that imported the entry point directly.
 
+### 6.0 Hosted and standalone menus
+
+Casino's menus are read through a seam in `src/casino/host.py`, so the same menus
+run hosted (inside letteredolive) and standalone (`casino` on its own).
+
+- **Hosted.** The hosting program passes its bedsession to `casino.init`. Casino
+  registers two things from it: `bedsession.choose` (the letter submenus, read as
+  one key from a set) and `bedsession.read_line` (the free-text line of a
+  `read_menu` menu, such as the main menu). The hosting program owns the terminal.
+- **Standalone.** Nothing is registered. Menus read through `io.inputchoice`
+  (the letter submenus) and `io.inputstring` (the main menu).
+- **Missing reader.** A hosted menu with no line reader falls back to
+  `io.inputstring`. Hosted with no `choose` raises `CasinoHostMissing`, rather than
+  falling back silently.
+
+The main menu is read with `bbsengine6.menu_next.read_menu(..., reader=host.read_line)`,
+so its rules (aliases, subcommands, typed arguments, the check gate) are the same in
+both modes. Only the terminal input differs.
+
 ### 6.1 Menu rendering contract
 
 The main menu is a word-keyed `bbsengine6.menu_next` menu, read with
