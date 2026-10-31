@@ -712,7 +712,7 @@ def buildargs(args: Namespace | None = None, **kwargs: Any) -> argparse.Argument
         prog="casino",
         description=(
             "Casino CLI: blackjack, slots, poker, yahtzee, tictactoe. "
-            "Defaults to the bed WebSocket; pass --direct for door mode."
+            "Runs through the bed WebSocket daemon, which must be reachable."
         ),
     )
     parser.add_argument(

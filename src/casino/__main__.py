@@ -256,6 +256,11 @@ def poker_main(argv: list[str] | None = None) -> int:
 if __name__ == "__main__":
     try:
         raise SystemExit(main())
-    except BedNotReachable:
-        io.echo_traceback("casino")
+    except BedNotReachable as exc:
+        # Casino runs only through bed, so say so, and name the host and port to check.
+        io.echo(
+            f"casino: bed is not reachable at {exc.host}:{exc.port}; start the bed daemon "
+            "or pass --bed-host/--bed-port.",
+            level="error",
+        )
         raise SystemExit(1) from None

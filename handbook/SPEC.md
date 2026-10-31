@@ -225,6 +225,12 @@ Two entry points remain, and both need bed:
   `casino table join <moniker>`, `casino admin watch <moniker>`, or `poker`. `casino <command>
   --version` prints that package's version and does not connect.
 
+With bed unreachable, every entry point fails the same way: one error line naming
+the host and port, and exit code 1. There is no traceback and no fallback to a
+local database. The menu reports `casino: bed is not reachable at <host>:<port>`,
+and a command reports `casino: cannot connect to ws://<host>:<port>/ (is the bed
+daemon running?)`. `tests/test_bed_down_contract.py` pins this.
+
 Offline checks that never reach a game are kept: `casino slots --demo N` runs a flat-bet
 simulation, and `casino yahtzee --mode auto` plays the house's zero-player game. They do not touch
 the database or bed.

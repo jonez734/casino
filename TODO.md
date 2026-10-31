@@ -2,6 +2,27 @@
 
 ## Refactor casino menu registrations onto `bbsengine6.menu_next`
 
+**Status: superseded and done.** The module-based design below was not built. The
+shipped design is one `Registry` of word-keyed `MenuOption`s per menu, read with
+`bbsengine6.menu_next.read_menu`, which bbsengine6's spec (`handbook/specs/menu_next.md`)
+describes. Each entry names its owning package (`module_path`) and access op (`op`), and
+the check gate runs through that package's `access()` on every prompt.
+
+What landed, by commit:
+
+- casino `19d258d`: shared command code (`commands/_common.py`), per-package access rules,
+  the tictactoe package.
+- casino `0e27174`: the word-keyed main menu, aliases (`hit` to `game hit`), `table create` and
+  `table join` arguments, F1 help with enabled and disabled entries.
+- casino `c26e6e2`: hosted menus read through the host seam (`host.read_line`).
+- bbsengine6 `cec2ba9`: `read_menu` takes a reader.
+- Bed-down: every entry exits 1 with one line, no traceback (`tests/test_bed_down_contract.py`).
+
+Not done, and not planned: the `registered_options()` walk over `get_all_modules()`, and
+per-game `menu()` methods. The bank and channels submenus stay letter menus by decision.
+
+The original design, kept for the record:
+
 The hard-coded 19-entry tuple in `casino/main.py` and the 15-entry
 tuple in `casino/client/menu.py` move to per-game `menu()` methods
 on each bbsengine6 module. The menu registry walks the module list
