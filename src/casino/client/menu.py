@@ -1,126 +1,197 @@
 # casino/client/menu.py
-# Interactive main menu for CasinoClient.
+# Main menu for CasinoClient, read with bbsengine6.menu_next.read_menu.
+#
+# The menu is a list of word-keyed MenuOptions. Typed text may be a key or an
+# alias, and tab completes the enabled ones. Each entry names the command
+# package that owns it (module_path) and the access op it is gated by (op), so
+# every prompt re-checks it through that package's access() with the client.
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from bbsengine6 import io, util
-from bbsengine6.menu_next import MenuOption, visible_options
+from bbsengine6 import io, module, util
+from bbsengine6.menu_next import Choice, MenuOption, menu_entries, read_menu, visible_options
 
-from .. import host
 from .registry import get_client
 
 if TYPE_CHECKING:
     from .casino_client import CasinoClient
 
 
-# Each ``MenuOption`` declares visibility gates via ``requires_seated``,
-# ``allowed_game_types`` (combined with ``requires_seated``), and
-# ``requires_connected``. The runtime filter lives in
-# :func:`bbsengine6.menu_next.visible_options`; this file is the static
-# spec plus the rendering loop.
+_TABLE = "casino.commands.table"
+_GAME = "casino.commands.game"
+_POKER = "casino.commands.poker"
+_ADMIN = "casino.commands.admin"
+_TTT = "casino.commands.tictactoe"
+
+_BLACKJACK = frozenset({"blackjack"})
+_BLACKJACK_POKER = frozenset({"blackjack", "poker"})
+_POKER_ONLY = frozenset({"poker"})
+_TTT_ONLY = frozenset({"tictactoe"})
+
+
+def _sub(letter: str, label: str, module_path: str | None = None, **kw) -> MenuOption:
+    return MenuOption(letter, label, module_path, **kw)
+
+
+# Blackjack and bet are game subcommands, reached by top-level aliases.
+_GAME_SUBS = {
+    "hit": _sub("hit", "Hit     (take another card)", _GAME, op="hit",
+                requires_seated=True, allowed_game_types=_BLACKJACK),
+    "stand": _sub("stand", "Stand   (hold your hand)", _GAME, op="stand",
+                  requires_seated=True, allowed_game_types=_BLACKJACK),
+    "double": _sub("double", "Double  (double down)", _GAME, op="double",
+                   requires_seated=True, allowed_game_types=_BLACKJACK),
+    "split": _sub("split", "Split   (split a pair)", _GAME, op="split",
+                  requires_seated=True, allowed_game_types=_BLACKJACK),
+    "bet": _sub("bet", "Bet     (place a wager)", _GAME, op="bet",
+                requires_seated=True, allowed_game_types=_BLACKJACK_POKER),
+}
+
+_TTT_SUBS = {
+    "quickplay": _sub("quickplay", "Quick play (tictactoe, vs AI)", _TTT, op="quickplay"),
+    "move": _sub("move", "Move    (tictactoe cell 0-8)", _TTT, op="move",
+                 requires_seated=True, allowed_game_types=_TTT_ONLY),
+    "join": _sub("join", "Join    (join tictactoe as 'O')", _TTT, op="join",
+                 requires_seated=True, allowed_game_types=_TTT_ONLY),
+    "resign": _sub("resign", "Resign  (forfeit tictactoe)", _TTT, op="resign",
+                   requires_seated=True, allowed_game_types=_TTT_ONLY),
+}
+
+_ADMIN_SUBS = {
+    "watch": _sub("watch", "Watch a table's events and chat", _ADMIN,
+                  op="watch_table", sysop_only=True),
+    "unwatch": _sub("unwatch", "Stop watching a table", _ADMIN,
+                    op="stop_watching", sysop_only=True),
+    "kick": _sub("kick", "Remove a player from a table", _ADMIN,
+                 op="kick_player", sysop_only=True),
+}
+
+def _table_parser(name: str):
+    """The argument parser for one table subcommand, from the table package's buildargs.
+
+    ``create`` and ``join`` take optional values; the other subcommands take none.
+    """
+    from casino.commands import table as table_pkg
+
+    root = table_pkg.buildargs(None)
+    for action in root._actions:
+        if getattr(action, "choices", None) and name in action.choices:
+            sub_parser = action.choices[name]
+            sub_parser.prog = f"table {name}"
+            return sub_parser
+    return None
+
+
+_TABLE_SUBS = {
+    "list": _sub("list", "List open tables", _TABLE, op="list_tables",
+                 parser=_table_parser("list")),
+    "create": _sub("create", "Create a table", _TABLE, op="create_table",
+                   parser=_table_parser("create")),
+    "join": _sub("join", "Join a table", _TABLE, op="join_table",
+                 parser=_table_parser("join")),
+    "update": _sub("update", "Update a table (owner or sysop)", _TABLE, op="update_table",
+                   parser=_table_parser("update")),
+    "leave": _sub("leave", "Leave the current table", _TABLE, op="leave_table",
+                  requires_seated=True, parser=_table_parser("leave")),
+    "view": _sub("view", "View a table", _TABLE, op="view_table",
+                 parser=_table_parser("view")),
+}
+
 _OPTIONS_SPEC = (
-    MenuOption("t", "Tables  (list open tables)",     requires_seated=False),
-    MenuOption("c", "Create  (create a new table)",   requires_seated=False),
-    MenuOption("u", "Update  (modify an existing table)", requires_seated=False),
-    MenuOption("j", "Join Table",                     requires_seated=False),
-    MenuOption("p", "Players (list a table's players)", requires_seated=False),
-    MenuOption("w", "Watch   (spectate a table's events and chat)", requires_seated=False),
-    MenuOption("l", "Leave   (leave current table)",  requires_seated=True),
-    MenuOption("b", "Bet     (place a wager)",         requires_seated=True, allowed_game_types=frozenset({"blackjack", "poker"})),
-    MenuOption("h", "Hit     (take another card)",     requires_seated=True, allowed_game_types=frozenset({"blackjack"})),
-    MenuOption("s", "Stand   (hold your hand)",        requires_seated=True, allowed_game_types=frozenset({"blackjack"})),
-    MenuOption("m", "Message (send chat)",             requires_seated=False),
-    MenuOption("k", "Bank    (open the bank submenu)", requires_seated=False),
-    MenuOption("e", "Channels (open the channel submenu)", requires_seated=False),
-    MenuOption("x", "Tic Tac Toe (quick-play tictactoe)", requires_seated=False),
-    MenuOption("v", "Move   (tictactoe cell 0-8)",    requires_seated=True, allowed_game_types=frozenset({"tictactoe"})),
-    MenuOption("n", "Join   (join tictactoe as 'O')",    requires_seated=True, allowed_game_types=frozenset({"tictactoe"})),
-    MenuOption("g", "Resign (forfeit tictactoe)",     requires_seated=True, allowed_game_types=frozenset({"tictactoe"})),
-    MenuOption("q", "Quit",                           requires_seated=False),
+    MenuOption("table", "Table   (list, create, join, update, leave, view)",
+               _TABLE, op="list_tables", subcommands=_TABLE_SUBS),
+    MenuOption("bank", "Bank    (open the bank submenu)", "casino.commands.bank", op="balance"),
+    MenuOption("channels", "Channels (open the channel submenu)", None),
+    MenuOption("chat", "Chat    (global or table chat)", "casino.commands.chat", op="chat"),
+    MenuOption("message", "Message (send a direct message)", None),
+    MenuOption("admin", "Admin   (watch, unwatch, kick)", _ADMIN, op="watch_table",
+               sysop_only=True, subcommands=_ADMIN_SUBS),
+    MenuOption("tictactoe", "Tictactoe (quick play, move, join, resign)", _TTT,
+               op="quickplay", subcommands=_TTT_SUBS,
+               aliases=("ttt", "move", "resign"),
+               alias_subcommand={"ttt": "quickplay", "move": "move", "resign": "resign"}),
+    MenuOption("game", "Game    (bet, hit, stand, double, split)", _GAME,
+               op="bet", subcommands=_GAME_SUBS,
+               aliases=("hit", "stand", "double", "split", "bet"),
+               alias_subcommand={"hit": "hit", "stand": "stand", "double": "double",
+                                 "split": "split", "bet": "bet"}),
+    MenuOption("check", "Check   (poker: pass the action)", _POKER, op="check",
+               requires_seated=True, allowed_game_types=_POKER_ONLY),
+    MenuOption("call", "Call    (poker: match the bet)", _POKER, op="call",
+               requires_seated=True, allowed_game_types=_POKER_ONLY),
+    MenuOption("raise", "Raise   (poker: raise the bet)", _POKER, op="raise",
+               requires_seated=True, allowed_game_types=_POKER_ONLY),
+    MenuOption("fold", "Fold    (poker: give up the hand)", _POKER, op="fold",
+               requires_seated=True, allowed_game_types=_POKER_ONLY),
+    MenuOption("allin", "All-in (poker: bet everything)", _POKER, op="allin",
+               requires_seated=True, allowed_game_types=_POKER_ONLY),
+    MenuOption("quit", "Quit", None),
 )
-_DEFAULT = "q"
+
+_DEFAULT = "quit"
+
+
+def _checker(client: "CasinoClient | None"):
+    """``check(module_path, op)`` bound to ``client``.
+
+    The owning package's ``access()`` decides, with the client passed as
+    ``client``. A missing client denies everything that names a package.
+    """
+    args = getattr(client, "args", None)
+
+    def check(module_path: str, op: str) -> bool:
+        if client is None:
+            return False
+        if args is None:
+            # No bed args means there is no access policy to ask. The spec's own
+            # gates (seat, game type, sysop) still apply.
+            return True
+        return module.check(args, module_path, op, package=module_path, client=client) is True
+
+    return check
 
 
 def _visible_options(client: "CasinoClient | None"):
-    """Yield ``(letter, label)`` tuples the client may currently pick.
-
-    Thin shim around :func:`bbsengine6.menu_next.visible_options`. Kept so
-    callers (including tests) that import ``_visible_options`` from
-    this module keep working unchanged.
-    """
+    """``(key, label)`` for the options the client may pick now."""
     return [
         (opt.letter, opt.label)
-        for opt in visible_options(_OPTIONS_SPEC, client)
+        for opt in visible_options(_OPTIONS_SPEC, client, check=_checker(client))
     ]
 
 
 def _render_help(client: "CasinoClient | None" = None, **kwargs) -> None:
-    """F1/HELP callback for the casino_client main menu.
-
-    Per the spec: ``util.heading()`` is called exactly once per display
-    of help, then the option list is echoed. Only currently-visible
-    options are listed so the help screen matches the prompt.
+    """F1/HELP callback. A sysop sees every command; entries that are not
+    available now are dimmed with ``menu.item.disabled``.
     """
     client = client or get_client()
     util.heading("casino_client")
-    for letter, label in _visible_options(client):
-        # f-string ``{{`` collapses to literal ``{`` so ``io.echo``
-        # sees ``{var:optioncolor}`` / ``{var:labelcolor}`` markup.
-        io.echo(
-            f"{{var:optioncolor}}[{letter.upper()}]{{var:labelcolor}} {label}"
-        )
+    sysop = bool(getattr(client, "is_sysop", False))
+    for opt, enabled in menu_entries(_OPTIONS_SPEC, client, check=_checker(client)):
+        if not enabled and not sysop:
+            continue
+        style = "{var:menu.item.enabled}" if enabled else "{var:menu.item.disabled}"
+        io.echo(f"{{{style}}}[{opt.letter.upper()}]{{/all}} {opt.label}")
 
 
-def menu(client: "CasinoClient | None" = None, **kwargs) -> str | None:
-    """Show the casino_client main menu and return the chosen command.
+def menu(client: "CasinoClient | None" = None, **kwargs) -> Choice:
+    """Read one command from the main menu and return it as a :class:`Choice`.
 
-    The status prefix (``[moniker] Balance: X [Table: Y]``) is echoed
-    inline above the option list so the operator sees balance and
-    current table on every keystroke; the literal ``casino_client: ``
-    text remains the final prompt. KEY_HELP / KEY_F1 re-renders the
-    heading + option list via :func:`_render_help`.
-
-    The visible option set is filtered by the player's joined-table
-    state and game type so options the server would reject (e.g.
-    ``[B]et`` outside blackjack/poker) never appear. Quit (``[Q]``)
-    is always present, so ``default="q"`` remains valid in every state.
-
-    Args:
-        client: explicit CasinoClient; falls back to the active
-            registry client (``client.registry.get_client()``) when
-            None, mirroring ``commands/slots/lib.py:menu``.
-
-    Returns:
-        Uppercase command letter, or None if the user aborted.
+    ``Choice.key`` is the canonical key, so ``hit`` comes back as ``"game"``
+    with ``Choice.subcommand == "hit"``. ``Choice.args`` carries any parsed
+    arguments.
     """
     client = client or get_client()
-    visible = _visible_options(client)
-    option_str = ",".join(letter for letter, _label in visible)
-    status = (
-        f"{{var:promptcolor}}[{client.moniker}] Balance: {client.balance}"
-        + (
-            f" Table: {client.current_table_moniker}"
-            if client and client.current_table_moniker
-            else ""
-        )
-        + "{f6}"
-    )
-    inline = "{f6}".join(
-        # f-string ``{{`` collapses to literal ``{`` so ``io.echo``
-        # sees ``{var:optioncolor}`` / ``{var:labelcolor}`` markup.
-        # ``{f6}`` between options puts each entry on its own line so
-        # the long option list is readable instead of one horizontal
-        # wall of ``[T]Tables,[C]reate,...``.
-        f"{{var:optioncolor}}[{letter.upper()}]{{var:labelcolor}} {label}"
-        for letter, label in visible
-    )
-    prompt = status + inline + "{f6}{var:promptcolor}casino_client: {var:inputcolor}"
-    # host.choose uses LO when casino is hosted, and io.inputchoice standalone.
-    return host.choose(
+    status = f"{{var:promptcolor}}[{client.moniker}] Balance: {client.balance}"
+    if client.current_table_moniker:
+        status += f" Table: {client.current_table_moniker}"
+    prompt = status + "{f6}{var:promptcolor}casino_client: {var:inputcolor}"
+    return read_menu(
         prompt,
-        option_str,
+        _OPTIONS_SPEC,
+        state=client,
+        check=_checker(client),
         default=_DEFAULT,
-        help=_render_help,
+        help=lambda **kw: _render_help(client=client, **kw),
     )

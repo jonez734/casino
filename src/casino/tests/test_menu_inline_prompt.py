@@ -27,180 +27,75 @@ sys.path.insert(0, "/home/opencode/data/work/casino/src")
 
 
 class TestClientMenuInlinePrompt(unittest.TestCase):
-    """Pins that ``casino.client.menu.menu`` produces a prompt string
-    with exactly one ``{f6}`` between every adjacent visible option
-    (so ``len(visible) - 1`` total).
+    """The main menu is read with ``read_menu``. Its prompt carries the player's
+    status line and the ``casino_client:`` prompt. The commands are not listed
+    inline any more: F1 lists them and tab completes them, so the prompt stays
+    short however many commands the menu has.
     """
 
     def _make_client(self, **overrides):
-        """Build a duck-typed CasinoClient stub without importing
-        the real class (avoids psycopg / asyncio bring-up).
-        """
+        """Build a duck-typed CasinoClient stub without importing the real class."""
         defaults = dict(
             moniker="alice",
             balance=100,
             current_table_moniker=None,
             current_table_game_type=None,
-            connected=False,
+            connected=True,
+            authenticated=True,
+            is_sysop=False,
+            owns_tables=False,
+            args=None,
         )
         defaults.update(overrides)
         return SimpleNamespace(**defaults)
 
-    def test_main_menu_prompt_has_one_f6_per_option_seam(self):
-        """The visible option set is filtered by
-        ``visible_options`` (seat / connection gates). For an
-        unseated, disconnected client the default 15-entry
-        WS-client spec yields 8 visible options. The prompt now
-        separates the status prefix (balance) from the option
-        list and the option list from the trailing ``casino_client:``
-        prompt, so the prompt must contain exactly
-        ``len(visible) + 1`` ``{f6}`` markers — 7 between
-        options plus the two boundary seams (9 total).
-        """
-        from casino.client.menu import menu as client_menu
+    def _prompt(self, client):
+        from casino.client import menu as menu_mod
 
-        client = self._make_client()
+        captured = {}
 
-        with patch("bbsengine6.io.inputchoice", return_value="Q") as mock_ic:
-            client_menu(client)
+        def fake_read(prompt, spec, **kw):
+            captured["prompt"] = prompt
+            captured["spec"] = spec
+            return None
 
-        self.assertEqual(mock_ic.call_count, 1)
-        prompt = mock_ic.call_args[0][0]
+        with patch.object(menu_mod, "read_menu", side_effect=fake_read):
+            menu_mod.menu(client)
+        return captured["prompt"]
 
-        # N visible options + 2 boundary seams = N + 1 ``{f6}`` markers
-        # (N-1 between options, plus balance-tail and prompt-head seams).
-        from casino.client.menu import _visible_options
+    def test_main_menu_prompt_shows_the_status_line(self):
+        prompt = self._prompt(self._make_client())
+        self.assertIn("alice", prompt)
+        self.assertIn("Balance: 100", prompt)
+        self.assertIn("casino_client:", prompt)
 
-        visible = len(_visible_options(client))
-        f6_count = prompt.count("{f6}")
-        self.assertEqual(
-            f6_count,
-            visible + 1,
-            f"expected {visible + 1} {{f6}} separators ({visible} visible "
-            f"options plus balance-tail and prompt-head seams), got "
-            f"{f6_count} in: {prompt!r}",
-        )
+    def test_main_menu_prompt_shows_the_table_when_seated(self):
+        prompt = self._prompt(self._make_client(current_table_moniker="t1",
+                                                current_table_game_type="blackjack"))
+        self.assertIn("Table: t1", prompt)
 
-    def test_main_menu_prompt_each_option_on_its_own_line(self):
-        """Splitting the prompt on ``{f6}`` gives ``len(visible) + 2``
-        chunks: chunk 0 is the bare status prefix (balance), chunks
-        1..len(visible) are the per-option entries, and the final
-        chunk is the bare trailing ``casino_client:`` prompt. The
-        ``{f6}`` markers are exactly the seams between adjacent
-        options plus the two boundary seams.
-        """
-        from casino.client.menu import menu as client_menu
-        from casino.client.menu import _visible_options
+    def test_main_menu_prompt_has_no_inline_option_list(self):
+        """The old prompt listed every option with [X]; the new one does not."""
+        prompt = self._prompt(self._make_client())
+        self.assertNotIn("[T]", prompt)
+        self.assertNotIn("[Q]", prompt)
 
-        client = self._make_client()
+    def test_main_menu_prompt_offers_the_word_keys_to_read_menu(self):
+        from casino.client import menu as menu_mod
 
-        with patch("bbsengine6.io.inputchoice", return_value="Q") as mock_ic:
-            client_menu(client)
+        captured = {}
 
-        prompt = mock_ic.call_args[0][0]
-        lines = prompt.split("{f6}")
-        # 8 options joined by 7 {f6} + 2 boundary {f6} -> 10 chunks.
-        self.assertEqual(len(lines), len(_visible_options(client)) + 2)
+        def fake_read(prompt, spec, **kw):
+            captured["spec"] = spec
+            return None
 
-        # The first chunk is the status prefix
-        # ``[alice] Balance: 100`` alone (no option concatenated).
-        self.assertIn("[alice] Balance: 100", lines[0])
-        self.assertNotIn("[T]", lines[0])
+        with patch.object(menu_mod, "read_menu", side_effect=fake_read):
+            menu_mod.menu(self._make_client())
+        keys = {opt.letter for opt in captured["spec"]}
+        self.assertIn("table", keys)
+        self.assertIn("quit", keys)
+        self.assertNotIn("T", keys, "keys are words, not letters")
 
-        # The last chunk is the bare trailing prompt
-        # ``casino_client: {var:inputcolor}`` (no option concatenated).
-        self.assertEqual(
-            lines[-1].rstrip(),
-            "{var:promptcolor}casino_client: {var:inputcolor}",
-            f"last chunk should be the bare trailing prompt, "
-            f"got: {lines[-1]!r}",
-        )
-
-    def test_main_menu_prompt_seated_at_blackjack(self):
-        """When the player is seated at a blackjack table, the
-        seat-gated options become visible (Leave / Bet / Hit /
-        Stand). With N visible options the prompt carries N - 1
-        ``{f6}`` between options plus 2 boundary seams, so N + 1 markers.
-        The expected count is derived from the visible set, not hardcoded.
-        """
-        from casino.client.menu import menu as client_menu
-
-        client = self._make_client(
-            current_table_moniker="bj-1",
-            current_table_game_type="blackjack",
-        )
-
-        with patch("bbsengine6.io.inputchoice", return_value="Q") as mock_ic:
-            client_menu(client)
-
-        from casino.client.menu import _visible_options
-
-        visible = len(_visible_options(client))
-        prompt = mock_ic.call_args[0][0]
-        self.assertEqual(prompt.count("{f6}"), visible + 1)
-
-    def test_main_menu_prompt_seam_count_matches_visible_plus_one(self):
-        """General invariant: ``{f6}`` count == ``len(visible) + 1``
-        across representative states. This is the contract from
-        handbook/SPEC.md §6.1: one ``{f6}`` between adjacent options plus
-        one ``{f6}`` after the balance and one ``{f6}`` before the
-        trailing prompt.
-        """
-        from casino.client.menu import menu as client_menu
-        from casino.client.menu import _visible_options
-
-        cases = [
-            # (label, state overrides)
-            ("unseated, disconnected", dict()),
-            ("connected only",
-             dict(connected=True)),
-            ("seated at bj",
-             dict(current_table_moniker="bj-1",
-                  current_table_game_type="blackjack")),
-            ("seated at poker",
-             dict(current_table_moniker="poker-1",
-                  current_table_game_type="poker")),
-            ("seated at tictactoe",
-             dict(current_table_moniker="tt-1",
-                  current_table_game_type="tictactoe")),
-        ]
-        for label, overrides in cases:
-            client = self._make_client(**overrides)
-            with patch(
-                "bbsengine6.io.inputchoice", return_value="Q"
-            ) as mock_ic:
-                client_menu(client)
-            prompt = mock_ic.call_args[0][0]
-            visible = _visible_options(client)
-            expected = len(visible) + 1
-            actual = prompt.count("{f6}")
-            self.assertEqual(
-                actual,
-                expected,
-                f"[{label}] expected {expected} {{f6}} separators "
-                f"(len(visible)={len(visible)} + 1 for balance-tail "
-                f"and prompt-head seams), got {actual} in: {prompt!r}",
-            )
-
-    def test_main_menu_prompt_empty_visible_does_not_crash(self):
-        """Defensive: if ``visible_options`` somehow returns an
-        empty list (e.g. during a transient state), the prompt must
-        still be a valid string with only the two boundary seams
-        (balance-tail and prompt-head) and not raise.
-        """
-        from casino.client.menu import menu as client_menu
-
-        client = self._make_client()
-
-        with patch(
-            "bbsengine6.io.inputchoice", return_value="Q"
-        ) as mock_ic, patch(
-            "casino.client.menu._visible_options", return_value=[]
-        ):
-            client_menu(client)
-
-        prompt = mock_ic.call_args[0][0]
-        self.assertEqual(prompt.count("{f6}"), 2)
 
 
 class TestBankSubmenuInlinePrompt(unittest.TestCase):

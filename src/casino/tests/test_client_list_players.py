@@ -29,9 +29,11 @@ def _echoes(client, answer):
 
 
 @pytest.mark.unit
-def test_menu_offers_players_as_p():
-    letters = [letter for letter, _label in menu._visible_options(None)]
-    assert "p" in letters
+def test_menu_offers_players_under_table():
+    """Players is the ``view`` subcommand of the table entry, so it is reached by
+    typing ``table view`` (or choosing it from the table submenu)."""
+    spec = {opt.letter: opt for opt in menu._OPTIONS_SPEC}
+    assert "view" in spec["table"].subcommands
 
 
 @pytest.mark.unit
@@ -73,7 +75,6 @@ def test_missing_table_is_reported():
 
 
 @pytest.mark.unit
-def test_dispatch_routes_p_to_the_listing():
-    src = inspect.getsource(cc.CasinoClient)
-    assert 'elif cmd == "P":' in src
-    assert "self.cmd_list_players()" in src
+def test_dispatch_routes_table_view_to_the_listing():
+    src = inspect.getsource(cc.CasinoClient._dispatch_table)
+    assert '"view": ("View", self.cmd_list_players)' in src

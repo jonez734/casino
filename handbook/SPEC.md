@@ -284,48 +284,51 @@ The legacy `casino-client` shell shim and console-script entry point
 were removed; `python -m casino.client_cli` still works for callers
 that imported the entry point directly.
 
-### 6.1 Menu rendering contract (WS-client inline prompts)
+### 6.1 Menu rendering contract
 
-Two prompts in the WS-client put the visible option list **inline**
-on the same terminal line as the status prefix — these are the only
-spots in the casino that join multiple `[X]label` fragments into a
-single `io.inputchoice(...)` prompt string:
+The main menu is a word-keyed `bbsengine6.menu_next` menu, read with
+`read_menu` (`src/casino/client/menu.py`). Its prompt carries the status line
+(`[moniker] Balance: X [Table: Y]`) and the `casino_client: ` prompt. It does
+not list the commands inline; they are shown by F1 help and offered by tab
+completion, so the prompt stays short however many commands there are.
 
-1. `src/casino/client/menu.py:menu()` — the main casino_client
-   prompt. `status` (`[moniker] Balance: X [Table: Y]`) is followed
-   by the visible options, then the final `casino_client: ` prompt.
-2. `src/casino/client/casino_client.py:cmd_bank_menu()` — the bank
-   submenu prompt.
+- **Keys are words.** `table`, `bank`, `channels`, `chat`, `message`,
+  `admin`, `tictactoe`, `game`, `check`, `call`, `raise`, `fold`, `allin`,
+  `quit`. `table` and `admin` take subcommands; `game` takes `hit`, `stand`,
+  `double`, `split`, and `bet`; `tictactoe` takes `quickplay`, `move`, `join`,
+  and `resign`.
+- **Aliases.** A blackjack action may be typed on its own: `hit` is `game hit`,
+  and `stand`, `double`, `split`, and `bet` work the same way. `ttt` is
+  `tictactoe quickplay`, and `move` and `resign` are the tictactoe actions.
+  `join` has no top-level alias, since it is `table join` or `tictactoe join`.
+  `Choice.key` is always the canonical entry, so dispatch sees `game`, not `hit`.
+- **Typed arguments.** `table create [game type] [moniker]` and
+  `table join [moniker]` accept optional values. A value given on the command
+  line skips its prompt; a missing one is prompted for. `create` pre-fills the
+  moniker prompt, so Enter accepts a typed name. Other subcommands take no
+  arguments, and extra text is refused. `Choice.args` is the parsed namespace
+  for a subcommand that has a parser, so `table list` gives an empty
+  namespace rather than `None`.
+- **Gating.** Each entry names the package that owns it. Every prompt re-checks
+  it through that package's `access()` with the client (`module.check`), and the
+  seat and game-type gates apply on top. `bet` is shown at a blackjack or poker
+  table, and `check`/`call`/`raise`/`fold`/`allin` only at a poker table.
+- **Dispatch.** `bet` runs `game bet` at a blackjack table and `poker bet` at a
+  poker table, chosen from the seated table's game type.
+- **Help.** F1 lists every entry for a sysop, and only the enabled ones for
+  others. Disabled entries are dimmed with `{var:menu.item.disabled}`.
+  Enabled entries use `{var:menu.item.enabled}`.
 
-Both prompts must put **one `{f6}` between every adjacent option
-entry**, plus **one `{f6}` after the status prefix** (so the
-balance lands on its own line) and **one `{f6}` before the
-trailing prompt** (so `casino_client: ` lands on its own line).
-Net: `len(visible) + 1` `{f6}` markers in the main prompt, and
-`len(visible) - 1` in the bank submenu (the bank submenu prompt
-does not prepend a status line). The pre-fix behavior was
-`"".join(...)` / `"…{/all}{var:optioncolor}[A]…"`, which rendered
-the entire option list as one continuous horizontal string
-(`[T]ables,[C]reate,[U]pdate,...`) and was hard to read. The
-contract is now: each option gets its own line, the status
-prefix (balance) sits on the line above the first option, and
-the trailing `casino_client: ` / `: ` sits on the line below the
-last option.
+The bank and channels submenus are still letter menus read with
+`io.inputchoice`. Their prompt joins the option fragments with `{f6}` between
+each, so the list reads down the screen rather than across it:
 
-In addition, every option dispatch site in the WS-client loop
-(`CasinoClient.run` for the main menu, `cmd_bank_menu` for the
-bank submenu) emits a one-line `io.echo("Label")` immediately
-before invoking the handler, so the operator sees what action
-was just selected before the handler's output (e.g. `io.echo("Bank")`
-fires before `cmd_bank_menu()` runs). `[Q]uit` does not emit a
-label since it breaks the loop without invoking a handler.
+1. `src/casino/client/casino_client.py:cmd_bank_menu()` — the bank submenu
+   prompt. It does not prepend a status line, so it has `len(visible) - 1`
+   `{f6}` markers.
 
-The F1 help callback (`_render_help`, `client/menu.py:55-69`) is not affected —
-both already use one `io.echo()` per option, and `io.echo` appends
-`\n` via `end=ECHO_END`, so each option naturally lands on its
-own line. The inline-prompt case is the one that needs an explicit
-`{f6}` because the option list is concatenated before being handed
-to `io.inputchoice`.
+Every option dispatch site emits a one-line `io.echo("Label")` immediately
+before invoking the handler, so the operator sees which action was selected.
 
 ### 6.2 Tabular screen rendering contract (width + locale)
 

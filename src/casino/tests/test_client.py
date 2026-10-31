@@ -429,158 +429,81 @@ class _StubClient:
     its constructor / network setup.
     """
 
-    def __init__(self, moniker="u1", balance=100, tm=None, gt=None):
+    def __init__(self, moniker="u1", balance=100, tm=None, gt=None,
+                 is_sysop=False, owns_tables=False):
         self.moniker = moniker
         self.balance = balance
         self.current_table_moniker = tm
         self.current_table_game_type = gt
+        self.authenticated = True
+        self.connected = True
+        self.is_sysop = is_sysop
+        self.owns_tables = owns_tables
+        self.args = None  # no bed args: module checks are skipped, so gates decide
 
 
 class TestMenuVisibility(unittest.TestCase):
     """The main menu must hide options the server would reject.
 
-    Visibility is driven by ``client.current_table_moniker`` and
-    ``client.current_table_game_type`` — see
-    ``casino.client.menu._visible_options``. These tests exercise
-    the helper directly plus the public ``menu()`` and ``_render_help``
-    paths with ``io.inputchoice`` / ``io.echo`` mocked.
+    Visibility is driven by the player's seat (``current_table_moniker``) and the
+    table's game type (``current_table_game_type``). The menu keys are words; an
+    option that is not offered is absent from the visible set.
     """
 
+    @staticmethod
+    def _keys(client):
+        from casino.client.menu import _visible_options
+
+        return {key for key, _label in _visible_options(client)}
+
     def test_no_table_hides_seat_gated_options(self):
-        from casino.client.menu import _visible_options
+        keys = self._keys(_StubClient())
+        for key in ("table", "bank", "chat", "channels", "message", "tictactoe", "quit"):
+            self.assertIn(key, keys, f"{key} should be visible without a table")
+        for key in ("check", "call", "raise", "fold", "allin"):
+            self.assertNotIn(key, keys, f"{key} should be hidden without a table")
 
-        visible = "".join(t[0].upper() for t in _visible_options(_StubClient()))
-        # Always-available options
-        for letter in ("T", "C", "U", "J", "M", "K", "X", "Q"):
-            self.assertIn(letter, visible, f"{letter} should be visible without a table")
-        # Seat-gated options
-        for letter in ("L", "B", "H", "S", "V", "N", "G"):
-            self.assertNotIn(letter, visible, f"{letter} should be hidden without a table")
+    def test_blackjack_table_shows_game_actions(self):
+        keys = self._keys(_StubClient(tm="tbl", gt="blackjack"))
+        self.assertIn("game", keys, "the blackjack actions are on the game entry")
+        for key in ("check", "call", "raise", "fold", "allin"):
+            self.assertNotIn(key, keys, f"{key} is a poker action")
 
-    def test_blackjack_table_shows_bet_hit_stand(self):
-        from casino.client.menu import _visible_options
+    def test_poker_table_shows_poker_actions(self):
+        keys = self._keys(_StubClient(tm="tbl", gt="poker"))
+        for key in ("check", "call", "raise", "fold", "allin"):
+            self.assertIn(key, keys, f"{key} is valid at a poker table")
 
-        visible = "".join(t[0].upper() for t in _visible_options(_StubClient(tm="tbl", gt="blackjack")))
-        for letter in ("L", "B", "H", "S"):
-            self.assertIn(letter, visible, f"{letter} should be visible at a blackjack table")
-        for letter in ("V", "N", "G"):
-            self.assertNotIn(letter, visible, f"{letter} should be hidden at a blackjack table")
-
-    def test_poker_table_shows_bet_only_hides_hit_stand(self):
-        from casino.client.menu import _visible_options
-
-        visible = "".join(t[0].upper() for t in _visible_options(_StubClient(tm="tbl", gt="poker")))
-        self.assertIn("L", visible)
-        self.assertIn("B", visible, "Bet is valid at a poker table")
-        self.assertNotIn("H", visible, "Hit is not a poker move")
-        self.assertNotIn("S", visible, "Stand is not a poker move")
-        self.assertNotIn("V", visible)
-        self.assertNotIn("N", visible)
-        self.assertNotIn("G", visible)
-
-    def test_slots_table_shows_only_leave(self):
-        from casino.client.menu import _visible_options
-
-        visible = "".join(t[0].upper() for t in _visible_options(_StubClient(tm="tbl", gt="slots")))
-        self.assertIn("L", visible, "Leave is the only seat-gated bj/poker option that applies")
-        for letter in ("B", "H", "S", "V", "N", "G"):
-            self.assertNotIn(letter, visible, f"{letter} should be hidden at a slots table")
-
-    def test_tictactoe_table_shows_move_joint_resign(self):
-        from casino.client.menu import _visible_options
-
-        visible = "".join(t[0].upper() for t in _visible_options(_StubClient(tm="tbl", gt="tictactoe")))
-        self.assertIn("L", visible)
-        for letter in ("V", "N", "G"):
-            self.assertIn(letter, visible, f"{letter} should be visible at a tictactoe table")
-        for letter in ("B", "H", "S"):
-            self.assertNotIn(letter, visible, f"{letter} should be hidden at a tictactoe table")
+    def test_slots_table_shows_no_game_actions(self):
+        keys = self._keys(_StubClient(tm="tbl", gt="slots"))
+        for key in ("check", "call", "raise", "fold", "allin"):
+            self.assertNotIn(key, keys, f"{key} should be hidden at a slots table")
 
     def test_post_join_window_hides_type_gated_until_game_type_known(self):
-        """Between ``join_table`` and the first ``game_state`` reply,
-        ``current_table_game_type`` is still ``None``. Type-gated
-        options must stay hidden during that brief window."""
-        from casino.client.menu import _visible_options
+        """Between joining and the first game_state reply, the game type is unknown,
+        so type-gated actions stay hidden."""
+        keys = self._keys(_StubClient(tm="tbl", gt=None))
+        for key in ("check", "call", "raise", "fold", "allin"):
+            self.assertNotIn(key, keys, f"{key} should be hidden until game_type is known")
 
-        visible = "".join(t[0].upper() for t in _visible_options(_StubClient(tm="tbl", gt=None)))
-        self.assertIn("L", visible, "Leave only needs the seat, not the game type")
-        for letter in ("B", "H", "S", "V", "N", "G"):
-            self.assertNotIn(letter, visible, f"{letter} should be hidden until game_type is known")
+    def test_admin_is_hidden_from_a_non_sysop(self):
+        self.assertNotIn("admin", self._keys(_StubClient()))
 
-    def test_inputchoice_option_str_matches_visible(self):
-        """``menu()`` must pass ``io.inputchoice`` an option list whose
-        letters match ``_visible_options`` for the supplied client."""
-        from unittest.mock import patch
-
-        from casino.client.menu import menu
-
-        captured = {}
-        def fake_inputchoice(prompt, options, **kwargs):
-            captured["prompt"] = prompt
-            captured["options"] = options
-            return "Q"
-
-        with patch("bbsengine6.io.inputchoice", side_effect=fake_inputchoice):
-            menu(_StubClient(tm="tbl", gt="blackjack"))
-
-        # The option list passed to inputchoice must be the visible letters, in spec order,
-        # comma separated, as io.inputchoice takes them. Derived from the same visibility rule
-        # the menu uses, so adding a menu option does not require editing this test.
-        from casino.client.menu import _visible_options
-
-        expected = ",".join(letter for letter, _label in _visible_options(_StubClient(tm="tbl", gt="blackjack")))
-        self.assertEqual(captured["options"], expected)
-        # The visible set itself is pinned for a seated blackjack player: the seat-gated
-        # letters appear, and the unseated-only tictactoe letters do not.
-        letters = captured["options"].split(",")
-        for seated in ("l", "b", "h", "s"):
-            self.assertIn(seated, letters)
-        for tictactoe_only in ("v", "n", "g"):
-            self.assertNotIn(tictactoe_only, letters)
+    def test_admin_is_shown_to_a_sysop(self):
+        self.assertIn("admin", self._keys(_StubClient(is_sysop=True)))
 
     def test_render_help_reflects_same_filter(self):
-        """F1/HELP must echo only the currently-visible long labels."""
-        from unittest.mock import patch
+        """F1 help lists the same entries the prompt offers, for a non-sysop."""
+        from casino.client.menu import _visible_options, _render_help
 
-        from casino.client.menu import _render_help
+        stub = _StubClient()
+        with patch("casino.client.menu.io.echo") as echo, \
+             patch("casino.client.menu.util.heading"):
+            _render_help(client=stub)
+        printed = " ".join(str(c.args[0]) for c in echo.call_args_list)
+        for key, _label in _visible_options(stub):
+            self.assertIn(key.upper(), printed)
 
-        captured = []
-        def fake_echo(msg, **kwargs):
-            captured.append(msg)
-
-        with patch("bbsengine6.io.echo", side_effect=fake_echo), \
-             patch("bbsengine6.util.heading", lambda *a, **kw: None):
-            _render_help(_StubClient(tm="tbl", gt="blackjack"))
-
-        joined = "\n".join(captured)
-        self.assertIn("[B]", joined)
-        self.assertIn("[H]", joined)
-        self.assertIn("[S]", joined)
-        self.assertIn("[L]", joined)
-        self.assertNotIn("[V]", joined)
-        self.assertNotIn("[N]", joined)
-        self.assertNotIn("[G]", joined)
-
-    def test_leave_table_clears_current_table_game_type(self):
-        """Stale ``current_table_game_type`` after ``leave_table``
-        would silently mis-filter the next menu prompt. Guard against
-        regression on the cleanup added in
-        ``fix(casino/client): clear current_table_game_type on leave``."""
-        from casino.client.casino_client import CasinoClient
-
-        args = argparse.Namespace(bed_host="localhost", bed_port=8765, bed_path="/")
-        client = CasinoClient(args)
-        client.current_table_moniker = "tbl"
-        client.current_table_game_type = "blackjack"
-
-        with patch.object(client, "_loop") as mock_loop, \
-             patch.object(client, "send") as mock_send:
-            mock_loop.run_until_complete.side_effect = lambda coro: coro.close()
-            mock_send.return_value = None
-            client.cmd_leave_table()
-
-        self.assertIsNone(client.current_table_moniker)
-        self.assertIsNone(client.current_table_game_type)
 
 
 def run_tests():

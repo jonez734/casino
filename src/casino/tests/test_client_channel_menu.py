@@ -41,9 +41,9 @@ def _run_submenu(client, choices, answers=()):
 
 
 @pytest.mark.unit
-def test_menu_offers_channels_as_e():
-    letters = [letter for letter, _label in menu._visible_options(None)]
-    assert "e" in letters
+def test_menu_offers_channels_at_top_level():
+    keys = [key for key, _label in menu._visible_options(None)]
+    assert "channels" in keys
 
 
 @pytest.mark.unit
@@ -188,7 +188,8 @@ def test_poker_leave_clears_the_seat():
 
 @pytest.mark.unit
 def test_seated_poker_menu_offers_leave_and_bet():
-    """With a poker seat recorded, the menu shows leave (l) and bet (b)."""
+    """With a poker seat recorded, the menu shows the table entry (leave is its
+    subcommand) and the game entry (bet is its subcommand)."""
     from types import SimpleNamespace
     client = _poker_client()
     client._render_poker("poker_joined_table", {"success": True, "table_moniker": "poker-1"})
@@ -197,5 +198,5 @@ def test_seated_poker_menu_offers_leave_and_bet():
         current_table_game_type=client.current_table_game_type,
         connected=True,
     )
-    letters = [letter for letter, _label in menu._visible_options(state)]
-    assert "l" in letters and "b" in letters
+    keys = [key for key, _label in menu._visible_options(state)]
+    assert "table" in keys and "game" in keys

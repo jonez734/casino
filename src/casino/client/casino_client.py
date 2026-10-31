@@ -342,9 +342,10 @@ class CasinoClient:
             )
 
         elif msg_type == "table_info":
-            self._table_info = msg.get("table") or None
-            if self._table_info and self._table_info.get("moniker") == self.current_table_moniker:
-                self.current_table_deadline = self._table_info.get("action_deadline")
+            # Reply to the lookup that ``table join`` sends before joining. The server
+            # answers with ``found``, ``game_type``, and ``owner``. The result is kept
+            # for the join that asked; it is not a seating change by itself.
+            self._table_info = msg
 
         elif msg_type == "table_updated":
             moniker = msg.get("moniker", "")
@@ -816,33 +817,45 @@ class CasinoClient:
         """
         return raw.strip().lower() in CasinoClient._VALID_GAME_TYPES
 
-    def cmd_create_table(self) -> None:
+    def cmd_create_table(self, game_type: str | None = None, moniker: str | None = None) -> None:
         """Handle create_table command.
 
-        Uses ``io.inputstring`` (not ``inputchoice``) because the
-        game type is a multi-character word, not a single key. A
-        ``verify=`` callback enforces membership in
-        :attr:`_VALID_GAME_TYPES` so the wire call cannot carry an
-        unsupported value. A ``Completer`` will be attached here
-        later for tab completion without changing the prompt shape.
+        ``game_type`` and ``moniker`` are the optional ``table create`` arguments.
+        A game type given on the command line skips its prompt. A moniker given
+        there pre-fills the moniker prompt, so Enter accepts it. Anything not given
+        is prompted for: the game type is always validated against
+        :attr:`_VALID_GAME_TYPES`, and min and max bet are always prompted.
         """
-        game_type = io.inputstring(
-            "{var:promptcolor}Game type: "
-            "{var:optioncolor}[blackjack|poker|slots|yahtzee|tictactoe]"
-            "{var:promptcolor}: {var:inputcolor}",
-            verify=self._verify_game_type,
-        ).strip().lower()
+        if game_type is None:
+            game_type = io.inputstring(
+                "{var:promptcolor}Game type: "
+                "{var:optioncolor}[blackjack|poker|slots|yahtzee|tictactoe]"
+                "{var:promptcolor}: {var:inputcolor}",
+                verify=self._verify_game_type,
+            ).strip().lower()
+        else:
+            game_type = game_type.strip().lower()
+            if not self._verify_game_type(game_type):
+                io.echo(f"{{errorcolor}}unknown game type: {game_type}{{/all}}", level="error")
+                return
+        table_moniker = io.inputstring(
+            "{var:promptcolor}Table moniker (blank for a generated name): {var:inputcolor}",
+            moniker or "",
+        ).strip() or None
         min_bet = io.inputinteger("{var:promptcolor}Min bet: {var:inputcolor}", default=10)
         max_bet = io.inputinteger("{var:promptcolor}Max bet: {var:inputcolor}", default=1000)
 
+        message = {
+            "type": "casino_create_table",
+            "game_type": game_type,
+            "min_bet": min_bet,
+            "max_bet": max_bet,
+        }
+        if table_moniker:
+            message["moniker"] = table_moniker
         self._loop.run_until_complete(
             self.send(
-                {
-                    "type": "casino_create_table",
-                    "game_type": game_type,
-                    "min_bet": min_bet,
-                    "max_bet": max_bet,
-                }
+                message
             )
         )
 
@@ -936,20 +949,36 @@ class CasinoClient:
         from casino.commands.admin import lib as _admin
         _admin.watch_table(None, client=self)
 
-    def cmd_join_table(self) -> None:
-        """Handle join_table command."""
-        moniker = io.inputstring("{var:promptcolor}Table moniker: {var:inputcolor}")
+    def cmd_join_table(self, moniker: str | None = None) -> None:
+        """Handle join_table command.
+
+        ``moniker`` is the ``table join`` argument. When it is not given, the
+        player is prompted. The table is looked up with ``table_info`` first, so
+        the game type is known before the seat is taken. An unknown table is
+        reported and nothing is joined.
+        """
+        moniker = (moniker or "").strip() or io.inputstring(
+            "{var:promptcolor}Table moniker: {var:inputcolor}"
+        ).strip()
         if not moniker:
             io.echo("{errorcolor}moniker required{/all}", level="error")
             return
 
+        self._table_info = None
+        self._loop.run_until_complete(self.send({"type": "table_info", "moniker": moniker}))
+        # The reply arrives on the receive loop; give it a chance to land.
+        for _ in range(20):
+            if self._table_info is not None:
+                break
+            self._loop.run_until_complete(asyncio.sleep(0.05))
+        info = self._table_info or {}
+        if not info.get("found"):
+            io.echo(f"{{errorcolor}}table not found: {moniker}{{/all}}", level="error")
+            return
+
+        self.current_table_game_type = info.get("game_type")
         self._loop.run_until_complete(
-            self.send(
-                {
-                    "type": "join_table",
-                    "moniker": moniker,
-                }
-            )
+            self.send({"type": "join_table", "moniker": moniker})
         )
         self.current_table_moniker = moniker
 
@@ -1447,63 +1476,126 @@ class CasinoClient:
             with contextlib.suppress(Exception):
                 self._refresh_token_if_due()
             _bar.redraw()
-            cmd = _client_menu(self)
-
-            if cmd == "T":
-                io.echo("Tables")
-                self.cmd_list_tables()
-            elif cmd == "C":
-                io.echo("Create Table")
-                self.cmd_create_table()
-            elif cmd == "U":
-                io.echo("Update")
-                self.cmd_update_table()
-            elif cmd == "J":
-                io.echo("Join")
-                self.cmd_join_table()
-            elif cmd == "P":
-                io.echo("Players")
-                self.cmd_list_players()
-            elif cmd == "W":
-                io.echo("Watch")
-                self.cmd_watch_table()
-            elif cmd == "L":
-                io.echo("Leave")
-                self.cmd_leave_table()
-            elif cmd == "B":
-                io.echo("Bet")
-                self.cmd_bet()
-            elif cmd == "H":
-                io.echo("Hit")
-                self._loop.run_until_complete(self.send({"type": "hit"}))
-            elif cmd == "S":
-                io.echo("Stand")
-                self._loop.run_until_complete(self.send({"type": "stand"}))
-            elif cmd == "M":
-                io.echo("Message")
-                if self.current_table_moniker:
-                    self.cmd_table_chat()
-                else:
-                    self.cmd_chat()
-            elif cmd == "K":
-                io.echo("Bank")
-                self.cmd_bank_menu()
-            elif cmd == "E":
-                io.echo("Channels")
-                self.cmd_channels_menu()
-            elif cmd == "X":
-                io.echo("Tic Tac Toe")
-                self.cmd_tictactoe_quick_play()
-            elif cmd == "V":
-                io.echo("Move")
-                self.cmd_tictactoe_move()
-            elif cmd == "N":
-                io.echo("Join TicTacToe Table")
-                self.cmd_tictactoe_join()
-            elif cmd == "G":
-                io.echo("Resign")
-                self.cmd_tictactoe_resign()
-            elif cmd == "Q":
+            choice = _client_menu(self)
+            if choice is None:
+                continue
+            if choice.key == "quit":
                 break
+            self._dispatch_menu_choice(choice)
+
+            self._loop.run_until_complete(asyncio.sleep(0.1))
+
+    def _dispatch_menu_choice(self, choice) -> None:
+        """Run the command a menu :class:`Choice` names.
+
+        ``choice.key`` is the canonical entry; ``choice.subcommand`` is the
+        subcommand, if the entry has them. ``bet`` goes to ``game bet`` at a
+        blackjack table and to ``poker bet`` at a poker table.
+        """
+        key, sub = choice.key, choice.subcommand
+        if key == "table":
+            self._dispatch_table(sub, choice.args)
+        elif key == "game":
+            self._dispatch_game(sub)
+        elif key == "check":
+            self._poker_action("poker_check")
+        elif key == "call":
+            self._poker_action("poker_call")
+        elif key == "raise":
+            self._poker_action("poker_raise")
+        elif key == "fold":
+            self._poker_action("poker_fold")
+        elif key == "allin":
+            self._poker_action("poker_all_in")
+        elif key == "bank":
+            io.echo("Bank")
+            self.cmd_bank_menu()
+        elif key == "channels":
+            io.echo("Channels")
+            self.cmd_channels_menu()
+        elif key == "chat":
+            io.echo("Chat")
+            if self.current_table_moniker:
+                self.cmd_table_chat()
+            else:
+                self.cmd_chat()
+        elif key == "message":
+            io.echo("Message")
+            self.cmd_chat()
+        elif key == "admin":
+            self._dispatch_admin(sub)
+        elif key == "tictactoe":
+            self._dispatch_tictactoe(sub)
+
+    def _dispatch_table(self, sub, targs=None) -> None:
+        """Run a ``table`` subcommand. ``targs`` carries its typed arguments:
+        ``create [game type] [moniker]`` and ``join [moniker]``. Anything not given
+        is prompted for, as before."""
+        if sub is None:
+            io.echo("Table: list, create, join, update, leave, view")
+            return
+        if sub == "create":
+            io.echo("Create Table")
+            self.cmd_create_table(
+                game_type=getattr(targs, "game_type", None),
+                moniker=getattr(targs, "moniker", None),
+            )
+            return
+        if sub == "join":
+            io.echo("Join")
+            self.cmd_join_table(moniker=getattr(targs, "moniker", None))
+            return
+        handlers = {
+            "list": ("Tables", self.cmd_list_tables),
+            "update": ("Update", self.cmd_update_table),
+            "leave": ("Leave", self.cmd_leave_table),
+            "view": ("View", self.cmd_list_players),
+        }
+        label, handler = handlers[sub]
+        io.echo(label)
+        handler()
+
+    def _dispatch_game(self, sub) -> None:
+        if sub == "bet":
+            io.echo("Bet")
+            if self.current_table_game_type == "poker":
+                self._poker_action("poker_bet")
+            else:
+                self.cmd_bet()
+        elif sub in ("hit", "stand", "double", "split"):
+            io.echo(sub.capitalize())
+            self._loop.run_until_complete(self.send({"type": sub}))
+
+    def _poker_action(self, msg_type: str) -> None:
+        self._loop.run_until_complete(self.send({"type": msg_type}))
+
+    def _dispatch_admin(self, sub) -> None:
+        if sub == "watch":
+            io.echo("Watch")
+            self.cmd_watch_table()
+        elif sub == "unwatch":
+            io.echo("Unwatch")
+            self._loop.run_until_complete(
+                self.send({"type": "stop_watching", "moniker": self.current_table_moniker})
+            )
+        elif sub == "kick":
+            io.echo("Kick")
+            from casino.commands.admin import lib as admin_lib
+
+            admin_lib.kick_player(self.args, client=self)
+
+    def _dispatch_tictactoe(self, sub) -> None:
+        if sub == "quickplay":
+            io.echo("Tic Tac Toe")
+            self.cmd_tictactoe_quick_play()
+        elif sub == "move":
+            io.echo("Move")
+            self.cmd_tictactoe_move()
+        elif sub == "join":
+            io.echo("Join TicTacToe Table")
+            self.cmd_tictactoe_join()
+        elif sub == "resign":
+            io.echo("Resign")
+            self.cmd_tictactoe_resign()
 
             self._loop.run_until_complete(asyncio.sleep(0.1))

@@ -23,12 +23,21 @@ SUBCOMMANDS = {
 GAME_TYPES = ("blackjack", "poker", "slots", "yahtzee", "tictactoe")
 
 
-def _extra(parser: argparse.ArgumentParser) -> None:
-    """``create [game type] [moniker]``: both optional, prompted when absent."""
-    parser.add_argument("game_type", nargs="?", choices=GAME_TYPES, default=None,
-                        help="game type for create (prompted if omitted)")
-    parser.add_argument("moniker", nargs="?", default=None,
-                        help="table moniker for create (prompted if omitted)")
+def _subparsers(parser: argparse.ArgumentParser) -> None:
+    """Each subcommand takes its own arguments.
+
+    ``create [game type] [moniker]`` and ``join [moniker]`` take optional
+    values; the others take none. A value given on the command line skips its
+    prompt. A missing value is prompted for, as before.
+    """
+    subs = parser.add_subparsers(dest="action", metavar="subcommand")
+    create = subs.add_parser("create", add_help=False)
+    create.add_argument("game_type", nargs="?", choices=GAME_TYPES, default=None)
+    create.add_argument("moniker", nargs="?", default=None)
+    join = subs.add_parser("join", add_help=False)
+    join.add_argument("moniker", nargs="?", default=None)
+    for name in ("list", "update", "leave", "view"):
+        subs.add_parser(name, add_help=False)
 
 
 def _echo_error(message):
@@ -67,7 +76,10 @@ def version(args, **kw) -> str:
 
 
 def buildargs(args, **kw):
-    return _common.build_parser("table", subcommands=SUBCOMMANDS, extra=_extra)
+    parser = argparse.ArgumentParser(prog="table", add_help=False)
+    parser.add_argument("--version", action="store_true", dest="version")
+    _subparsers(parser)
+    return parser
 
 
 def main(args, **kw) -> bool:
