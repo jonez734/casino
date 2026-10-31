@@ -1,7 +1,6 @@
 from bbsengine6 import register_module, util
 
 from . import lib
-from .menus import register_casino_lib_options
 
 __version__ = "202210010112"
 
@@ -26,7 +25,6 @@ def init(args, **kw: dict) -> bool:
     from casino import here as casino_here
 
     casino_here.install(args)
-    register_casino_lib_options()
     return True  # type: ignore[return-value]
 
 
