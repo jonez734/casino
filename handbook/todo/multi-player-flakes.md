@@ -36,8 +36,10 @@ anything. The debug change is not the cause: the failures were the natural round
 ## Unexplained one-off
 
 One run of the full suite failed `test_blackjack_flow.py::test_betlog_settlement` and
-`test_betlog_view`. Three later full runs and nine runs of the file alone did not reproduce it.
-Record it if it returns, with the run's full output.
+`test_betlog_view`. Since then: three full runs and nine runs of the file alone were clean,
+and five more full runs were clean in four of five. The fifth had two different failures,
+`test_surrender_integration` and `test_player_observer`, which both depend on the WebSocket
+server and the database. Record the betlog failure with its full output if it returns.
 
 ## Remaining risk
 
