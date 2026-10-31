@@ -191,9 +191,17 @@ class TestBlackjackThreeHands(unittest.IsolatedAsyncioTestCase):
         self.fail(f"No game_state received after {max_messages} messages: {messages}")
 
     async def _play_one_hand(self, table_moniker: str, bet_amount: int) -> dict:
-        """Place a bet, stand, and return the post-stand game_state."""
+        """Place a bet, play it out, and return the settled game_state.
+
+        A dealer natural settles the round inside the bet itself (the peek), so the bet's
+        reply is already settled and there is no hand left to stand on. That is a legal
+        round, not a failure. The helper accepts it and checks it is settled.
+        """
         await self.client.send({"type": "bet", "amount": bet_amount})
         dealing = await self._wait_for_game_state()
+        if dealing.get("phase") == "settled":
+            return dealing
+
         self.assertEqual(
             len(dealing.get("player_hand", [])),
             2,

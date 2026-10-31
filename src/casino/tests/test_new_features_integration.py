@@ -254,6 +254,14 @@ class TestHoleCardIntegration(BaseIntegrationTest):
             dealer_hand = game_state.get("dealer_hand", [])
 
             self.assertEqual(len(dealer_hand), 2, "Dealer should have 2 cards")
+            if game_state.get("phase") == "settled":
+                # A dealer natural settles on the bet and reveals the hole card at once.
+                # The hidden-card check is for a round that is still open, so this is a
+                # complete round with nothing to hide.
+                self.assertNotIn("hidden", dealer_hand,
+                                 "a settled round reveals the hole card")
+                print("  Dealer natural: round settled on the bet, hole card revealed")
+                return
             self.assertEqual(dealer_hand[1], "hidden", "Second dealer card should be hidden")
 
             print(f"  Dealer hand before reveal: {dealer_hand}")

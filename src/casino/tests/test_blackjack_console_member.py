@@ -257,8 +257,14 @@ class TestBlackjackConsoleMember(unittest.IsolatedAsyncioTestCase):
         self.fail(f"No game_state received after {max_messages} messages: {messages}")
 
     async def _play_one_hand(self, bet_amount: int) -> dict:
+        """Bet, play it out, and return the settled game_state.
+
+        A dealer natural settles the round on the bet itself, so there is no stand to send.
+        """
         await self.client.send({"type": "bet", "amount": bet_amount})
         dealing = await self._wait_for_game_state()
+        if dealing.get("phase") == "settled":
+            return dealing
         self.assertEqual(
             len(dealing.get("player_hand", [])),
             2,

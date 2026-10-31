@@ -357,12 +357,20 @@ class TestBlackjackTwoPlayersThreeGames(unittest.IsolatedAsyncioTestCase):
                 f"expected both A and B seated, got {seated}",
             )
 
+        early_settles = 0
         for hand_no in range(1, NUM_HANDS + 1):
             await self.client_a.send({"type": "bet", "amount": BET_AMOUNT})
             game_a_bet = await self._wait_for_game_state(
                 self.client_a,
-                predicate=lambda m: len(m.get("player_hand", [])) == 2,
+                predicate=lambda m: len(m.get("player_hand", [])) == 2
+                or m.get("phase") == "settled",
             )
+            if game_a_bet.get("phase") == "settled":
+                # A dealer natural settled the round on A's bet: nothing left to play, and B
+                # cannot bet into it. Check the round settled and move on.
+                self.assertEqual(game_a_bet.get("table_moniker"), self.table_moniker)
+                early_settles += 1
+                continue
             self.assertEqual(
                 len(game_a_bet.get("player_hand", [])),
                 2,
@@ -443,10 +451,12 @@ class TestBlackjackTwoPlayersThreeGames(unittest.IsolatedAsyncioTestCase):
                 )
             )
             bet_row = cur.fetchone()
+            # A round that a dealer natural settles on A's bet has no B bet.
+            expected_bets = NUM_HANDS * 2 - early_settles
             self.assertEqual(
                 int(bet_row["n"]),
-                NUM_HANDS * 2,
-                f"expected {NUM_HANDS * 2} betlog rows (A+B per hand) "
+                expected_bets,
+                f"expected {expected_bets} betlog rows (A+B per hand, minus natural rounds) "
                 f"for {self.table_moniker}, got {bet_row['n']}",
             )
 

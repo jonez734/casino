@@ -1,42 +1,46 @@
 # Blackjack multi-player test flakes
 
-## Symptom
+## Cause (found)
 
-These tests drive real WebSocket servers and fail intermittently:
+A dealer natural (an ace or ten upcard with the matching hole card) settles the round inside
+the bet. The peek in `_deal_dealer_and_peek` does this, and the round settles before the
+player acts. About 1 round in 20 deals a natural, so roughly 14% of three-hand runs hit one.
 
-- `test_blackjack_three_hands.py::test_auth_create_join_play_three_hands`
-- `test_blackjack_two_players_three_games.py::test_two_players_three_hands_with_dealer`
-- `test_blackjack_console_member.py::test_console_member_create_then_play_three_hands`
-- `test_new_features_integration.py::TestHoleCardIntegration::test_hole_card_hidden_integration`
+The tests assumed every bet is followed by a stand, so the stand found "No active game" and
+failed. The server was correct. The tests were wrong.
 
-Each run fails a different subset. Run alone, a file passes most of the time.
+Fixed in the tests, not the server:
 
-## What has been measured
+- `test_blackjack_three_hands.py` and `test_blackjack_console_member.py`: a bet reply already
+  `phase: settled` is accepted as a complete round.
+- `test_blackjack_two_players_three_games.py`: a natural on A's bet ends the round, B does not
+  bet, and the expected betlog count is reduced by one for each such round.
+- `test_new_features_integration.py::TestHoleCardIntegration`: a settled bet reply reveals the
+  hole card, so the hidden-card check applies only to an open round.
+- `test_blackjack_dealer_natural.py` (new): forces a natural with a fixed shoe and checks it
+  settles on the bet and a stand then finds no game. Mutating the peek makes it fail.
 
-Samples are small, so these are observations, not rates.
+## Results
 
-- Clean HEAD worktree (casino `c5602b7`): `test_blackjack_three_hands.py` failed 1 run in 5.
-- Working tree with the debug change (`3e8174b`): the same file failed 2 in 5, and 0 in 3 on
-  other runs.
-- The full suite has failed one to three blackjack multi-player tests per run on both HEAD and
-  the working tree.
+- `test_blackjack_three_hands.py`: 4 failures in 30 before; 0 in 30, then 0 in 60 after.
+- `test_blackjack_console_member.py`: 0 in 20 after.
+- `test_blackjack_two_players_three_games.py`: 1 in 20 before the betlog fix, then 0 in 30.
+- `test_new_features_integration.py::TestHoleCardIntegration`: 0 in 20 after.
+- `test_blackjack_dealer_natural.py`: 0 in 10 after, and it fails when the peek is broken.
 
-The debug change does not appear to be the cause, but the samples are too small to rule it out.
+## Earlier notes
 
-## Likely area
+The first measurements (1 in 5 on HEAD, 2 in 5 with the debug change) were too few to show
+anything. The debug change is not the cause: the failures were the natural round all along.
 
-The tests share a real WebSocket server and a real event loop. The suspects are:
+## Unexplained one-off
 
-- ordering of the `owns_tables` push relative to the `table_created` and `joined_table` replies
-  (the push is scheduled after the handler returns, see `_push_owns_tables`);
-- a receive loop reading a message that belongs to a later step;
-- port reuse between tests that start a server.
+One run of the full suite failed `test_blackjack_flow.py::test_betlog_settlement` and
+`test_betlog_view`. Three later full runs and nine runs of the file alone did not reproduce it.
+Record it if it returns, with the run's full output.
 
-The tests now skip `owns_tables` messages in their receive helpers (`tests/_ws_replies.py` and
-the per-file clients). That removed one ordering source, but the flakes remain.
+## Remaining risk
 
-## Next steps
-
-1. Run one file 50 times on HEAD and on the working tree, and record the failure count.
-2. Log the order of messages each failing test receives, to see which reply arrives late.
-3. Check whether each test's server is closed before the next test binds its port.
+The natural test forces its shoe on the bet service's own `GameService`. If the bet and
+game services are merged later, the test's shoe path must follow. Look for it under
+`router.bet_service.game_service._shoes`.
