@@ -2,16 +2,7 @@
 
 ## Blackjack multi-player test flakes
 
-`test_blackjack_three_hands.py::test_auth_create_join_play_three_hands`,
-`test_blackjack_two_players_three_games.py::test_two_players_three_hands_with_dealer`, and
-similar tests drive real WebSocket servers and fail intermittently.
-
-Small samples only. On a clean HEAD worktree (casino `c5602b7`) the three-hands file failed 1
-run in 5. With the debug change it failed 2 in 5 and 0 in 3 on other runs. That is not enough
-to say the rate changed, so treat the debug change as unrelated until a larger run shows
-otherwise.
-
-Open: find the timing or shared-state cause. Not yet investigated.
+See [`handbook/todo/multi-player-flakes.md`](handbook/todo/multi-player-flakes.md).
 
 ## Refactor casino menu registrations onto `bbsengine6.menu_next`
 
