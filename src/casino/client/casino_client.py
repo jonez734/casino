@@ -1357,6 +1357,12 @@ class CasinoClient:
                 self._loop.run_until_complete(self.cmd_auth())
                 self._loop.run_until_complete(asyncio.sleep(0.5))
 
+            # A login that was cancelled or refused must not run the command: say why, once.
+            if not self.authenticated:
+                io.echo("casino: not logged in; the command was not run", level="error")
+                self._exit_reason = "auth_failed"
+                return
+
             _bar.attach(lambda: self)
             try:
                 body()

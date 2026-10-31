@@ -245,13 +245,34 @@ def main(argv: list[str] | None = None) -> int:
     return _run_bed(args)
 
 
-def poker_main(argv: list[str] | None = None) -> int:
-    """Thin entry point for the ``poker`` console-script.
+def game_main(name: str, argv: list[str] | None = None) -> int:
+    """Entry point for a game console script: ``casino <name> [...argv]``.
 
-    Equivalent to invoking ``casino poker [...argv]``, which connects through
-    bed and runs the poker command package.
+    Every game runs through bed. This connects, logs in, and runs the game's
+    command package. With bed unreachable or the login refused, it prints one
+    line and returns 1; it never falls back to a local database.
     """
-    return main(["poker", *(argv if argv is not None else sys.argv[1:])])
+    return main([name, *(argv if argv is not None else sys.argv[1:])])
+
+
+def blackjack_main(argv: list[str] | None = None) -> int:
+    return game_main("blackjack", argv)
+
+
+def poker_main(argv: list[str] | None = None) -> int:
+    return game_main("poker", argv)
+
+
+def slots_main(argv: list[str] | None = None) -> int:
+    return game_main("slots", argv)
+
+
+def tictactoe_main(argv: list[str] | None = None) -> int:
+    return game_main("tictactoe", argv)
+
+
+def yahtzee_main(argv: list[str] | None = None) -> int:
+    return game_main("yahtzee", argv)
 
 
 if __name__ == "__main__":

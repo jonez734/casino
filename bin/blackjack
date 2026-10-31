@@ -1,0 +1,8 @@
+#!/usr/bin/env python3.12
+# blackjack: plays through bed. Runs `casino blackjack [...]`.
+import sys
+
+from casino.__main__ import blackjack_main
+
+if __name__ == "__main__":
+    sys.exit(blackjack_main())

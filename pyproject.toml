@@ -56,9 +56,11 @@ Issues = "https://github.com/jonez734/casino/issues"
 [tool.setuptools]
 script-files = [
     "bin/casino",
+    "bin/blackjack",
     "bin/poker",
-    "bin/yahtzee",
     "bin/slots",
+    "bin/tictactoe",
+    "bin/yahtzee",
     "bin/casino-ping",
 ] 
 package-dir = { "" = "src" }

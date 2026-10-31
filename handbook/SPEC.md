@@ -290,6 +290,24 @@ The legacy `casino-client` shell shim and console-script entry point
 were removed; `python -m casino.client_cli` still works for callers
 that imported the entry point directly.
 
+### 6.000 Game console scripts and login
+
+Each game has a console script in `bin/` (`blackjack`, `poker`, `slots`, `tictactoe`,
+`yahtzee`). Each is a few lines that call `casino.__main__.<game>_main`, which runs
+`casino <game> [...]`. The scripts are listed in `pyproject.toml` `script-files`.
+
+Every game plays through bed. There is no local-database path.
+
+- **Bed down.** The script prints `casino: cannot connect to ws://<host>:<port>/` with the
+  bed-daemon hint, and exits 1.
+- **Refused or cancelled login.** `CasinoClient._session` checks `authenticated` after the
+  login step. If it is false, the script prints `casino: not logged in; the command was not
+  run`, records the exit reason `auth_failed`, and exits 1. The command body does not run.
+- **Login succeeds.** The command runs, and the session is closed on every path.
+
+`tests/test_game_entries.py` pins the entries, the shims, the refused login, and the bed-down
+exit for each game.
+
 ### 6.00 Debug level
 
 `--debug` is an integer level. It defaults to 1, a bare `--debug` means 1, and

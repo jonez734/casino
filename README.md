@@ -104,6 +104,10 @@ python -m casino --bed-host H --bed-port P
 casino table join <moniker>
 casino admin watch <moniker>
 poker                                 # same as: casino poker
+blackjack                             # likewise: slots, tictactoe, yahtzee
+
+# Every game runs through bed. With bed down, or a refused login, it prints one
+# line and exits 1.
 ```
 
 Casino has no `--direct` or door mode. Each game and the menu need the bed
@@ -137,7 +141,7 @@ Each game ships a `README.md` with its wire protocol:
 
 ```
 casino/
-├── pyproject.toml                Python manifest (console scripts + 4 poker variants)
+├── pyproject.toml                Python manifest (script-files: casino, the five games, casino-ping)
 ├── src/casino/                   The installable package
 │   ├── __main__.py               `python -m casino` entry (bed client and command routing)
 │   ├── auth.py                   BED auth + BBS entry points
@@ -167,7 +171,7 @@ casino/
 │   ├── yahtzee/                  Yahtzee door + api + dealer + lib + service
 │   └── maint/                    Sysop maintenance menu
 ├── scripts/                      opencode.sql, poker.sql, setup_privileges.sql, tictactoe.sql
-├── bin/                          casino, blackjack shims
+├── bin/                          casino and one console script per game (all through bed)
 ├── www/                          Per-host landing page (Smarty)
 │   ├── php/index.php
 │   ├── skin/{scss,tmpl}/
