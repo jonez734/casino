@@ -369,6 +369,12 @@ class TestPlayerAndObserver(unittest.IsolatedAsyncioTestCase):
                     break
 
             self.assertIsNotNone(player_game_state, f"Player should receive game_state after bet. Got: {messages}")
+            if player_game_state.get("phase") == "settled":
+                # A dealer natural settled the round on the bet. There is no hand left to hit
+                # or to watch, so the round is checked as settled and the test ends here.
+                self.assertEqual(player_game_state.get("table_moniker"), table_id)
+                print("✓ Dealer natural: round settled on the bet, nothing to hit")
+                return
             player_hand = player_game_state.get("player_hand", [])
             player_total = player_game_state.get("player_total", 0)
             print(f"✓ Player received hand: {' '.join(player_hand)} [{player_total}]")

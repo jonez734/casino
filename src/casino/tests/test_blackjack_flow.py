@@ -314,11 +314,12 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(row["playermoniker"], "oc_test_blackjack", "Player moniker should be 'oc_test_blackjack'")
                 self.assertEqual(row["cardtablemoniker"], table_moniker, "Table moniker should match")
                 self.assertEqual(row["amount"], expected_amount, f"Bet amount should be {expected_amount}")
-                # A dealer natural on the deal settles the bet at once (dealer peek), so the logged
-                # status is "lost" then, and "pending" otherwise. Any other status is a bug.
+                # The deal settles the bet at once when either side has a natural: a dealer natural
+                # logs "lost", and a player natural logs "won". Otherwise it stays "pending". Any
+                # other status is a bug.
                 self.assertIn(
-                    row["status"], ("pending", "lost"),
-                    f"Bet status should be 'pending', or 'lost' after a dealer natural, got {row['status']!r}",
+                    row["status"], ("pending", "lost", "won"),
+                    f"Bet status should be 'pending', or settled on a natural ('lost'/'won'), got {row['status']!r}",
                 )
 
                 # Check currenthand if it exists, otherwise skip the card check
@@ -533,6 +534,12 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
                     break
 
             self.assertIsNotNone(game_state, "No game_state received after bet")
+            if game_state.get("phase") == "settled":
+                # A dealer natural settled the round on the bet, so there is no stand to send.
+                # The bet itself is still logged, so check the log against the settled hand.
+                print("  Dealer natural: round settled on the bet")
+                self._verify_betlog(table_id, 50, game_state.get("player_hand", []))
+                return
             player_hand_initial = game_state.get("player_hand", [])
             player_total_initial = game_state.get("player_total", 0)
             print(f"  Initial hand: {' '.join(player_hand_initial)} [{player_total_initial}]")
@@ -621,6 +628,11 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
                     break
 
             self.assertIsNotNone(game_state)
+            if game_state.get("phase") == "settled":
+                # A dealer natural settled the round on the bet: there is no hit or stand to play.
+                self._verify_betlog_settled(table_id)
+                print("  Dealer natural: round settled on the bet")
+                return
             player_hand_after_bet = game_state.get("player_hand", [])
             player_total_after_bet = game_state.get("player_total", 0)
             print(f"  After bet: {' '.join(player_hand_after_bet)} [{player_total_after_bet}]")
@@ -848,6 +860,13 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
             player_hand = game_state.get("player_hand", [])
             print(f"  Initial hand: {' '.join(player_hand)}")
 
+            if game_state.get("phase") == "settled":
+                # A dealer natural settled the round on the bet: the bet is already won or lost,
+                # and there is no stand to send.
+                self._verify_betlog_settled(table_id)
+                print("✓ Betlog settlement test passed (dealer natural settled on the bet)")
+                return
+
             # Verify bet is pending
             self._verify_betlog(table_id, 50, player_hand)
 
@@ -1068,7 +1087,12 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(row["playermoniker"], "oc_test_blackjack")
                 self.assertEqual(row["cardtablemoniker"], table_id)
                 self.assertEqual(row["amount"], 50)
-                self.assertEqual(row["status"], "pending")
+                # An open round leaves the bet pending. A dealer natural settles it on the bet, so
+                # the bet is won or lost by then. Accept either settled state for that round.
+                if game_state.get("phase") == "settled":
+                    self.assertIn(row["status"], ("won", "lost", "push"))
+                else:
+                    self.assertEqual(row["status"], "pending")
 
                 # Verify computed columns exist. datepostedlocal is present in the view, but it
                 # is NULL unless the connected role has a member row with a timezone.

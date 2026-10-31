@@ -56,16 +56,34 @@ server and the database. Record the betlog failure with its full output if it re
 
 ## Player-observer flake: `test_player_observer.py::TestPlayerAndObserver::test_player_and_observer`
 
-- Measured: 3 failures in 60 runs when run alone (about 5%).
-- Evidence: after the player's `hit`, no `game_state` carrying a `player_hand` arrived within the
-  window. The same deadline-based wait applies now.
-- Open: not yet traced. Likely the same session-binding question as the surrender flake, since
-  both act on a seated player. Check it on a failing run before drawing a conclusion.
+- Cause (confirmed with logs): the first bet dealt a dealer natural, so the bet's reply was
+  already `phase: settled`. The test then hit a round that had settled, and the hit correctly
+  returned "No active game". The same natural-round cause as the three-hand flake. The server
+  was right; the test assumed an open round after the bet.
+- Measured before the fix: 3 failures in 60 runs alone (about 5%).
+- Fix (test only): the test checks a settled first deal, asserts the round settled on the bet,
+  and returns early. A normal round still reaches the hit and the observer check.
+- Measured after the fix: 0 failures in 60 runs alone.
+- Checked with mutations in a scratch copy: breaking the hit makes the test fail on a normal
+  round, so the hit path is still covered. Disabling the peek leaves the test passing, which is
+  correct, since the round is then open.
 
-## Seen once in a full run: `test_blackjack_flow.py::test_stand_after_bet`
+## Blackjack flow flakes: `test_blackjack_flow.py`
 
-Failed once in a full staged run, passed 20 of 20 alone. Not investigated further. Record it
-with full output if it recurs.
+Cause: `bet` can settle the round. A dealer natural, or a player natural, settles it inside
+`place_bet`, so the bet reply is already `phase: settled` and the bet's betlog status is
+`lost` or `won`, not `pending`. Tests that assumed an open round after the bet failed.
+
+Fixed in the tests, not the server:
+
+- `test_stand_after_bet`, `test_betlog_settlement`, `test_hit_then_stand`: a settled bet reply
+  skips the stand or hit, and the bet is checked as settled.
+- `test_betlog_view`: a settled round accepts `won`, `lost`, or `push` for the bet's status.
+- `_verify_betlog`: accepts `pending`, or a natural settlement (`lost` or `won`), and rejects any
+  other status.
+
+Measured before: about 3 failures in 20 on the staged tree; 1 in 40 on the working tree.
+Measured after: 0 failures in 80 runs of the file.
 
 ## Remaining risk
 
