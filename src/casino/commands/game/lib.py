@@ -18,6 +18,13 @@ from bbsengine6 import io
 from casino import host
 from casino.access import access as _casino_access
 
+# Shared helpers live in commands/_common.py. The underscore names are kept so
+# existing callers and tests keep working.
+from casino.commands._common import get_client as get_client  # noqa: E402
+from casino.commands._common import make_session as _make_session  # noqa: E402
+from casino.commands._common import resolve_actor_moniker as _resolve_actor_moniker  # noqa: E402
+from casino.commands._common import check_access  # noqa: E402
+
 
 # Subcommand -> domain verb understood by ``casino.access``.
 # The casino module owns the verb vocabulary; this dict is the only
@@ -29,86 +36,6 @@ _SUBCMD_TO_OP: Dict[str, str] = {
     "double": "double",
     "split": "split",
 }
-
-
-def get_client():
-    from casino.client import get_client as _get_client
-
-    return _get_client()
-
-
-def _make_session(args: argparse.Namespace, moniker: Optional[str] = None) -> SimpleNamespace:
-    """Build a SessionState-like stub for ``casino.access``.
-
-    Precedence for ``.moniker``: explicit argument > claim-derived
-    ``args._session_moniker`` > explicit ``args.moniker`` flag.
-    Precedence for ``.is_sysop``: explicit ``args.sysop`` flag >
-    claim-derived ``args._session_is_sysop``. ``.table_moniker``
-    mirrors ``args._session_table_moniker`` (the actor's currently-
-    bound table) so seat-at checks agree with the server.
-    """
-    return SimpleNamespace(
-        moniker=(
-            (moniker or "").strip()
-            or getattr(args, "_session_moniker", None)
-            or getattr(args, "moniker", None)
-            or ""
-        ),
-        is_sysop=bool(
-            getattr(args, "sysop", False)
-            or getattr(args, "_session_is_sysop", False)
-        ),
-        table_moniker=(
-            getattr(args, "_session_table_moniker", None) or None
-        ),
-    )
-
-
-def _resolve_actor_moniker(args: argparse.Namespace, fallback: Optional[str] = None) -> str:
-    """Return the actor moniker (who is performing the op)."""
-    return (
-        getattr(args, "_session_moniker", "")
-        or (fallback or "")
-        or getattr(args, "moniker", "")
-        or ""
-    ).strip()
-
-
-def _check_access(
-    args: argparse.Namespace,
-    op: str,
-    *,
-    session_moniker: Optional[str] = None,
-    table_moniker: Optional[str] = None,
-    **message_fields: Any,
-) -> bool:
-    """Gate a game CLI subcommand through ``casino.access``.
-
-    Returns True if access is allowed, False otherwise. On False,
-    prints a one-line error so the caller can short-circuit.
-    """
-    actor = _resolve_actor_moniker(args, fallback=session_moniker)
-    synth = _make_session(args, moniker=actor)
-    if not (synth.moniker or "").strip():
-        io.echo(
-            f"Operation '{op}' requires an authenticated session.",
-            level="error",
-        )
-        return False
-    msg = {}
-    if table_moniker:
-        msg["table_moniker"] = table_moniker
-    for k, v in message_fields.items():
-        if v is None:
-            continue
-        msg[k] = v
-    if _casino_access(args, op, session=synth, message=msg):
-        return True
-    io.echo(
-        f"Operation '{op}' is not permitted for this account.",
-        level="error",
-    )
-    return False
 
 
 def bet(args, client=None, **kwargs) -> bool:
@@ -291,3 +218,15 @@ def menu(args, client=None, **kwargs):
             client._loop.run_until_complete(asyncio.sleep(0.1))
 
     return True
+
+
+def _check_access(args, op, *, session_moniker=None, table_moniker=None, **message_fields):
+    """Gate a game CLI subcommand through the shared check, with this package's policy."""
+    return check_access(
+        args,
+        op,
+        session_moniker=session_moniker,
+        table_moniker=table_moniker,
+        access=_casino_access,
+        **message_fields,
+    )

@@ -1,7 +1,10 @@
 # commands/game/__init__.py
-# Game commands module
+# Game commands module: the seat-gated actions shared by the blackjack and
+# poker tables (bet, hit, stand, double, split, play).
 
-from bbsengine6 import io, register_module
+from bbsengine6 import io
+
+from casino.commands import _common
 
 from . import lib
 
@@ -17,60 +20,42 @@ SUBCOMMANDS = {
 }
 
 
-def _resolve_subcommand(input_str: str) -> str | None:
-    """Resolve subcommand input, handling ambiguous matches.
+def _echo_error(message):
+    """Report an ambiguous subcommand through this package's own ``io``."""
+    io.echo(message, level="error")
 
-    Args:
-        input_str: Subcommand string to resolve
 
-    Returns:
-        Resolved subcommand name if unambiguous, None if no match,
-        Prints error if ambiguous
-    """
-    if not input_str:
-        return None
-
-    input_lower = input_str.lower()
-    matches = [name for name in SUBCOMMANDS if name.startswith(input_lower)]
-
-    if len(matches) == 0:
-        return None
-    if len(matches) == 1:
-        return matches[0]
-
-    io.echo(f"Ambiguous: '{input_str}' could be {', '.join(matches)}", level="error")
-    return None
+def _resolve_subcommand(input_str):
+    """Resolve a typed subcommand against this package's SUBCOMMANDS. See ``_common``."""
+    return _common.resolve_subcommand(input_str, SUBCOMMANDS, report=_echo_error)
 
 
 def init(args, **kw) -> bool:
-    register_module(
+    return _common.register(
         name="casino.game",
         module_path="casino.commands.game",
         version=__version__,
-        apis={},
     )
-    return True
 
 
 def access(args, op: str, **kw) -> bool:
     return True
 
 
+def version(args, **kw) -> str:
+    return __version__
+
+
 def buildargs(args, **kw):
-    return None
+    return _common.build_parser("game", subcommands=SUBCOMMANDS)
 
 
 def main(args, **kw) -> bool:
-    subcommand = kw.get("subcommand")
-
-    if subcommand is None:
-        lib.menu(args, **kw)
-    else:
-        resolved = _resolve_subcommand(subcommand)
-        if resolved:
-            SUBCOMMANDS[resolved](args, **kw)
-        else:
-            io.echo(f"Unknown subcommand: {subcommand}", level="error")
-            lib.menu(args, **kw)
-
-    return True
+    return _common.dispatch(
+        args,
+        SUBCOMMANDS,
+        menu=lib.menu,
+        version_text=__version__,
+        name="game",
+        **kw,
+    )

@@ -167,7 +167,8 @@ def _run_install(args: Namespace) -> int:
 
 # Command packages reachable as ``casino <name> [...]`` from the command line.
 _COMMAND_PACKAGES = (
-    "admin", "bank", "chat", "game", "poker", "slots", "table", "yahtzee",
+    "admin", "bank", "blackjack", "chat", "game", "poker", "slots", "table",
+    "tictactoe", "yahtzee",
 )
 
 

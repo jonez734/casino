@@ -1,11 +1,9 @@
 # commands/slots/__init__.py
-# Slots commands module. WS-backed: every subcommand delegates to a
-# function in ``lib`` that sends through the connected ``CasinoClient``
-# so the bearer token is auto-injected on every wire call. The
-# legacy door-mode play loop still lives at ``casino/slots/play.py``
-# (reachable via ``casino.slots --door``) but is not wired here.
+# Slots commands: spin, play, paytable, and history.
 
-from bbsengine6 import io, register_module
+from bbsengine6 import io
+
+from casino.commands import _common
 
 from . import lib
 
@@ -19,56 +17,42 @@ SUBCOMMANDS = {
 }
 
 
-def _resolve_subcommand(input_str: str) -> str | None:
-    """Resolve subcommand input, handling ambiguous matches."""
-    if not input_str:
-        return None
+def _echo_error(message):
+    """Report an ambiguous subcommand through this package's own ``io``."""
+    io.echo(message, level="error")
 
-    input_lower = input_str.lower()
-    matches = [name for name in SUBCOMMANDS if name.startswith(input_lower)]
 
-    if len(matches) == 0:
-        return None
-    if len(matches) == 1:
-        return matches[0]
-
-    io.echo(f"Ambiguous: '{input_str}' could be {', '.join(matches)}", level="error")
-    return None
+def _resolve_subcommand(input_str):
+    """Resolve a typed subcommand against this package's SUBCOMMANDS. See ``_common``."""
+    return _common.resolve_subcommand(input_str, SUBCOMMANDS, report=_echo_error)
 
 
 def init(args, **kw) -> bool:
-    register_module(
-        name="casino.slots.commands",
+    return _common.register(
+        name="casino.slots",
         module_path="casino.commands.slots",
         version=__version__,
-        apis={},
     )
-    return True
 
 
 def access(args, op: str, **kw) -> bool:
     return True
 
 
+def version(args, **kw) -> str:
+    return __version__
+
+
 def buildargs(args, **kw):
-    return None
+    return _common.build_parser("slots", subcommands=SUBCOMMANDS)
 
 
 def main(args, **kw) -> bool:
-    subcommand = kw.get("subcommand")
-
-    if kw.get("version"):
-        io.echo(f"casino.slots {__version__} (WS-backed submenu)")
-        return True
-
-    if subcommand is None:
-        lib.menu(args, **kw)
-    else:
-        resolved = _resolve_subcommand(subcommand)
-        if resolved:
-            SUBCOMMANDS[resolved](args, **kw)
-        else:
-            io.echo(f"Unknown subcommand: {subcommand}", level="error")
-            lib.menu(args, **kw)
-
-    return True
+    return _common.dispatch(
+        args,
+        SUBCOMMANDS,
+        menu=lib.menu,
+        version_text=__version__,
+        name="slots",
+        **kw,
+    )

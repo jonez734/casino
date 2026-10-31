@@ -8,10 +8,9 @@ from casino import host
 
 from casino.poker import list_variants
 
-
-def get_client():
-    from casino.client import get_client as _get_client
-    return _get_client()
+# Shared helpers live in commands/_common.py. The underscore names are kept so
+# existing callers and tests keep working.
+from casino.commands._common import get_client as get_client  # noqa: E402
 
 
 def send_action(action: str, data: dict = None, client=None):
@@ -100,9 +99,6 @@ def all_in(args, client=None, **kwargs) -> bool:
     return send_action("poker_all_in", client=client)
 
 
-
-
-
 def show_table(args, client=None, **kwargs) -> bool:
     """Show current table state."""
     client = client or get_client()
@@ -113,8 +109,6 @@ def show_table(args, client=None, **kwargs) -> bool:
     client._loop.run_until_complete(client.send({"type": "poker_get_state"}))
     client._loop.run_until_complete(asyncio.sleep(0.1))
     return True
-
-
 
 
 def create_table(args, client=None, **kwargs) -> bool:

@@ -6,11 +6,9 @@ import asyncio
 from bbsengine6 import io
 from casino import host
 
-
-def get_client():
-    from casino.client import get_client as _get_client
-
-    return _get_client()
+# Shared helpers live in commands/_common.py. The underscore names are kept so
+# existing callers and tests keep working.
+from casino.commands._common import get_client as get_client  # noqa: E402
 
 
 def chat(args, client=None, **kwargs) -> bool:

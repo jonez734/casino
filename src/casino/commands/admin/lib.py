@@ -6,11 +6,9 @@ import asyncio
 from bbsengine6 import io
 from casino import host
 
-
-def get_client():
-    from casino.client import get_client as _get_client
-
-    return _get_client()
+# Shared helpers live in commands/_common.py. The underscore names are kept so
+# existing callers and tests keep working.
+from casino.commands._common import get_client as get_client  # noqa: E402
 
 
 def watch_table(args, client=None, **kwargs) -> bool:
@@ -43,7 +41,7 @@ def unwatch_table(args, client=None, **kwargs) -> bool:
         io.echo("Cancelled.", level="error")
         return False
     client._loop.run_until_complete(
-        client.send({"type": "unwatch_table", "moniker": moniker})
+        client.send({"type": "stop_watching", "moniker": moniker})
     )
     client.watched_tables.discard(moniker)
     io.echo(f"No longer watching table {moniker}")
