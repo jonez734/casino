@@ -322,7 +322,7 @@ class TestMainDispatchVersionAndHelp(unittest.TestCase):
         self.assertEqual(ctx.exception.code, 0)
         output = buf.getvalue().strip()
         self.assertIn("casino", output)
-        self.assertIn(casino_version.__version__, output)
+        self.assertIn(casino_version.version, output)
 
 
 class _StubParser:

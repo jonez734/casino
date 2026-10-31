@@ -722,7 +722,7 @@ def buildargs(args: Namespace | None = None, **kwargs: Any) -> argparse.Argument
     parser.add_argument(
         "--version",
         action="version",
-        version=f"casino {casino_version.__version__}",
+        version=f"casino {casino_version.version}",
     )
     parser.add_argument("--verbose", action="store_true", dest="verbose")
     parser.add_argument("--debug", action="store_true", dest="debug")

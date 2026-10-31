@@ -67,10 +67,10 @@ push:
 	git push
 
 # Empyre-style: writes src/casino/_version.py. pyproject.toml reads
-# version via setuptools dynamic attr `casino._version.__version__`
+# version via setuptools dynamic attr `casino._version.version`
 # (see [tool.setuptools.dynamic] in pyproject.toml).
 version:
-	@echo '__version__ = "0.4.0.dev'`date +%Y%m%d%H%M`'"' > src/casino/_version.py
+	@echo 'version = "0.4.0.dev'`date +%Y%m%d%H%M`'"' > src/casino/_version.py
 	@echo 'githash = "'`git log -1 --format='%H' 2>/dev/null | cut -c 1-16`'"' >> src/casino/_version.py
 	@echo 'datestamp = "'`date +%Y%m%d%H%M`'"' >> src/casino/_version.py
 
@@ -296,7 +296,7 @@ venv:
 	whl="$$(ls "$$wheels"/*.whl)" && \
 	want="$$(unzip -p "$$whl" '*/METADATA' | sed -n 's/^Version: //p' | head -1)" && \
 	"$(VENV_DIR)/bin/python" -m pip install --upgrade --force-reinstall --no-deps "$$whl" && \
-	have="$$("$(VENV_DIR)/bin/python" -c 'from casino._version import __version__ as v; print(v)')" && \
+	have="$$("$(VENV_DIR)/bin/python" -c 'from casino._version import version as v; print(v)')" && \
 	if [ "$$have" != "$$want" ]; then echo "venv: installed casino $$have, but the wheel is $$want" >&2; exit 1; fi && \
 	echo "casino $$want installed into $(VENV_DIR)"
 

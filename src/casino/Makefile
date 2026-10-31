@@ -52,7 +52,7 @@ release:
 	$(MAKE) -C ../.. release
 
 version:
-	@echo '__version__ = "0.4.0.dev$(VERSION)"' > _version.py
+	@echo 'version = "0.4.0.dev$(VERSION)"' > _version.py
 	@echo 'githash = "'`git log -1 --format='%H' 2>/dev/null | cut -c 1-16`'"' >> _version.py
 	@echo 'datestamp = "$(VERSION)"' >> _version.py
 
