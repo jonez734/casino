@@ -5,3 +5,6 @@ build/
 dist/
 *.egg-info
 src/casino/tk/
+
+# build version stamp (rewritten by every build; not tracked)
+_version.py
