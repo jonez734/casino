@@ -1,0 +1,158 @@
+{
+  "schema_version": 1,
+  "project": "casino",
+  "objects": [
+    {
+      "kind": "schema",
+      "name": "casino"
+    },
+    {
+      "kind": "table",
+      "name": "casino.__account"
+    },
+    {
+      "kind": "table",
+      "name": "casino.__bank_player"
+    },
+    {
+      "kind": "table",
+      "name": "casino.__bank_table"
+    },
+    {
+      "kind": "table",
+      "name": "casino.__banktransaction"
+    },
+    {
+      "kind": "table",
+      "name": "casino.__betlog"
+    },
+    {
+      "kind": "table",
+      "name": "casino.__game"
+    },
+    {
+      "kind": "table",
+      "name": "casino.__hand"
+    },
+    {
+      "kind": "table",
+      "name": "casino.__log"
+    },
+    {
+      "kind": "table",
+      "name": "casino.__player"
+    },
+    {
+      "kind": "table",
+      "name": "casino.__poker_state"
+    },
+    {
+      "kind": "table",
+      "name": "casino.__shoe_event"
+    },
+    {
+      "kind": "table",
+      "name": "casino.__slot_spin"
+    },
+    {
+      "kind": "table",
+      "name": "casino.__table"
+    },
+    {
+      "kind": "table",
+      "name": "casino.__tabletransfer"
+    },
+    {
+      "kind": "table",
+      "name": "casino.map_cardtable_player"
+    },
+    {
+      "kind": "table",
+      "name": "casino.map_game_player"
+    },
+    {
+      "kind": "view",
+      "name": "casino.account"
+    },
+    {
+      "kind": "view",
+      "name": "casino.bank_player"
+    },
+    {
+      "kind": "view",
+      "name": "casino.bank_table"
+    },
+    {
+      "kind": "view",
+      "name": "casino.banktransaction"
+    },
+    {
+      "kind": "view",
+      "name": "casino.betlog"
+    },
+    {
+      "kind": "view",
+      "name": "casino.game"
+    },
+    {
+      "kind": "view",
+      "name": "casino.hand"
+    },
+    {
+      "kind": "view",
+      "name": "casino.log"
+    },
+    {
+      "kind": "view",
+      "name": "casino.player"
+    },
+    {
+      "kind": "view",
+      "name": "casino.slot_spin"
+    },
+    {
+      "kind": "view",
+      "name": "casino.table"
+    },
+    {
+      "kind": "view",
+      "name": "casino.tabletransfer"
+    },
+    {
+      "kind": "sequence",
+      "name": "casino.__account_id_seq"
+    },
+    {
+      "kind": "sequence",
+      "name": "casino.__banktransaction_id_seq"
+    },
+    {
+      "kind": "sequence",
+      "name": "casino.__betlog_id_seq"
+    },
+    {
+      "kind": "sequence",
+      "name": "casino.__game_id_seq"
+    },
+    {
+      "kind": "sequence",
+      "name": "casino.__hand_id_seq"
+    },
+    {
+      "kind": "sequence",
+      "name": "casino.__log_id_seq"
+    },
+    {
+      "kind": "sequence",
+      "name": "casino.__shoe_event_id_seq"
+    },
+    {
+      "kind": "sequence",
+      "name": "casino.__slot_spin_id_seq"
+    },
+    {
+      "kind": "sequence",
+      "name": "casino.__tabletransfer_id_seq"
+    }
+  ]
+}

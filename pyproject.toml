@@ -71,7 +71,7 @@ include = ["casino*"]
 namespaces = false
 
 [tool.setuptools.package-data]
-casino = ["sql/*.sql", "data/*.json"]
+casino = ["sql/*.sql", "sql/objects.json", "data/*.json"]
 
 [tool.setuptools.dynamic]
 version = { attr = "casino._version.version" }

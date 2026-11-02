@@ -113,6 +113,11 @@ class TestCheckCasinoOwnerGate(unittest.TestCase):
         from casino.startup import checkcasino
 
         self.mod = checkcasino
+        # The casino_obj role step is tested on its own; stub it out here so these
+        # tests keep counting only the schema statements.
+        patcher = patch.object(self.mod, "ensure_owner_role", return_value=True)
+        patcher.start()
+        self.addCleanup(patcher.stop)
         self.args = _make_args()
         self.fake_conn = Mock()
 
@@ -198,6 +203,11 @@ class TestCheckCasinoSchemaCreate(unittest.TestCase):
         from casino.startup import checkcasino
 
         self.mod = checkcasino
+        # The casino_obj role step is tested on its own; stub it out here so these
+        # tests keep counting only the schema statements.
+        patcher = patch.object(self.mod, "ensure_owner_role", return_value=True)
+        patcher.start()
+        self.addCleanup(patcher.stop)
         self.args = _make_args()
         self.fake_conn = Mock()
 
@@ -255,6 +265,11 @@ class TestCheckCasinoSchemaReassign(unittest.TestCase):
         from casino.startup import checkcasino
 
         self.mod = checkcasino
+        # The casino_obj role step is tested on its own; stub it out here so these
+        # tests keep counting only the schema statements.
+        patcher = patch.object(self.mod, "ensure_owner_role", return_value=True)
+        patcher.start()
+        self.addCleanup(patcher.stop)
         self.args = _make_args()
         self.fake_conn = Mock()
 
@@ -341,6 +356,11 @@ class TestCheckCasinoSchemaNoop(unittest.TestCase):
         from casino.startup import checkcasino
 
         self.mod = checkcasino
+        # The casino_obj role step is tested on its own; stub it out here so these
+        # tests keep counting only the schema statements.
+        patcher = patch.object(self.mod, "ensure_owner_role", return_value=True)
+        patcher.start()
+        self.addCleanup(patcher.stop)
         self.args = _make_args()
         self.fake_conn = Mock()
 
@@ -396,3 +416,47 @@ class TestCheckCasinoSchemaNoop(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestCheckCasinoOwnerRole(unittest.TestCase):
+    """casino_obj is a NOLOGIN owner role, created idempotently before the owner pass."""
+
+    def setUp(self):
+        from casino.startup import checkcasino
+
+        self.mod = checkcasino
+        self.args = _make_args()
+        self.fake_conn = Mock()
+
+    def test_role_name_is_casino_obj(self):
+        self.assertEqual(self.mod.OWNER_OBJ_ROLE, "casino_obj")
+
+    def test_creates_nologin_nosuperuser_role_when_missing(self):
+        with patch.object(self.mod.database, "rolexists", return_value=False), \
+             patch.object(self.mod.database, "createrol", return_value=True) as create:
+            self.assertTrue(self.mod.ensure_owner_role(self.args, self.fake_conn))
+        create.assert_called_once()
+        _, kwargs = create.call_args
+        self.assertFalse(kwargs["login"])
+        self.assertFalse(kwargs["superuser"])
+        self.assertFalse(kwargs["createdb"])
+        self.assertFalse(kwargs["createrole"])
+        self.assertTrue(kwargs["inherit"])
+
+    def test_noop_when_role_exists(self):
+        with patch.object(self.mod.database, "rolexists", return_value=True), \
+             patch.object(self.mod.database, "createrol") as create:
+            self.assertTrue(self.mod.ensure_owner_role(self.args, self.fake_conn))
+        create.assert_not_called()
+
+    def test_returns_false_when_create_fails(self):
+        with patch.object(self.mod.database, "rolexists", return_value=False), \
+             patch.object(self.mod.database, "createrol", return_value=False):
+            self.assertFalse(self.mod.ensure_owner_role(self.args, self.fake_conn))
+
+    def test_main_stops_before_the_schema_when_role_fails(self):
+        with patch.object(self.mod, "ensure_owner_role", return_value=False), \
+             patch.object(self.mod.database, "functionexists", return_value=False), \
+             patch.object(self.mod.database, "schemaexists") as schema:
+            self.assertFalse(self.mod.main(self.args, conn=self.fake_conn))
+        schema.assert_not_called()

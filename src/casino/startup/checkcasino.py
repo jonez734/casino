@@ -38,6 +38,9 @@ from bbsengine6 import database, io
 
 SCHEMA_NAME = "casino"
 TARGET_ROLE = "zoid6"
+# Owner of casino's objects (tables, views, sequences, the schema). NOLOGIN, so it owns
+# objects but cannot be a login. Created here, before the owner pass that uses it.
+OWNER_OBJ_ROLE = "casino_obj"
 ACCEPTABLE_HELPER_OWNERS = ("zoid6", "postgres")
 
 # Mirrors the loop in ``bbsengine6.backend.checkengine``. Keep in
@@ -61,6 +64,39 @@ def buildargs(args, **kwargs):
 
 
 def access(args, op, **kwargs):
+    return True
+
+
+def ensure_owner_role(args, conn) -> bool:
+    """Create the NOLOGIN ``casino_obj`` owner role if it does not exist. Idempotent.
+
+    Attributes match bbsengine6's ``checkzoid6role``: NOSUPERUSER, NOCREATEDB,
+    NOCREATEROLE, NOLOGIN, INHERIT. The role owns objects and cannot log in.
+    """
+    io.echo(
+        f"{{var:labelcolor}}role {{var:valuecolor}}{OWNER_OBJ_ROLE}{{var:labelcolor}}: ",
+        end="",
+    )
+    if database.rolexists(args, OWNER_OBJ_ROLE, conn=conn) is False:
+        io.echo("{var:labelcolor}create ", end="")
+        if (
+            database.createrol(
+                args,
+                OWNER_OBJ_ROLE,
+                conn=conn,
+                superuser=False,
+                login=False,
+                createdb=False,
+                createrole=False,
+                inherit=True,
+            )
+            is False
+        ):
+            io.echo("{level.error} fail ", level="error")
+            return False
+        io.echo("{level.ok}  ok  ")
+        return True
+    io.echo("{level.ok}  ok  ")
     return True
 
 
@@ -91,6 +127,10 @@ def main(args, **kwargs):
                 level="error",
             )
             return False
+
+    # --- casino_obj owner role (created before any owner pass uses it) ---
+    if ensure_owner_role(args, conn) is False:
+        return False
 
     # --- casino schema ---
     # Must be owned by ``zoid6`` so that the SECURITY DEFINER helper
