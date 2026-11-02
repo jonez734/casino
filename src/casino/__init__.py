@@ -1,3 +1,4 @@
+import argparse
 from bbsengine6 import register, util
 
 from . import lib
@@ -32,7 +33,7 @@ def access(args, op: str, **kw: dict) -> bool:
     return True
 
 
-def buildargs(args, **kw: dict) -> bool:
+def buildargs(args: argparse.Namespace, **kw: dict) -> argparse.ArgumentParser | None:
     return None
 
 
