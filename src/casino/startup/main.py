@@ -158,15 +158,15 @@ def main(args, **kwargs):
                 io.echo("ok", level="ok")
 
         # 4b. Ownership. Objects created above run as the connecting role; move
-        #     every casino object to zoid6, the schema owner, so zoid6-owned code
-        #     and bed's grants can reach them. Idempotent.
+        #     every casino table, view, sequence and function to casino_obj, the
+        #     casino owner role. The schema stays with zoid6 (see checkcasino).
         io.echo(
-            f"{{var:labelcolor}}owner migration {{var:valuecolor}}casino -> zoid6{{var:labelcolor}}: ",
+            f"{{var:labelcolor}}owner migration {{var:valuecolor}}casino -> casino_obj{{var:labelcolor}}: ",
             end="",
         )
         if (
             database.importsql(
-                args, "owner_zoid6_migration.sql", conn=conn, package="casino.sql"
+                args, "owner_casino_obj_migration.sql", conn=conn, package="casino.sql"
             )
             is False
         ):
@@ -185,14 +185,14 @@ def main(args, **kwargs):
             return False
         io.echo(" ok ", level="ok")
 
-        # 4b2. Second owner pass: objects created by the shoe migration above belong to zoid6 too.
+        # 4b2. Second owner pass: objects created by the shoe migration above belong to casino_obj too.
         io.echo(
-            f"{{var:labelcolor}}owner migration {{var:valuecolor}}casino -> zoid6 (again){{var:labelcolor}}: ",
+            f"{{var:labelcolor}}owner migration {{var:valuecolor}}casino -> casino_obj (again){{var:labelcolor}}: ",
             end="",
         )
         if (
             database.importsql(
-                args, "owner_zoid6_migration.sql", conn=conn, package="casino.sql"
+                args, "owner_casino_obj_migration.sql", conn=conn, package="casino.sql"
             )
             is False
         ):

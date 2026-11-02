@@ -63,7 +63,7 @@ def test_token_refusal_names_the_failing_op():
 def test_casino_startup_installs_the_read_function_after_the_owner_migration():
     src = inspect.getsource(casino_startup.main)
     assert "casino_read_functions.sql" in src
-    assert src.index("owner_zoid6_migration.sql") < src.index("casino_read_functions.sql")
+    assert src.index("owner_casino_obj_migration.sql") < src.index("casino_read_functions.sql")
 
 
 def test_function_reads_only_casino_table_not_bank_or_engine_member():

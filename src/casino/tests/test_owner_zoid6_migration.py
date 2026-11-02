@@ -6,7 +6,7 @@
 from pathlib import Path
 
 CASINO = Path(__file__).resolve().parents[1]
-SQL = CASINO / "sql" / "owner_zoid6_migration.sql"
+SQL = CASINO / "sql" / "owner_casino_obj_migration.sql"
 STARTUP = CASINO / "startup" / "main.py"
 
 
@@ -16,6 +16,7 @@ def _sql():
 
 def test_migration_file_exists_and_is_packaged():
     assert SQL.is_file()
+    assert SQL.name == "owner_casino_obj_migration.sql"
     # pyproject ships sql/*.sql, so the file is included in the installed build.
     text = (CASINO.parents[1] / "pyproject.toml").read_text(encoding="utf-8")
     assert '"sql/*.sql"' in text
@@ -33,24 +34,25 @@ def test_migration_moves_tables_views_sequences_and_functions():
     sql = _sql()
     for kind in ("alter sequence", "alter view", "alter table", "alter function"):
         assert kind in sql, kind
-    assert "owner to zoid6" in sql
+    assert "owner to casino_obj" in sql
+    assert "owner to zoid6" not in sql
 
 
 def test_migration_is_idempotent_by_owner_filter():
     sql = _sql()
-    assert "pg_get_userbyid(c.relowner) <> 'zoid6'" in sql
-    assert "pg_get_userbyid(p.proowner) <> 'zoid6'" in sql
+    assert "pg_get_userbyid(c.relowner) <> 'casino_obj'" in sql
+    assert "pg_get_userbyid(p.proowner) <> 'casino_obj'" in sql
 
 
 def test_startup_runs_migration_after_classes_and_before_overrides():
     src = STARTUP.read_text(encoding="utf-8")
     classes_at = src.index("for c, sql in classlist:")
-    migrate_at = src.index('"owner_zoid6_migration.sql"')
+    migrate_at = src.index('"owner_casino_obj_migration.sql"')
     channels_at = src.index("checkchannels.main(args, conn=conn)")
     assert classes_at < migrate_at < channels_at
 
 
 def test_startup_migration_failure_stops_install():
     src = STARTUP.read_text(encoding="utf-8")
-    window = src[src.index('"owner_zoid6_migration.sql"') - 200:src.index('"owner_zoid6_migration.sql"') + 300]
+    window = src[src.index('"owner_casino_obj_migration.sql"') - 200:src.index('"owner_casino_obj_migration.sql"') + 300]
     assert "return False" in window

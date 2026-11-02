@@ -56,5 +56,5 @@ def test_the_owner_move_runs_again_after_the_shoe_migration():
     them as zoid6 expects."""
     text = STARTUP.read_text(encoding="utf-8")
     shoe = text.index('"shoe_audit_migration.sql"')
-    owner_passes = [m.start() for m in re.finditer(r'"owner_zoid6_migration.sql"', text)]
+    owner_passes = [m.start() for m in re.finditer(r'"owner_casino_obj_migration.sql"', text)]
     assert any(p > shoe for p in owner_passes), "no owner pass after the shoe migration"
