@@ -53,6 +53,7 @@ class TestInstallGates(unittest.TestCase):
                 patch("bbsengine6.database.getpool"), \
                 patch("bbsengine6.database.connect"), \
                 patch("bbsengine6.backend.checksuperuser.main", return_value=True), \
+                patch("casino.__main__._report_casino_status", return_value=True), \
                 patch("casino.startup.main", return_value=True) as startup:
             rc = cm._run_install(self._args())
         self.assertEqual(rc, 0)
@@ -66,6 +67,50 @@ class TestInstallGates(unittest.TestCase):
                 patch("casino.startup.main", return_value=False):
             rc = cm._run_install(self._args())
         self.assertEqual(rc, 1)
+
+
+class CasinoInstallStatusTests(unittest.TestCase):
+    """7.2: casino --install reports its own manifest status and refuses unless installed."""
+
+    def _args(self):
+        from argparse import Namespace
+
+        return Namespace(databasename="zoid6", debug=False)
+
+    def test_status_not_installed_fails_the_install(self):
+        with patch("bed.startup.verify_install", return_value=True), \
+                patch("bbsengine6.database.getpool"), \
+                patch("bbsengine6.database.connect"), \
+                patch("bbsengine6.backend.checksuperuser.main", return_value=True), \
+                patch("casino.__main__._report_casino_status", return_value=False), \
+                patch("casino.startup.main", return_value=True):
+            rc = cm._run_install(self._args())
+        self.assertEqual(rc, 1)
+
+    def test_status_installed_passes_the_install(self):
+        with patch("bed.startup.verify_install", return_value=True), \
+                patch("bbsengine6.database.getpool"), \
+                patch("bbsengine6.database.connect"), \
+                patch("bbsengine6.backend.checksuperuser.main", return_value=True), \
+                patch("casino.__main__._report_casino_status", return_value=True), \
+                patch("casino.startup.main", return_value=True):
+            rc = cm._run_install(self._args())
+        self.assertEqual(rc, 0)
+
+    def test_report_names_missing_objects(self):
+        from bbsengine6.backend import objects
+
+        missing = [objects.ObjectRef("table", "casino.__table")]
+        report = objects.Report(project="casino", status=objects.STATUS_PARTIAL,
+                                present=[], missing=missing)
+        with patch("bbsengine6.backend.objects.check_objects", return_value=report), \
+                patch("bbsengine6.database.getpool"), \
+                patch("bbsengine6.database.connect"), \
+                patch("bbsengine6.io.echo") as echo:
+            ok = cm._report_casino_status(self._args())
+        self.assertFalse(ok)
+        printed = " ".join(str(c.args[0]) for c in echo.call_args_list)
+        self.assertIn("casino.__table", printed)
 
 
 if __name__ == "__main__":

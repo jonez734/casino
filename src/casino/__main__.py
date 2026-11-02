@@ -130,9 +130,9 @@ def _run_install(args: Namespace) -> int:
     """``casino --install`` branch: casino's database setup, once per install.
 
     Casino requires bed. The bed engine schema must already exist (bed's
-    own bootstrap creates it), and the connecting role must be a superuser
-    or a member of zoid6. Both are checked here before any DDL runs.
-    Target database comes from ``--databasename``.
+    own bootstrap creates it), and the connecting role must be a superuser.
+    Both are checked here before any DDL runs. Target database comes from
+    ``--databasename``. Reports casino's own install status from its manifest.
     """
     from bed.startup import verify_install
 
@@ -151,8 +151,7 @@ def _run_install(args: Namespace) -> int:
             database.connect(args, pool=pool) as conn:
         if checksuperuser.main(args, conn=conn) is not True:
             io.echo(
-                "{level.error}casino --install: connecting role is not a superuser "
-                "or zoid6 member",
+                "{level.error}casino --install: connecting role is not a superuser",
                 level="error",
             )
             return 1
@@ -161,8 +160,38 @@ def _run_install(args: Namespace) -> int:
         io.echo("{level.error}casino --install failed", level="error")
         return 1
 
+    if _report_casino_status(args) is False:
+        io.echo("{level.error}casino --install failed: objects are not all present", level="error")
+        return 1
+
     io.echo("{level.ok}casino --install complete", level="ok")
     return 0
+
+
+def _report_casino_status(args) -> bool:
+    """Print installed / partial / not installed for casino's objects. True only when installed."""
+    import json
+    from importlib import resources
+
+    from bbsengine6.backend import objects
+
+    try:
+        text = resources.files("casino").joinpath("sql/objects.json").read_text(encoding="utf-8")
+        manifest = objects.load_manifest(json.loads(text))
+        pool = database.getpool(args, dbname=args.databasename)
+        with database.connect(args, pool=pool) as conn:
+            report = objects.check_objects(args, manifest, conn=conn)
+    except Exception as exc:  # noqa: BLE001 - a status failure must be reported, not raised
+        io.echo(f"casino: cannot read install status: {exc}", level="error")
+        return False
+    total = len(manifest.objects)
+    if report.status == objects.STATUS_INSTALLED:
+        io.echo(f"casino: installed ({len(report.present)}/{total})", level="ok")
+        return True
+    io.echo(f"casino: {report.status} ({len(report.present)}/{total})", level="error")
+    for obj in report.missing:
+        io.echo(f"  missing: {obj.label()}", level="error")
+    return False
 
 
 # Command packages reachable as ``casino <name> [...]`` from the command line.
