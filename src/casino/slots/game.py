@@ -1,7 +1,7 @@
 # casino/slots/game.py
 # Top-level entry: wires up a SlotDealer + SlotPlayer and runs the door loop.
 
-from bbsengine6 import io, member, register_module
+from bbsengine6 import io, member, register
 
 from . import lib as slots_lib
 from .dealer import SlotDealer
@@ -11,7 +11,7 @@ __version__ = "202210010112"
 
 
 def init(args, **kw: dict) -> bool:
-    register_module(
+    register(
         name="casino.slots.game",
         module_path="casino.slots.game",
         version=__version__,

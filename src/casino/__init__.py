@@ -1,4 +1,4 @@
-from bbsengine6 import register_module, util
+from bbsengine6 import register, util
 
 from . import lib
 
@@ -15,7 +15,7 @@ def init(args, **kw: dict) -> bool:
 
         casino_host.register_menu(bedsession.choose)
         casino_host.register_line_reader(getattr(bedsession, "read_line", None))
-    register_module(
+    register(
         name="casino",
         module_path="casino",
         version=__version__,

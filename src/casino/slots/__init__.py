@@ -1,4 +1,4 @@
-from bbsengine6 import register_module
+from bbsengine6 import register
 
 __version__ = "202210010112"
 
@@ -6,7 +6,7 @@ __all__ = ["lib", "dealer", "player", "play", "game"]
 
 
 def init(args, **kw: dict) -> bool:
-    register_module(
+    register(
         name="casino.slots",
         module_path="casino.slots",
         version=__version__,

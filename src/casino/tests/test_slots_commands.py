@@ -427,13 +427,13 @@ class TestSlotsPackageMainUsesModuleRun(unittest.TestCase):
 
 
 class TestSlotsGameRegistersItself(unittest.TestCase):
-    """casino.slots.game.init() must call register_module() so bbsengine6
+    """casino.slots.game.init() must call register() so bbsengine6
     recognizes the inner game module."""
 
-    def test_game_init_calls_register_module(self):
+    def test_game_init_calls_register(self):
         from casino.slots import game
 
-        with patch("casino.slots.game.register_module") as mock_reg:
+        with patch("casino.slots.game.register") as mock_reg:
             result = game.init(_make_args())
 
         self.assertTrue(result)

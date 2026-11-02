@@ -1,4 +1,4 @@
-from bbsengine6 import register_module
+from bbsengine6 import register
 
 from . import lib
 from .hand import Hand
@@ -10,7 +10,7 @@ __all__ = ["Hand", "GamePhase"]
 
 
 def init(args, **kw: dict) -> bool:
-    register_module(
+    register(
         name="casino.blackjack",
         module_path="casino.blackjack",
         version=__version__,

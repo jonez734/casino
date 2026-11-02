@@ -2,7 +2,7 @@
 # Top-level entry: wires up a YahtzeeDealer + YahtzeePlayer and runs the
 # door-mode play loop. Mirrors casino/slots/game.py.
 
-from bbsengine6 import io, member, register_module
+from bbsengine6 import io, member, register
 
 from . import lib as yahtzee_lib
 from .dealer import YahtzeeDealer
@@ -12,7 +12,7 @@ __version__ = "202601011200"
 
 
 def init(args, **kw: dict) -> bool:
-    register_module(
+    register(
         name="casino.yahtzee.game",
         module_path="casino.yahtzee.game",
         version=__version__,

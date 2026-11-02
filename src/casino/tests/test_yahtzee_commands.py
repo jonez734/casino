@@ -147,13 +147,13 @@ class TestModuleCheckPasses(unittest.TestCase):
 
 
 class TestYahtzeeGameRegistersItself(unittest.TestCase):
-    """casino.yahtzee.game.init() must call register_module() so bbsengine6
+    """casino.yahtzee.game.init() must call register() so bbsengine6
     recognizes the inner game module."""
 
-    def test_game_init_calls_register_module(self):
+    def test_game_init_calls_register(self):
         from casino.yahtzee import game
 
-        with patch("casino.yahtzee.game.register_module") as mock_reg:
+        with patch("casino.yahtzee.game.register") as mock_reg:
             result = game.init(_make_args())
 
         self.assertTrue(result)

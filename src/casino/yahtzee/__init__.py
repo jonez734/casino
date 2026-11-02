@@ -1,10 +1,10 @@
-from bbsengine6 import register_module
+from bbsengine6 import register
 
 __version__ = "202601010900"
 
 
 def init(args, **kw: dict) -> bool:
-    register_module(
+    register(
         name="casino.yahtzee",
         module_path="casino.yahtzee",
         version=__version__,

@@ -11,7 +11,8 @@ import argparse
 from types import SimpleNamespace
 from typing import Any, Callable, Dict, Iterable, Optional
 
-from bbsengine6 import io, register_module
+from bbsengine6 import io
+from bbsengine6 import register as _bbs_register
 from casino.access import access as _casino_access
 
 
@@ -137,7 +138,7 @@ def resolve_subcommand(
 
 def register(name: str, module_path: str, version: str) -> bool:
     """The shared ``init()`` body: register a command package with bbsengine6."""
-    register_module(
+    _bbs_register(
         name=name,
         module_path=module_path,
         version=version,
