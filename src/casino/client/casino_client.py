@@ -1370,10 +1370,10 @@ class CasinoClient:
                 _bar.detach()
         except EOFError:
             self._exit_reason = "eof"
-            io.echo("{/all}{bold}EOF{/bold}")
+            io.echo("{/all}*EOF*")
         except KeyboardInterrupt:
             self._exit_reason = "intr"
-            io.echo("{/all}{bold}INTR{/bold}")
+            io.echo("{/all}*INTR*")
         except Exception:
             self._exit_reason = "error"
             raise

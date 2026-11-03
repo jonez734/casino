@@ -73,13 +73,11 @@ def _save_casino_state():
     saved = (
         lib._current_args,
         lib._current_player,
-        lib._screen_initialized,
     )
     yield lib
     (
         lib._current_args,
         lib._current_player,
-        lib._screen_initialized,
     ) = saved
 
 
@@ -203,48 +201,20 @@ class TestCasinoFragmentLifecycle:
 # screen.init() once-per-process guard + cleanup echo
 
 
-class TestCasinoScreenInitGuard:
-    def test_ensure_screen_initialized_calls_screen_init_first_time(
-        self, _save_casino_state
-    ):
-        lib = _save_casino_state
-        lib._screen_initialized = False
-        with patch.object(lib.bbsengine6_bottombar, "init") as init:
-            lib._ensure_screen_initialized()
-        init.assert_called_once_with()
-        assert lib._screen_initialized is True
+class TestCasinoScreenInit:
+    """Casino delegates its once-per-process init to bbsengine6 bottombar.init(); it keeps no flag of its own."""
 
-    def test_ensure_screen_initialized_skips_when_already_initialized(
-        self, _save_casino_state
-    ):
+    def test_setbottombar_calls_bottombar_init(self, _save_casino_state):
         lib = _save_casino_state
-        lib._screen_initialized = True
-        with patch.object(lib.bbsengine6_bottombar, "init") as init:
-            lib._ensure_screen_initialized()
-            lib._ensure_screen_initialized()
-        init.assert_not_called()
-
-    def test_setbottombar_triggers_screen_init_on_first_call(
-        self, _save_casino_state
-    ):
-        lib = _save_casino_state
-        lib._screen_initialized = False
         with patch.object(lib.bbsengine6_bottombar, "init") as init, \
              patch.object(lib.bottombar, "setbottombar"):
             lib.setbottombar(_make_args(), "casino banner")
         init.assert_called_once_with()
-        assert lib._screen_initialized is True
 
-    def test_setbottombar_does_not_re_init_screen(
-        self, _save_casino_state
-    ):
+    def test_casino_keeps_no_private_init_flag(self, _save_casino_state):
         lib = _save_casino_state
-        lib._screen_initialized = True
-        with patch.object(lib.bbsengine6_bottombar, "init") as init, \
-             patch.object(lib.bottombar, "setbottombar"):
-            lib.setbottombar(_make_args(), "casino banner")
-            lib.setbottombar(_make_args(), "casino banner")
-        init.assert_not_called()
+        assert not hasattr(lib, "_screen_initialized")
+        assert not hasattr(lib, "_ensure_screen_initialized")
 
     def test_clear_bottombar_emits_escape_sequence(self):
         lib = _import_lib()

@@ -446,13 +446,6 @@ _casino_fragments = []
 _current_args = _casino_registry.args
 _current_player = _casino_registry.player
 
-# Mirrors the pattern in bbsengine6.ed.common.ui._screen_initialized:
-# call bottombar.init() exactly once per process so the scroll region
-# (top/bottom margins) is set before any setbottombar() call lands.
-# setbottombar() positions text on ``terminal.lines()`` -- without a
-# scroll region the bottombar would scroll off the visible area when
-# the user types past the bottom of the screen.
-_screen_initialized: bool = False
 
 
 def _casino_player_fragment(**kwargs) -> str:
@@ -501,23 +494,6 @@ def _unregister_casino_fragments() -> None:
     _casino_fragments.clear()
 
 
-def _ensure_screen_initialized() -> None:
-    """Call ``bottombar.init()`` exactly once per process.
-
-    Mirrors :func:`bed.tools.bank._ensure_screen_initialized` and
-    :func:`bbsengine6.ed.common.ui.init_screen`. ``bottombar.init()``
-    sets the terminal scroll region (top/bottom margins) so the bottom
-    bar stays parked on the last line instead of scrolling off when
-    output overflows. setbottombar() positions text on the last line,
-    so calling it before bottombar.init() is a no-op (the bar would be
-    drawn but immediately scrolled away on the next line of output).
-    """
-    global _screen_initialized
-    if not _screen_initialized:
-        bbsengine6_bottombar.init()
-        _screen_initialized = True
-
-
 def _clear_bottombar() -> None:
     """Wipe the bottom row so we don't leak the bar past menu() exit.
 
@@ -536,7 +512,7 @@ def setbottombar(args, buf, **kwargs) -> None:
     global _current_args, _current_player
     player = kwargs.get("player")
     pool = kwargs.get("pool")
-    _ensure_screen_initialized()
+    bbsengine6_bottombar.init()
     # Stash on the per-package registry and on the legacy module globals
     # so any code that still reads `_current_player` / `_current_args`
     # continues to work.

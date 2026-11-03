@@ -231,12 +231,21 @@ def _run_command(name: str, args: Namespace, cmd_argv: list) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Run casino, then restore the full screen (clears the bottombar scroll margins) on any exit."""
+    """Run casino, then restore the terminal on any exit with bottombar.shutdown().
+
+    shutdown() is looked up defensively: an older bbsengine6 without it must not turn a clean exit into a
+    traceback, which would replace the tool's own one-line message.
+    """
     from bbsengine6 import bottombar as _bottombar
     try:
         return _main_run(argv)
     finally:
-        getattr(_bottombar, "_clear_margins", lambda m: getattr(m, "clear", lambda: None)())(_bottombar)
+        shutdown = getattr(_bottombar, "shutdown", None)
+        if callable(shutdown):
+            try:
+                shutdown()
+            except Exception:
+                pass
 
 
 def _main_run(argv: list[str] | None = None) -> int:
