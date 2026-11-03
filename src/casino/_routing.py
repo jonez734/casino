@@ -70,6 +70,13 @@ def build_client_args(parentparser: argparse.ArgumentParser) -> None:
         default=0.25,
         help="bed TCP probe timeout in seconds (default: 0.25)",
     )
+    group.add_argument(
+        "--instance",
+        dest="instance",
+        default=None,
+        metavar="NAME",
+        help="refuse unless the bed that answers reports this name (for example zoid6)",
+    )
 
 
 def select_backend(args) -> Backend:

@@ -231,6 +231,15 @@ def _run_command(name: str, args: Namespace, cmd_argv: list) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Run casino, then restore the full screen (clears the bottombar scroll margins) on any exit."""
+    from bbsengine6 import bottombar as _bottombar
+    try:
+        return _main_run(argv)
+    finally:
+        getattr(_bottombar, "_clear_margins", lambda m: getattr(m, "clear", lambda: None)())(_bottombar)
+
+
+def _main_run(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
 
     # ``casino <command> --version`` prints that command's version. Routed before the
@@ -271,6 +280,10 @@ def main(argv: list[str] | None = None) -> int:
         return _run_command(remaining_argv[0], args, remaining_argv[1:])
 
     _routing.select_backend(args)
+    from bed.tools.auth import _check_instance_name
+
+    if not _check_instance_name(args):
+        return 1
     return _run_bed(args)
 
 
