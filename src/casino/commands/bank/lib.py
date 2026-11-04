@@ -216,8 +216,29 @@ def bank_list_all(args, client=None, **kwargs) -> bool:
     return True
 
 
+def bank_menu(args, client=None, **kwargs):
+    """The bank operations menu, as menu_next options. Each option runs its handler; Q is the exit."""
+    from bbsengine6.menu_next import MenuOption
+
+    def _run(handler):
+        return lambda a: handler(a, client=client, **kwargs)
+
+    return (
+        MenuOption(letter="B", label="Balance", action=_run(bank_balance)),
+        MenuOption(letter="A", label="Add", action=_run(bank_add)),
+        MenuOption(letter="W", label="Withdraw", action=_run(bank_remove)),
+        MenuOption(letter="T", label="Transfer", action=_run(bank_transfer)),
+        MenuOption(letter="P", label="Pending", action=_run(bank_pending)),
+        MenuOption(letter="H", label="History", action=_run(bank_history)),
+        MenuOption(letter="L", label="List all", action=_run(bank_list_all)),
+        MenuOption(letter="Q", label="Quit", action=lambda a: None),
+    )
+
+
 def menu(args, client=None, **kwargs):
     """Show bank operations submenu."""
+    from bbsengine6.menu_next import read_menu
+
     client = _require_authenticated_client(
         client or get_client(), "bank menu"
     )
@@ -225,28 +246,18 @@ def menu(args, client=None, **kwargs):
         return False
 
     while True:
-        # host.choose: LO when hosted, io.inputchoice standalone. Uppercased for the checks below.
-        cmd = (host.choose(
+        # Read through host.choose so a hosting program still owns the terminal input.
+        choice = read_menu(
             "{var:promptcolor}[B]alance  [A]dd  [W]ithdraw  [T]ransfer  [P]ending  [H]istory  [L]ist all  [Q]uit: {var:inputcolor}",
-            "b,a,w,t,p,h,l,q",
-            default="q",
-        ) or "").upper()
-
-        if cmd == "B":
-            bank_balance(args, client=client, **kwargs)
-        elif cmd == "A":
-            bank_add(args, client=client, **kwargs)
-        elif cmd == "W":
-            bank_remove(args, client=client, **kwargs)
-        elif cmd == "T":
-            bank_transfer(args, client=client, **kwargs)
-        elif cmd == "P":
-            bank_pending(args, client=client, **kwargs)
-        elif cmd == "H":
-            bank_history(args, client=client, **kwargs)
-        elif cmd == "L":
-            bank_list_all(args, client=client, **kwargs)
-        elif cmd == "Q":
+            bank_menu(args, client=client, **kwargs),
+            state=args,
+            mode="key",
+            default="Q",
+            # These submenus keep Q as their exit, as they always have; X is not offered here.
+            protected=("Q",),
+            reader=host.choose,
+        )
+        if choice.key == "Q":
             break
 
         if client and client._loop:

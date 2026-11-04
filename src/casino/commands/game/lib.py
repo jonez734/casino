@@ -186,32 +186,46 @@ def play(args, client=None, **kwargs) -> bool:
     return False
 
 
+def game_menu(args, client=None, **kwargs):
+    """The game operations menu, as menu_next options. Each option runs its handler; Q is the exit."""
+    from bbsengine6.menu_next import MenuOption
+
+    def _run(handler):
+        return lambda a: handler(a, client=client, **kwargs)
+
+    return (
+        MenuOption(letter="B", label="Bet", action=_run(bet)),
+        MenuOption(letter="H", label="Hit", action=_run(hit)),
+        MenuOption(letter="S", label="Stand", action=_run(stand)),
+        MenuOption(letter="D", label="Double", action=_run(double)),
+        MenuOption(letter="P", label="Play", action=_run(play)),
+        MenuOption(letter="L", label="Split", action=_run(split)),
+        MenuOption(letter="Q", label="Quit", action=lambda a: None),
+    )
+
+
 def menu(args, client=None, **kwargs):
     """Show game operations submenu."""
+    from bbsengine6.menu_next import read_menu
+
     client = client or get_client()
     if client is None:
         io.echo("Not connected. Use Connect first.", level="error")
         return False
 
     while True:
-        # host.choose: LO when hosted, io.inputchoice standalone. Uppercased for the checks below.
-        cmd = (host.choose(
-            "{var:promptcolor}[B]et  [H]it  [S]tand  [D]ouble  [P]lay  [L]Split  [Q]uit: {var:inputcolor}", "b,h,s,d,p,l,q", default="q"
-        ) or "").upper()
-
-        if cmd == "B":
-            bet(args, client=client, **kwargs)
-        elif cmd == "H":
-            hit(args, client=client, **kwargs)
-        elif cmd == "S":
-            stand(args, client=client, **kwargs)
-        elif cmd == "D":
-            double(args, client=client, **kwargs)
-        elif cmd == "L":
-            split(args, client=client, **kwargs)
-        elif cmd == "P":
-            play(args, client=client, **kwargs)
-        elif cmd == "Q":
+        # Read through host.choose so a hosting program still owns the terminal input.
+        choice = read_menu(
+            "{var:promptcolor}[B]et  [H]it  [S]tand  [D]ouble  [P]lay  [L]Split  [Q]uit: {var:inputcolor}",
+            game_menu(args, client=client, **kwargs),
+            state=args,
+            mode="key",
+            default="Q",
+            # These submenus keep Q as their exit, as they always have; X is not offered here.
+            protected=("Q",),
+            reader=host.choose,
+        )
+        if choice.key == "Q":
             break
 
         if client and client._loop:
