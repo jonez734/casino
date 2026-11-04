@@ -85,7 +85,7 @@ def main(args, **kw):
     # Re-read until the exit runs. X and Q are the exit; Enter takes X as the default.
     while True:
         choice = read_menu(
-            "{var:promptcolor}casino {var:optioncolor}[BSXQ]{var:promptcolor}: {var:inputcolor}",
+            "{var:promptcolor}casino {var:optioncolor}[BSX]{var:promptcolor}: {var:inputcolor}",
             root_menu(**kw),
             state=args,
             mode="key",

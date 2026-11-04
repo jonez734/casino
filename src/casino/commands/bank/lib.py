@@ -231,7 +231,7 @@ def bank_menu(args, client=None, **kwargs):
         MenuOption(letter="P", label="Pending", action=_run(bank_pending)),
         MenuOption(letter="H", label="History", action=_run(bank_history)),
         MenuOption(letter="L", label="List all", action=_run(bank_list_all)),
-        MenuOption(letter="Q", label="Quit", action=lambda a: None),
+        MenuOption(letter="X", label="Exit", aliases=("Q",), action=lambda a: None),
     )
 
 
@@ -248,16 +248,14 @@ def menu(args, client=None, **kwargs):
     while True:
         # Read through host.choose so a hosting program still owns the terminal input.
         choice = read_menu(
-            "{var:promptcolor}[B]alance  [A]dd  [W]ithdraw  [T]ransfer  [P]ending  [H]istory  [L]ist all  [Q]uit: {var:inputcolor}",
+            "{var:promptcolor}[B]alance  [A]dd  [W]ithdraw  [T]ransfer  [P]ending  [H]istory  [L]ist all  [X]it: {var:inputcolor}",
             bank_menu(args, client=client, **kwargs),
             state=args,
             mode="key",
-            default="Q",
-            # These submenus keep Q as their exit, as they always have; X is not offered here.
-            protected=("Q",),
+            default="X",
             reader=host.choose,
         )
-        if choice.key == "Q":
+        if choice.key == "X":
             break
 
         if client and client._loop:

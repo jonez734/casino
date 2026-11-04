@@ -200,7 +200,7 @@ def game_menu(args, client=None, **kwargs):
         MenuOption(letter="D", label="Double", action=_run(double)),
         MenuOption(letter="P", label="Play", action=_run(play)),
         MenuOption(letter="L", label="Split", action=_run(split)),
-        MenuOption(letter="Q", label="Quit", action=lambda a: None),
+        MenuOption(letter="X", label="Exit", aliases=("Q",), action=lambda a: None),
     )
 
 
@@ -216,16 +216,14 @@ def menu(args, client=None, **kwargs):
     while True:
         # Read through host.choose so a hosting program still owns the terminal input.
         choice = read_menu(
-            "{var:promptcolor}[B]et  [H]it  [S]tand  [D]ouble  [P]lay  [L]Split  [Q]uit: {var:inputcolor}",
+            "{var:promptcolor}[B]et  [H]it  [S]tand  [D]ouble  [P]lay  [L]Split  [X]it: {var:inputcolor}",
             game_menu(args, client=client, **kwargs),
             state=args,
             mode="key",
-            default="Q",
-            # These submenus keep Q as their exit, as they always have; X is not offered here.
-            protected=("Q",),
+            default="X",
             reader=host.choose,
         )
-        if choice.key == "Q":
+        if choice.key == "X":
             break
 
         if client and client._loop:

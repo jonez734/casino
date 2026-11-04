@@ -1,12 +1,5 @@
 # Casino - Not Implemented Features
 
-## Casino submenu exit keys: Q or X
-
-See [`handbook/todo/submenu-exit-keys.md`](handbook/todo/submenu-exit-keys.md).
-
-The game and bank submenus read through `menu_next` key mode and keep `Q` as their exit. Decide
-whether they move to the official `X` exit like the root menu.
-
 ## Order-dependent failure in the big-win shout test
 
 `casino/tests/test_slots_table_channel.py::TestSlotsBigWinShout::test_a_big_win_is_shouted_to_a_player_who_is_not_at_the_table`
