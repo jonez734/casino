@@ -1,5 +1,18 @@
 # Casino - Not Implemented Features
 
+## Casino submenu exit keys: Q or X
+
+See [`handbook/todo/submenu-exit-keys.md`](handbook/todo/submenu-exit-keys.md).
+
+The game and bank submenus read through `menu_next` key mode and keep `Q` as their exit. Decide
+whether they move to the official `X` exit like the root menu.
+
+## Order-dependent failure in the big-win shout test
+
+`casino/tests/test_slots_table_channel.py::TestSlotsBigWinShout::test_a_big_win_is_shouted_to_a_player_who_is_not_at_the_table`
+fails in the full file run and passes alone, with the same result before and after the key-mode
+changes. Find the shared state it depends on, and fix the test isolation.
+
 ## Blackjack multi-player test flakes
 
 See [`handbook/todo/multi-player-flakes.md`](handbook/todo/multi-player-flakes.md).
