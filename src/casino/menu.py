@@ -61,7 +61,7 @@ def main(args, **kw):
 
     done = False
     while not done:
-        ch = io.inputchar(
+        ch = io.inputchoice(
             "{var:promptcolor}casino {var:optioncolor}[BSXQ]{var:promptcolor}: {var:inputcolor}",
             "BSX",
             "X",

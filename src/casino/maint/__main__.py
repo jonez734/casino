@@ -33,7 +33,7 @@ def main(args, **kwargs):
         io.echo("{optioncolor}[P]{labelcolor} Player")
         io.echo("{optioncolor}[X]{labelcolor} Exit")
 
-        ch = io.inputchar(
+        ch = io.inputchoice(
             "{var:promptcolor}casino maint: {var:inputcolor}",
             "BTGHQX",
             "",
@@ -69,7 +69,7 @@ def table_maint(args, is_sysop=None):
         io.echo("{optioncolor}[D]{labelcolor} Delete table")
         io.echo("{optioncolor}[X]{labelcolor} Exit")
 
-        ch = io.inputchar(
+        ch = io.inputchoice(
             "{var:promptcolor}table maint: {var:inputcolor}",
             "LSRMEDX",
             "",
@@ -281,7 +281,7 @@ def house_bank_maint(args, is_sysop=None):
         io.echo("{optioncolor}[H]{labelcolor} History")
         io.echo("{optioncolor}[X]{labelcolor} Exit")
 
-        ch = io.inputchar(
+        ch = io.inputchoice(
             "{var:promptcolor}house bank: {var:inputcolor}",
             "SLFWXHX",
             "",
