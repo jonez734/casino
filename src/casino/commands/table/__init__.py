@@ -20,6 +20,26 @@ SUBCOMMANDS = {
     "update": lib.update_table,
 }
 
+
+def _play_verb(verb):
+    """A ``table <verb>`` handler: run the play verb against the seated table, routed by its type."""
+
+    def run(args, **kw):
+        from casino.commands.table import play as _play
+
+        return _play.dispatch(verb, args, **kw)
+
+    run.__name__ = f"table_{verb}"
+    return run
+
+
+# The play verbs. Their meaning depends on the seated table's type (see table/play.py), so each verb
+# routes through the same dispatch rather than to one game's function.
+from casino.commands.table import play as _play_routing  # noqa: E402
+
+for _verb in sorted(_play_routing.union_of_verbs()):
+    SUBCOMMANDS.setdefault(_verb, _play_verb(_verb))
+
 GAME_TYPES = ("blackjack", "poker", "slots", "yahtzee", "tictactoe")
 
 
