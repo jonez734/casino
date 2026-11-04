@@ -1,10 +1,19 @@
 # Casino - Not Implemented Features
 
-## Order-dependent failure in the big-win shout test
+## Order-dependent test failures (shared database state)
 
-`casino/tests/test_slots_table_channel.py::TestSlotsBigWinShout::test_a_big_win_is_shouted_to_a_player_who_is_not_at_the_table`
-fails in the full file run and passes alone, with the same result before and after the key-mode
-changes. Find the shared state it depends on, and fix the test isolation.
+Three tests pass when run alone and fail only in the full run. Each fails the same way on the
+committed code, so none was caused by a recent change. Each depends on database rows left by another
+test:
+
+- `casino/tests/test_slots_table_channel.py::TestSlotsBigWinShout::test_a_big_win_is_shouted_to_a_player_who_is_not_at_the_table`
+  fails in the full file run.
+- `casino/tests/test_new_features_integration.py::TestSurrenderIntegration::test_surrender_integration`
+  fails in the full run with a database connection error.
+- `casino/tests/test_poker_persistence.py::test_blackjack_lobby_excludes_poker_rows`
+  fails with a unique-key collision on `__bank_table_pkey` (`blackjack-bjbed_a` already exists).
+
+Find the shared state each one depends on, and make the test create and clean up its own rows.
 
 ## Blackjack multi-player test flakes
 
