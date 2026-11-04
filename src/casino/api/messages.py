@@ -28,6 +28,8 @@ class MessageType(str, Enum):
     JOIN_TABLE = "join_table"
     LEAVE_TABLE = "leave_table"
     WATCH_TABLE = "watch_table"
+    # Server push: the player's seat (table, type, seated), sent on join, leave, and reconnect.
+    CASINO_TABLE_STATE = "casino_table_state"
     STOP_WATCHING = "stop_watching"
 
     # Gameplay
@@ -320,6 +322,36 @@ def create_message(msg_type: MessageType, **kwargs) -> dict[str, Any]:
     msg = {"type": msg_type.value}
     msg.update(kwargs)
     return msg
+
+
+def table_state_message(*, moniker: str | None, game_type: str | None, seated: bool) -> dict[str, Any]:
+    """The ``casino_table_state`` push: the player's seat, for every game.
+
+    ``moniker`` is the table the player sits at (None when not seated), ``game_type`` its type (None
+    when not seated), and ``seated`` a plain bool. One shape for every game, so the client reads the
+    seat the same way whichever table it is at.
+    """
+    return create_message(
+        MessageType.CASINO_TABLE_STATE,
+        moniker=moniker,
+        game_type=game_type,
+        seated=bool(seated),
+    )
+
+
+async def send_table_state(websocket: Any, *, moniker: str | None, game_type: str | None, seated: bool) -> None:
+    """Send ``casino_table_state`` to one session. A failed send is reported, never raised, so a dead
+    socket never fails the seat change that triggered it."""
+    import json
+
+    from bbsengine6 import io
+
+    try:
+        await websocket.send(json.dumps(table_state_message(
+            moniker=moniker, game_type=game_type, seated=seated,
+        )))
+    except Exception as e:
+        io.echo(f"table state push failed: {e}", level="warning")
 
 
 def error_message(code: ErrorCode, message: str) -> dict[str, Any]:

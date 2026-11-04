@@ -13,6 +13,7 @@ from types import SimpleNamespace
 import pytest
 
 from casino.api import handler as h
+from casino.api.messages import send_table_state
 
 
 pytestmark = pytest.mark.unit
@@ -49,7 +50,7 @@ def test_state_message_when_not_seated_has_no_table():
 def test_push_sends_to_the_given_session_only():
     obj = _handler()
     mine, other = FakeSocket(1), FakeSocket(2)
-    asyncio.run(obj._push_table_state(mine, moniker="poker-a", game_type="poker", seated=True))
+    asyncio.run(send_table_state(mine, moniker="poker-a", game_type="poker", seated=True))
     assert mine.sent == [{"type": "casino_table_state", "moniker": "poker-a",
                           "game_type": "poker", "seated": True}]
     assert other.sent == []
@@ -64,7 +65,7 @@ def test_push_failure_is_logged_not_raised():
 
     obj = _handler()
     # A dead socket must not fail the join or leave that triggered the push.
-    asyncio.run(obj._push_table_state(Broken(), moniker=None, game_type=None, seated=False))
+    asyncio.run(send_table_state(Broken(), moniker=None, game_type=None, seated=False))
 
 
 class _StubTables:

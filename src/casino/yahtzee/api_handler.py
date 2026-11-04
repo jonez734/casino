@@ -20,6 +20,7 @@ from typing import Any, Optional
 from bbsengine6 import io
 
 from casino.api._auth import check_access as _check_access_pipeline
+from casino.api.messages import send_table_state
 
 from .service import YahtzeeService
 
@@ -123,6 +124,7 @@ class YahtzeeServiceHandler:
             table_moniker = result.get("table_moniker")
             if table_moniker:
                 self._set_seated(websocket, table_moniker)
+                await send_table_state(websocket, moniker=table_moniker, game_type="yahtzee", seated=True)
             result = dict(result)
             result["type"] = "yahtzee_state"
             await self._broadcast(server, result)

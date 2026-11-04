@@ -18,6 +18,7 @@ from typing import Any, Optional
 from bbsengine6 import io
 
 from casino.api._auth import check_access as _check_access_pipeline
+from casino.api.messages import send_table_state
 
 from .service import TictactoeService
 
@@ -116,6 +117,7 @@ class TictactoeServiceHandler:
             table_moniker = result.get("table_moniker")
             if table_moniker:
                 self._set_seated(websocket, table_moniker)
+                await send_table_state(websocket, moniker=table_moniker, game_type="tictactoe", seated=True)
             await self._broadcast(server, result)
             # Mode 0: kick off self-play and stream the resulting
             # states.

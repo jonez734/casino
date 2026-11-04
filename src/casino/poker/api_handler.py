@@ -20,6 +20,7 @@ from typing import Any, Optional
 from bbsengine6 import io
 
 from casino.api._auth import check_access as _check_access_pipeline
+from casino.api.messages import send_table_state
 
 from ..services.poker import PokerService
 
@@ -132,6 +133,7 @@ class PokerServiceHandler:
                     self._set_seated(websocket, table_moniker)
                     self._subscribe_table(websocket, table_moniker)
                     self._sync_announcers(table_moniker, moniker)
+                    await send_table_state(websocket, moniker=table_moniker, game_type="poker", seated=True)
                 return _envelope("poker_joined_table", result, table_moniker=table_moniker)
 
             table_moniker = getattr(state, "table_moniker", None) or self._seated_table(websocket)
@@ -144,6 +146,7 @@ class PokerServiceHandler:
                     self._set_seated(websocket, None)
                     self._unsubscribe_table(websocket, table_moniker)
                     self._sync_announcers(table_moniker, moniker)
+                    await send_table_state(websocket, moniker=None, game_type=None, seated=False)
                 return _envelope("poker_left_table", result, table_moniker=table_moniker)
 
             if msg_type == "poker_start_hand":
