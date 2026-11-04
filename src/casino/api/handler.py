@@ -81,6 +81,21 @@ def _round_settled_payload(settled: dict[str, Any], moniker: Optional[str]) -> d
     }
 
 
+def table_state_message(*, moniker, game_type, seated) -> dict:
+    """The ``casino_table_state`` push: the player's seat, sent on join and leave.
+
+    ``moniker`` is the table the player sits at (None when not seated), ``game_type`` its type
+    (None when not seated), and ``seated`` a plain bool. The client uses it to build its menu and to
+    route table verbs; it never guesses the seat from the join reply.
+    """
+    return {
+        "type": "casino_table_state",
+        "moniker": moniker,
+        "game_type": game_type,
+        "seated": bool(seated),
+    }
+
+
 class CasinoSessionManager(SessionManager):
     """Extends base SessionManager with table/spectator tracking.
 
@@ -712,10 +727,17 @@ class TableServiceHandler(BaseService):
 
             # Subscribe the seat to the table's events and chat channels, and keep the events
             # announcers equal to the seats.
+            from casino.services import table_channels as _tc
             if self.channel_state:
-                from casino.services import table_channels as _tc
                 _tc.subscribe_seat(self.channel_state, self._legacy_session_id(websocket), table_moniker)
             _tc.sync_announcers(self.args, table_moniker, owner=state.moniker)
+
+            await self._push_table_state(
+                websocket,
+                moniker=result["moniker"],
+                game_type=result.get("game_type"),
+                seated=True,
+            )
 
             return {
                 "type": "joined_table",
@@ -791,10 +813,11 @@ class TableServiceHandler(BaseService):
         if result["success"]:
             self._set_seated(websocket, None)
             # Unsubscribe from the table's events and chat channels, and drop the seat's announcer.
+            from casino.services import table_channels as _tc
             if self.channel_state:
-                from casino.services import table_channels as _tc
                 _tc.unsubscribe_table(self.channel_state, self._legacy_session_id(websocket), table_moniker)
             _tc.sync_announcers(self.args, table_moniker, owner=state.moniker)
+            await self._push_table_state(websocket, moniker=None, game_type=None, seated=False)
 
         return {
             "type": "left_table",
@@ -920,6 +943,18 @@ class TableServiceHandler(BaseService):
                 _tc.unsubscribe_table(self.channel_state, self._legacy_session_id(websocket), table_moniker)
 
         return {"type": "stopped_watching", "message": "Stopped watching"}
+
+    async def _push_table_state(
+        self, websocket: Any, *, moniker: Optional[str], game_type: Optional[str], seated: bool
+    ) -> None:
+        """Send ``casino_table_state`` to ``websocket`` only. A failed send is logged, not raised,
+        so a dead socket never fails the join or leave that triggered it."""
+        try:
+            await websocket.send(json.dumps(table_state_message(
+                moniker=moniker, game_type=game_type, seated=seated,
+            )))
+        except Exception as e:
+            io.echo(f"table state push failed: {e}", level="warning")
 
     def _set_seated(self, websocket: Any, table_moniker: Optional[str]) -> None:
         """Mirror ``join_table`` / ``leave_table`` into both session stores."""
