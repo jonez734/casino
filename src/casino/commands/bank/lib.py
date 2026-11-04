@@ -248,7 +248,7 @@ def menu(args, client=None, **kwargs):
     while True:
         # Read through host.choose so a hosting program still owns the terminal input.
         choice = read_menu(
-            "{var:promptcolor}[B]alance  [A]dd  [W]ithdraw  [T]ransfer  [P]ending  [H]istory  [L]ist all  [X]it: {var:inputcolor}",
+            "{var:promptcolor}[B]alance  [A]dd  [W]ithdraw  [T]ransfer  [P]ending  [H]istory  [L]ist all  [X] Exit: {var:inputcolor}",
             bank_menu(args, client=client, **kwargs),
             state=args,
             mode="key",

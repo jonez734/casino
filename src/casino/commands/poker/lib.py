@@ -242,10 +242,12 @@ def menu(args, client=None, **kwargs):
         # host.choose: LO when hosted, io.inputchoice standalone. Uppercased for the checks below.
         cmd = (host.choose(
             "{var:promptcolor}[S]tart  [C]heck  [L]call  [B]et  [R]aise  [A]ll-in  [F]old  "
-            "[T]able  [Q]uit: {var:inputcolor}",
-            "s,c,l,b,r,a,f,t,q",
-            default="q"
+            "[T]able  [X] Exit: {var:inputcolor}",
+            "s,c,l,b,r,a,f,t,x",
+            default="x"
         ) or "").upper()
+        if cmd == "Q":  # Q is the BC alias of X
+            cmd = "X"
 
         if cmd == "S":
             start_hand(args, client=client, **kwargs)
@@ -263,7 +265,7 @@ def menu(args, client=None, **kwargs):
             fold(args, client=client, **kwargs)
         elif cmd == "T":
             show_table(args, client=client, **kwargs)
-        elif cmd == "Q":
+        elif cmd == "X":
             break
 
         if client and client._loop:

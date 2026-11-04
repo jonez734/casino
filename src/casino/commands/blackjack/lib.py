@@ -16,15 +16,17 @@ def menu(args, **kwargs):
     """Show blackjack subcommand help."""
     io.echo("{title}Blackjack{normal}")
     io.echo("  [P]lay   start a new blackjack session")
-    io.echo("  [Q]uit   return to the main menu")
+    io.echo("  [X] Exit   return to the main menu")
     io.echo()
 
     # host.choose: LO when hosted, io.inputchoice standalone. Uppercased for the checks below.
     cmd = (host.choose(
-        "{var:promptcolor}[P]lay  [Q]uit: {var:inputcolor}",
-        "p,q",
-        default="q",
+        "{var:promptcolor}[P]lay  [X] Exit: {var:inputcolor}",
+        "p,x",
+        default="x",
     ) or "").upper()
+    if cmd == "Q":  # Q is the BC alias of X
+        cmd = "X"
 
     if cmd == "P":
         play(args, **kwargs)

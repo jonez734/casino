@@ -95,14 +95,14 @@ def test_submenus_read_through_the_host_reader(monkeypatch):
     # Q is accepted as an alias of X, so it is in the accepted keys. The menu shows only X.
     assert seen and set(seen[0]) >= set("BDHLPSX")
     source = pathlib.Path(game.__file__).read_text()
-    assert "[X]it: " in source
+    assert "[X] Exit: " in source
     assert "[Q]uit" not in source
 
 
 @pytest.mark.parametrize("module", [game, bank])
 def test_prompt_shows_x_and_not_q(module):
     source = pathlib.Path(module.__file__).read_text()
-    assert "[X]it: " in source
+    assert "[X] Exit: " in source
     assert "[Q]uit" not in source
 
 

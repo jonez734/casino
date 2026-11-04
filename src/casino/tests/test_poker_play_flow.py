@@ -171,7 +171,7 @@ def test_submenu_offers_the_actions_a_player_needs():
 
     with patch.object(poker_lib.io, "inputchoice", side_effect=fake_choice):
         poker_lib.menu(argparse.Namespace(), client=MagicMock(_loop=None))
-    assert keys == ["s,c,l,b,r,a,f,t,q"]
+    assert keys == ["s,c,l,b,r,a,f,t,x"]
 
 
 def test_submenu_start_and_call_send_the_daemon_messages():

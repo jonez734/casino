@@ -165,10 +165,12 @@ def menu(args, client=None, **kwargs):
     while True:
         # host.choose: LO when hosted, io.inputchoice standalone. Uppercased for the checks below.
         cmd = (host.choose(
-            "{var:promptcolor}[T]ables  [C]reate  [J]oin  [L]eave  [U]pdate  [V]iew  [Q]uit: {var:inputcolor}",
-            "t,c,j,l,u,v,q",
-            default="q",
+            "{var:promptcolor}[T]ables  [C]reate  [J]oin  [L]eave  [U]pdate  [V]iew  [X] Exit: {var:inputcolor}",
+            "t,c,j,l,u,v,x",
+            default="x",
         ) or "").upper()
+        if cmd == "Q":  # Q is the BC alias of X
+            cmd = "X"
 
         if cmd == "T":
             list_tables(args, client=client, **kwargs)
@@ -182,7 +184,7 @@ def menu(args, client=None, **kwargs):
             update_table(args, client=client, **kwargs)
         elif cmd == "V":
             view_table(args, client=client, **kwargs)
-        elif cmd == "Q":
+        elif cmd == "X":
             break
 
         if client and client._loop:

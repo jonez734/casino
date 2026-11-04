@@ -216,7 +216,7 @@ def menu(args, client=None, **kwargs):
     while True:
         # Read through host.choose so a hosting program still owns the terminal input.
         choice = read_menu(
-            "{var:promptcolor}[B]et  [H]it  [S]tand  [D]ouble  [P]lay  [L]Split  [X]it: {var:inputcolor}",
+            "{var:promptcolor}[B]et  [H]it  [S]tand  [D]ouble  [P]lay  [L]Split  [X] Exit: {var:inputcolor}",
             game_menu(args, client=client, **kwargs),
             state=args,
             mode="key",

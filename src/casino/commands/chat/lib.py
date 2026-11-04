@@ -44,13 +44,15 @@ def menu(args, client=None, **kwargs):
         return False
 
     while True:
-        cmd = (host.choose("{var:promptcolor}[G]lobal  [T]able  [Q]uit: {var:inputcolor}", "g,t,q", default="q") or "").upper()
+        cmd = (host.choose("{var:promptcolor}[G]lobal  [T]able  [X] Exit: {var:inputcolor}", "g,t,x", default="x") or "").upper()
+        if cmd == "Q":  # Q is the BC alias of X
+            cmd = "X"
 
         if cmd == "G":
             chat(args, client=client, **kwargs)
         elif cmd == "T":
             table_chat(args, client=client, **kwargs)
-        elif cmd == "Q":
+        elif cmd == "X":
             break
 
         if client and client._loop:

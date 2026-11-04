@@ -110,7 +110,9 @@ def menu(args, client=None, **kwargs):
         return False
 
     while True:
-        cmd = (host.choose("{var:promptcolor}[W]atch  [U]nwatch  [K]ick  [Q]uit: {var:inputcolor}", "w,u,k,q", default="q") or "").upper()
+        cmd = (host.choose("{var:promptcolor}[W]atch  [U]nwatch  [K]ick  [X] Exit: {var:inputcolor}", "w,u,k,x", default="x") or "").upper()
+        if cmd == "Q":  # Q is the BC alias of X
+            cmd = "X"
 
         if cmd == "W":
             watch_table(args, client=client, **kwargs)
@@ -118,7 +120,7 @@ def menu(args, client=None, **kwargs):
             unwatch_table(args, client=client, **kwargs)
         elif cmd == "K":
             kick_player(args, client=client, **kwargs)
-        elif cmd == "Q":
+        elif cmd == "X":
             break
 
         if client and client._loop:

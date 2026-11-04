@@ -35,7 +35,7 @@ def _render_help(**kwargs) -> None:
     """
     util.heading("Yahtzee")
     io.echo("{var:optioncolor}[P]{var:labelcolor}lay a yahtzee session")
-    io.echo("{var:optioncolor}[Q]{var:labelcolor}uit to main menu")
+    io.echo("{var:optioncolor}[X]{var:labelcolor} Exit to main menu")
 
 
 def menu(args, **kwargs):
@@ -44,11 +44,13 @@ def menu(args, **kwargs):
     _render_help()
     # host.choose: LO when hosted, io.inputchoice standalone. Uppercased for the checks below.
     cmd = (host.choose(
-        "{var:promptcolor}[P]lay  [Q]uit: {var:inputcolor}",
-        "p,q",
-        default="q",
+        "{var:promptcolor}[P]lay  [X] Exit: {var:inputcolor}",
+        "p,x",
+        default="x",
         help=_render_help,
     ) or "").upper()
+    if cmd == "Q":  # Q is the BC alias of X
+        cmd = "X"
 
     if cmd == "P":
         play(args, **kwargs)
