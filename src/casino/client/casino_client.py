@@ -193,6 +193,15 @@ class CasinoClient:
             else:
                 break
 
+    def _apply_table_state(self, msg: dict) -> None:
+        """Store the server's seat state in the table fields the client already reads."""
+        if msg.get("seated"):
+            self.current_table_moniker = msg.get("moniker") or None
+            self.current_table_game_type = msg.get("game_type") or None
+        else:
+            self.current_table_moniker = None
+            self.current_table_game_type = None
+
     async def handle_message(self, msg: dict) -> None:
         """Handle incoming message."""
         msg_type = msg.get("type")
@@ -358,6 +367,16 @@ class CasinoClient:
                 self.current_table_moniker = None
                 self.current_table_game_type = None
                 self.current_table_deadline = None
+
+        elif msg_type == "casino_table_state":
+            # The server's seat state, pushed on join and leave. It is the single source the client
+            # reads for its table and type, so the menu and table verbs agree with the server.
+            self._apply_table_state(msg)
+
+        elif msg_type == "left_table":
+            # The server also pushes casino_table_state on leave; clearing here keeps the client
+            # correct even if that push is missed.
+            self._apply_table_state({"moniker": None, "game_type": None, "seated": False})
 
         elif msg_type == "joined_table":
             moniker = msg.get("moniker", "")
