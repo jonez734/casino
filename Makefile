@@ -295,7 +295,7 @@ venv:
 	"$(VENV_DIR)/bin/python" -m build --wheel --outdir "$$wheels" "$$work/src" && \
 	whl="$$(ls "$$wheels"/*.whl)" && \
 	want="$$(unzip -p "$$whl" '*/METADATA' | sed -n 's/^Version: //p' | head -1)" && \
-	"$(VENV_DIR)/bin/python" -m pip install --upgrade --force-reinstall --no-deps "$$whl" && \
+	"$(VENV_DIR)/bin/python" -m pip install --upgrade --force-reinstall "$$whl" && \
 	have="$$("$(VENV_DIR)/bin/python" -c 'from casino._version import version as v; print(v)')" && \
 	if [ "$$have" != "$$want" ]; then echo "venv: installed casino $$have, but the wheel is $$want" >&2; exit 1; fi && \
 	echo "casino $$want installed into $(VENV_DIR)"

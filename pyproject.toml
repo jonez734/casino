@@ -68,7 +68,8 @@ package-dir = { "" = "src" }
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["casino*"]
-namespaces = false
+exclude = ["casino.sql", "casino.sql.*", "casino.docs", "casino.docs.*", "casino.tk", "casino.tk.*"]
+namespaces = true
 
 [tool.setuptools.package-data]
 casino = ["sql/*.sql", "sql/objects.json", "data/*.json"]
