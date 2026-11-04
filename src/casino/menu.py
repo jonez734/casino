@@ -1,4 +1,5 @@
 from bbsengine6 import io, member, register, util
+from bbsengine6.menu_next import MenuOption, read_menu
 
 from . import lib as libcasino
 from .dal import player as dal_player
@@ -52,6 +53,28 @@ def show_player_stats(args, **kw) -> None:
         )
 
 
+def _blackjack(args, **kw):
+    io.echo("blackjack")
+    libcasino.runmodule(args, "blackjack")
+
+
+def _stats(args, **kw):
+    show_player_stats(args, **kw)
+
+
+def _exit(args, **kw):
+    return None
+
+
+def root_menu(**kw):
+    """The casino root menu. Each option carries its own action; X is the protected exit, Q its alias."""
+    return (
+        MenuOption(letter="B", label="Blackjack", action=lambda args: _blackjack(args, **kw)),
+        MenuOption(letter="S", label="Stats", action=lambda args: _stats(args, **kw)),
+        MenuOption(letter="X", label="Exit", aliases=("Q",), action=lambda args: _exit(args)),
+    )
+
+
 def main(args, **kw):
     util.heading("casino")
     libcasino.setarea(args, "casino")
@@ -59,20 +82,15 @@ def main(args, **kw):
     io.echo("{optioncolor}[S]{labelcolor} Stats")
     io.echo("{f6}{optioncolor}[X]{labelcolor} Exit{f6}")
 
-    done = False
-    while not done:
-        ch = io.inputchoice(
+    # Re-read until the exit runs. X and Q are the exit; Enter takes X as the default.
+    while True:
+        choice = read_menu(
             "{var:promptcolor}casino {var:optioncolor}[BSXQ]{var:promptcolor}: {var:inputcolor}",
-            "BSX",
-            "X",
+            root_menu(**kw),
+            state=args,
+            mode="key",
+            default="X",
+            reader=io.inputchoice,
         )
-        if ch == "B":
-            io.echo("blackjack")
-            libcasino.runmodule(args, "blackjack")
-        elif ch == "S":
-            show_player_stats(args, **kw)
-        elif ch == "X" or ch == "Q":
-            done = True
-        else:
-            io.echo("{bell}")
-    return True
+        if choice.key == "X":
+            return True
