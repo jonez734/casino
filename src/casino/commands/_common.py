@@ -153,6 +153,25 @@ def show_version(name: str, version: str) -> bool:
     return True
 
 
+def positive_int(text: str) -> int:
+    """argparse type for a count of one or more. Refuses zero, negatives, and non-numbers."""
+    try:
+        value = int(text)
+    except (TypeError, ValueError):
+        raise argparse.ArgumentTypeError(f"expected a whole number, got {text!r}")
+    if value < 1:
+        raise argparse.ArgumentTypeError(f"must be at least 1, got {value}")
+    return value
+
+
+def add_rounds(parser: argparse.ArgumentParser) -> None:
+    """``--rounds=<n>``: how many menu actions a submenu runs before it returns."""
+    parser.add_argument(
+        "--rounds", type=positive_int, default=None, dest="rounds",
+        help="run up to N menu actions before returning (default: one)",
+    )
+
+
 def build_parser(
     prog: str,
     subcommands: Optional[Iterable[str]] = None,

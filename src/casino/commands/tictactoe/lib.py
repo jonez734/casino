@@ -76,11 +76,17 @@ def menu(args, client=None, **kwargs) -> None:
     if client is None:
         io.echo("Not connected. Use Connect first.", level="error")
         return
-    read_menu(
-        "{var:promptcolor}[U]uickplay  [J]oin  [X] Exit: {var:inputcolor}",
-        _tictactoe_options(args, client, **kwargs),
-        state=client,
-        mode="key",
-        default="X",
-        reader=host.choose,
-    )
+    # Without --rounds the menu runs one action and returns. With --rounds=N it keeps reading keys
+    # for up to N actions; X (Q alias) exits at any point.
+    limit = kwargs.get("rounds") or 1
+    for _ in range(limit):
+        choice = read_menu(
+            "{var:promptcolor}[U]uickplay  [J]oin  [X] Exit: {var:inputcolor}",
+            _tictactoe_options(args, client, **kwargs),
+            state=client,
+            mode="key",
+            default="X",
+            reader=host.choose,
+        )
+        if choice.key == "X":
+            break

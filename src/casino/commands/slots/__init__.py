@@ -44,7 +44,7 @@ def version(args, **kw) -> str:
 
 
 def buildargs(args, **kw):
-    return _common.build_parser("slots", subcommands=SUBCOMMANDS)
+    return _common.build_parser("slots", subcommands=SUBCOMMANDS, extra=_common.add_rounds)
 
 
 def main(args, **kw) -> bool:

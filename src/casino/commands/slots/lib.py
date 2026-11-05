@@ -231,17 +231,21 @@ def menu(args: argparse.Namespace, client=None, **kwargs):
 
     util.heading("Slots")
     _render_help(client=client)
-    # Read through host.choose so a hosting program still owns the terminal input. Key mode runs the
-    # matched option's action; X (Q alias) is the protected exit.
-    read_menu(
-        "{var:promptcolor}[S]pin  [P]aytable  [H]istory  [X] Exit: {var:inputcolor}",
-        _slots_options(args, client, **kwargs),
-        state=client,
-        mode="key",
-        default="X",
-        help=_render_help,
-        reader=host.choose,
-    )
+    # Without --rounds the menu runs one action and returns. With --rounds=N it keeps reading keys
+    # for up to N actions; X (Q alias) exits at any point.
+    limit = kwargs.get("rounds") or 1
+    for _ in range(limit):
+        choice = read_menu(
+            "{var:promptcolor}[S]pin  [P]aytable  [H]istory  [X] Exit: {var:inputcolor}",
+            _slots_options(args, client, **kwargs),
+            state=client,
+            mode="key",
+            default="X",
+            help=_render_help,
+            reader=host.choose,
+        )
+        if choice.key == "X":
+            break
     return True
 
 
