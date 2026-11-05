@@ -339,6 +339,40 @@ The main menu is read with `bbsengine6.menu_next.read_menu(..., reader=host.read
 so its rules (aliases, subcommands, typed arguments, the check gate) are the same in
 both modes. Only the terminal input differs.
 
+### 6.05 Table verbs and submenus
+
+**Table verbs.** A seated table's actions are `table <verb>`, routed by the table's type.
+Each game package declares its own `TABLE_VERBS` (verb name to implementation).
+`commands/table/play.py` gathers them by table type through `_GAME_PACKAGES`; the
+client menu reads the same declarations, so a verb's allowed table types cannot
+disagree between dispatch and menu. Nothing lists a game's verbs anywhere else.
+
+| Table type  | `TABLE_VERBS`                                        |
+|-------------|------------------------------------------------------|
+| blackjack   | bet, hit, stand, double, split, play                 |
+| poker       | bet, check, call, raise, fold, allin, start          |
+| tictactoe   | move, resign                                         |
+
+`play` (blackjack, the seated-table action) and `start` (poker, deal the hand) are
+different actions and stay separate. `quickplay` and `join` are tictactoe subcommands,
+not table verbs.
+
+**Submenus.** `slots` and `tictactoe` read their menus through `read_menu(mode="key")`.
+Each option carries its `action`. `X` is the protected exit and `Q` is its alias.
+
+- Without `--rounds`, a submenu reads one key, runs it, and returns.
+- With `--rounds=<n>`, it keeps reading keys for up to `n` actions. `X` or `Q` exits
+  at any point. `n` must be a whole number of at least 1; zero or a non-number is
+  refused at parse time.
+
+The main client menu has a `slots` option, beside `bank`, shown only when connected.
+Its verbs (spin, paytable, history) sit under the option.
+
+**Slot wire types.** `SlotServiceHandler.SLOT_MSG_TYPES` declares the slot wire types
+(`slot_spin`, `slot_paytable`, `slot_history`, `slot_table_history`). The server
+registration reads that tuple, so the declaration and the registration cannot drift.
+Tictactoe declares its types the same way (`TictactoeServiceHandler.TICTACTOE_MSG_TYPES`).
+
 ### 6.1 Menu rendering contract
 
 The main menu is a word-keyed `bbsengine6.menu_next` menu, read with
