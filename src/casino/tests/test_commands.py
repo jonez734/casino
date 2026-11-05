@@ -236,7 +236,7 @@ class TestCasinoClientExtensions(unittest.TestCase):
 class TestSlotsMenuVisibility(unittest.TestCase):
     """Slots submenu must hide [S]pin / [P]aytable unless the player
     is seated at a slots table. [H]istory is player-scope so it stays
-    visible from any state; [Q]uit is unconditional.
+    visible from any state; [X] Exit is unconditional (Q is its alias).
     """
 
     def test_no_table_shows_only_history_and_quit(self):
@@ -244,7 +244,7 @@ class TestSlotsMenuVisibility(unittest.TestCase):
 
         visible = "".join(t[0].upper() for t in _visible_slots_options(None))
         self.assertIn("H", visible)
-        self.assertIn("Q", visible)
+        self.assertIn("X", visible)
         self.assertNotIn("S", visible)
         self.assertNotIn("P", visible)
 
@@ -255,7 +255,7 @@ class TestSlotsMenuVisibility(unittest.TestCase):
             client = SimpleNamespace(current_table_moniker="tbl", current_table_game_type=gt)
             visible = "".join(t[0].upper() for t in _visible_slots_options(client))
             self.assertIn("H", visible)
-            self.assertIn("Q", visible)
+            self.assertIn("X", visible)
             self.assertNotIn("S", visible, f"S should be hidden at {gt} table")
             self.assertNotIn("P", visible, f"P should be hidden at {gt} table")
 
@@ -264,7 +264,7 @@ class TestSlotsMenuVisibility(unittest.TestCase):
 
         client = SimpleNamespace(current_table_moniker="tbl", current_table_game_type="slots")
         visible = "".join(t[0].upper() for t in _visible_slots_options(client))
-        self.assertEqual(visible, "SPHQ")
+        self.assertEqual(visible, "SPHX")
 
     def test_post_join_window_keeps_spin_paytable_hidden(self):
         from casino.commands.slots.lib import _visible_slots_options
@@ -272,7 +272,7 @@ class TestSlotsMenuVisibility(unittest.TestCase):
         client = SimpleNamespace(current_table_moniker="tbl", current_table_game_type=None)
         visible = "".join(t[0].upper() for t in _visible_slots_options(client))
         self.assertIn("H", visible)
-        self.assertIn("Q", visible)
+        self.assertIn("X", visible)
         self.assertNotIn("S", visible)
         self.assertNotIn("P", visible)
 

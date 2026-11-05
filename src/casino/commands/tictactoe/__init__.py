@@ -16,6 +16,13 @@ SUBCOMMANDS = {
     "resign": lib.resign,
 }
 
+# The verbs a seated tictactoe table accepts through ``table <verb>``. ``quickplay`` and ``join`` are
+# not table verbs: quickplay starts a table, join takes the open seat before the game is seated.
+TABLE_VERBS = {
+    "move": lib.move,
+    "resign": lib.resign,
+}
+
 
 def _echo_error(message):
     """Report an ambiguous subcommand through this package's own ``io``."""

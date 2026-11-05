@@ -52,12 +52,8 @@ _GAME_SUBS = {
 
 _TTT_SUBS = {
     "quickplay": _sub("quickplay", "Quick play (tictactoe, vs AI)", _TTT, op="quickplay"),
-    "move": _sub("move", "Move    (tictactoe cell 0-8)", _TTT, op="move",
-                 requires_seated=True, allowed_game_types=_TTT_ONLY),
     "join": _sub("join", "Join    (join tictactoe as 'O')", _TTT, op="join",
                  requires_seated=True, allowed_game_types=_TTT_ONLY),
-    "resign": _sub("resign", "Resign  (forfeit tictactoe)", _TTT, op="resign",
-                   requires_seated=True, allowed_game_types=_TTT_ONLY),
 }
 
 _ADMIN_SUBS = {
@@ -111,6 +107,8 @@ _TABLE_PLAY_SUBS = {
     "fold": _play_verb_sub("fold", "Fold    (poker: give up the hand)"),
     "allin": _play_verb_sub("allin", "All-in (poker: bet everything)"),
     "start": _play_verb_sub("start", "Start   (poker: deal the hand)"),
+    "move": _play_verb_sub("move", "Move    (tictactoe: place a mark, cell 0-8)"),
+    "resign": _play_verb_sub("resign", "Resign  (tictactoe: forfeit the game)"),
 }
 
 _TABLE_SUBS = {
@@ -141,8 +139,8 @@ _OPTIONS_SPEC = (
                sysop_only=True, subcommands=_ADMIN_SUBS),
     MenuOption("tictactoe", "Tictactoe (quick play, move, join, resign)", _TTT,
                op="quickplay", subcommands=_TTT_SUBS,
-               aliases=("ttt", "move", "resign"),
-               alias_subcommand={"ttt": "quickplay", "move": "move", "resign": "resign"}),
+               aliases=("ttt",),
+               alias_subcommand={"ttt": "quickplay"}),
     MenuOption("game", "Game    (bet, hit, stand, double, split)", _GAME,
                op="bet", subcommands=_GAME_SUBS),
     MenuOption("quit", "Quit", None),

@@ -18,6 +18,7 @@ from typing import Callable, Optional
 _GAME_PACKAGES = {
     "blackjack": "casino.commands.blackjack",
     "poker": "casino.commands.poker",
+    "tictactoe": "casino.commands.tictactoe",
 }
 
 
