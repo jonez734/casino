@@ -244,7 +244,12 @@ def handle_spin(
                 ),
             )
             row = cur.fetchone()
-        settled = row[0] if row else None
+        # database.cursor returns dict rows, so the value is read by its column name. The
+        # positional row[0] raised KeyError: 0 and turned every settled spin into service_error.
+        if isinstance(row, dict):
+            settled = row.get("casino_settle_spin")
+        else:
+            settled = row[0] if row else None
         if isinstance(settled, str):
             import json as _json
 
