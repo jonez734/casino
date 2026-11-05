@@ -83,7 +83,7 @@ def test_auth_prompt_reuses_bed_collect_credentials():
         return ("alice", "s3cret")
 
     class FakeConn:
-        def __init__(self, args):
+        def __init__(self, args, probe_terminal=None):
             pass
 
         def force_close(self):
@@ -155,7 +155,7 @@ def test_auth_prompt_does_not_re_prompt_directly():
     import bbsengine6.util as _bbsutil
 
     class FakeConn:
-        def __init__(self, args):
+        def __init__(self, args, probe_terminal=None):
             pass
 
         def force_close(self):
@@ -228,7 +228,7 @@ def test_auth_prompt_writes_token_via_bed_persist():
         return True
 
     class FakeConn:
-        def __init__(self, args):
+        def __init__(self, args, probe_terminal=None):
             pass
 
         def force_close(self):
@@ -394,7 +394,7 @@ def test_auth_prompt_token_envelope_is_reconnect_not_auth():
     from casino import auth
 
     class FakeConn:
-        def __init__(self, args):
+        def __init__(self, args, probe_terminal=None):
             pass
 
         def force_close(self):

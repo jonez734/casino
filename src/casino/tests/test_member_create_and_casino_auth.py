@@ -295,7 +295,7 @@ class TestCasinoAuthPromptSendsCredentials(unittest.IsolatedAsyncioTestCase):
             }
 
         class _FakeConn:
-            def __init__(self, args):
+            def __init__(self, args, probe_terminal=None):
                 pass
 
             def force_close(self):

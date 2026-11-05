@@ -64,7 +64,7 @@ class TestAuthPromptDefault(unittest.TestCase):
             class FakeOneShotConn:
                 _instance_count = 0
 
-                def __init__(self, args):
+                def __init__(self, args, probe_terminal=None):
                     FakeOneShotConn._instance_count += 1
                     self.id = FakeOneShotConn._instance_count
 
@@ -184,7 +184,7 @@ class TestAuthPromptDefault(unittest.TestCase):
                 rendered.append(reply)
 
             class FakeOneShotConn:
-                def __init__(self, args):
+                def __init__(self, args, probe_terminal=None):
                     pass
 
                 def force_close(self):
@@ -233,7 +233,7 @@ class TestAuthPromptDefault(unittest.TestCase):
             args.token_file = None
 
             class FakeOneShotConn:
-                def __init__(self, args):
+                def __init__(self, args, probe_terminal=None):
                     pass
 
                 def force_close(self):

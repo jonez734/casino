@@ -133,7 +133,8 @@ async def auth_prompt(args: argparse.Namespace, client: CasinoClient) -> bool:
     except RuntimeError:
         return False
 
-    one_shot_conn = BedConnection(bed_args)
+    # One-shot credential check: no terminal report, so no probe or extra message.
+    one_shot_conn = BedConnection(bed_args, probe_terminal=False)
     try:
         auth_svc = BedAuthServiceClient(one_shot_conn)
         reply = await auth_svc.login(moniker, password)
