@@ -12,6 +12,7 @@ sys.path.insert(0, "/home/opencode/data/work/casino/src")
 
 
 from casino import lib
+from casino.tests._ws_replies import receive_join_reply
 from casino.tests import _dbname
 from casino.tests.test_blackjack_flow import WebSocketTestClient
 
@@ -160,7 +161,7 @@ class TestSurrenderIntegration(BaseIntegrationTest):
             table_id = response["moniker"]
 
             await client.send({"type": "join_table", "moniker": table_id})
-            response = await client.receive()
+            response = await receive_join_reply(client)
             self.assertEqual(response["type"], "joined_table")
 
             await client.send({"type": "bet", "amount": 50})
@@ -237,7 +238,7 @@ class TestHoleCardIntegration(BaseIntegrationTest):
             table_id = response["moniker"]
 
             await client.send({"type": "join_table", "moniker": table_id})
-            response = await client.receive()
+            response = await receive_join_reply(client)
             self.assertEqual(response["type"], "joined_table")
 
             await client.send({"type": "bet", "amount": 50})
@@ -325,7 +326,7 @@ class TestSoft17Integration(BaseIntegrationTest):
             table_id = response["moniker"]
 
             await client.send({"type": "join_table", "moniker": table_id})
-            response = await client.receive()
+            response = await receive_join_reply(client)
             self.assertEqual(response["type"], "joined_table")
 
             await client.send({"type": "bet", "amount": 50})
@@ -379,7 +380,7 @@ class TestSoft17Integration(BaseIntegrationTest):
             table_id = response["moniker"]
 
             await client.send({"type": "join_table", "moniker": table_id})
-            response = await client.receive()
+            response = await receive_join_reply(client)
             self.assertEqual(response["type"], "joined_table")
 
             await client.send({"type": "bet", "amount": 50})
@@ -437,7 +438,7 @@ class TestFiveCardCharlieIntegration(BaseIntegrationTest):
             table_id = response["moniker"]
 
             await client.send({"type": "join_table", "moniker": table_id})
-            response = await client.receive()
+            response = await receive_join_reply(client)
             self.assertEqual(response["type"], "joined_table")
 
             await client.send({"type": "bet", "amount": 50})
@@ -519,7 +520,7 @@ class TestSurrenderDisabled(BaseIntegrationTest):
             table_id = response["moniker"]
 
             await client.send({"type": "join_table", "moniker": table_id})
-            response = await client.receive()
+            response = await receive_join_reply(client)
             self.assertEqual(response["type"], "joined_table")
 
             await client.send({"type": "bet", "amount": 50})

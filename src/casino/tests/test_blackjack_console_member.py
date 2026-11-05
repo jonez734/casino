@@ -36,7 +36,7 @@ from casino import lib
 from casino.api.handler import MessageRouter
 from casino.tests import _dbname
 from casino.tests._ensure_test_member import grant_test_role
-from casino.tests._ws_replies import receive_reply
+from casino.tests._ws_replies import receive_join_reply, receive_reply
 
 DEFAULT_TIMEOUT = 10.0
 PING_INTERVAL = 30.0
@@ -318,7 +318,7 @@ class TestBlackjackConsoleMember(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(created["moniker"], self.table_moniker)
 
         await self.client.send({"type": "join_table", "moniker": self.table_moniker})
-        joined = await receive_reply(self.client)
+        joined = await receive_join_reply(self.client)
         self.assertEqual(joined["type"], "joined_table", f"join_table reply: {joined}")
         self.assertEqual(joined["moniker"], self.table_moniker)
 

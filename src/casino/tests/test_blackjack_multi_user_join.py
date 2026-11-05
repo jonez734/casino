@@ -40,6 +40,7 @@ import websockets
 from websockets.exceptions import ConnectionClosed
 
 from casino import lib
+from casino.tests._ws_replies import receive_join_reply
 from casino.tests._ensure_test_member import grant_test_role
 from casino.api.handler import MessageRouter
 from casino.tests import _dbname
@@ -310,12 +311,12 @@ class TestBlackjackMultiUserJoin(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(created["moniker"], self.table_moniker)
 
         await self.client_a.send({"type": "join_table", "moniker": self.table_moniker})
-        joined_a = await self.client_a.receive()
+        joined_a = await receive_join_reply(self.client_a)
         self.assertEqual(joined_a["type"], "joined_table", f"A join reply: {joined_a}")
         self.assertEqual(joined_a["moniker"], self.table_moniker)
 
         await self.client_b.send({"type": "join_table", "moniker": self.table_moniker})
-        joined_b = await self.client_b.receive()
+        joined_b = await receive_join_reply(self.client_b)
         self.assertEqual(joined_b["type"], "joined_table", f"B join reply: {joined_b}")
         self.assertEqual(joined_b["moniker"], self.table_moniker)
 

@@ -14,6 +14,21 @@ async def receive_reply(client):
             return msg
 
 
+async def receive_join_reply(client, timeout: float = 10.0):
+    """The ``joined_table`` reply to a join_table, skipping the pushes that arrive before it.
+
+    The server pushes ``casino_table_state`` (and ``owns_tables``) to a player on join, before the
+    reply. A test that reads the next message gets the push. This waits for the reply by type.
+    Other messages are skipped, not treated as failures. An ``error`` reply is returned, so the
+    caller's assertion shows the server's message.
+    """
+    return await receive_until(
+        client,
+        lambda m: m.get("type") in ("joined_table", "error"),
+        timeout=timeout,
+    )
+
+
 async def receive_until(client, predicate, timeout: float = 10.0):
     """The first message that satisfies ``predicate``, within ``timeout`` seconds.
 

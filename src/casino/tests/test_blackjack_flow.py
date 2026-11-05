@@ -18,6 +18,7 @@ import websockets
 from websockets.exceptions import ConnectionClosed
 
 from casino import lib
+from casino.tests._ws_replies import receive_join_reply
 from casino.api.handler import MessageRouter
 from casino.tests import _dbname
 
@@ -386,7 +387,7 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
             # Step 6: Join the table
             await self.client.send({"type": "join_table", "moniker": table_id})
 
-            response = await self.client.receive()
+            response = await receive_join_reply(self.client)
             self.assertEqual(response["type"], "joined_table")
             self.assertEqual(response["moniker"], table_id)
             print(f"✓ Joined table {table_id}")
@@ -519,7 +520,7 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
 
             # Join the table
             await self.client.send({"type": "join_table", "moniker": table_id})
-            response = await self.client.receive()
+            response = await receive_join_reply(self.client)
             self.assertEqual(response["type"], "joined_table")
 
             # Place a bet
@@ -613,7 +614,7 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
 
             # Join the table
             await self.client.send({"type": "join_table", "moniker": table_id})
-            response = await self.client.receive()
+            response = await receive_join_reply(self.client)
             self.assertEqual(response["type"], "joined_table")
 
             # Place a bet
@@ -721,7 +722,7 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
 
             # Join the table
             await self.client.send({"type": "join_table", "moniker": table_id})
-            response = await self.client.receive()
+            response = await receive_join_reply(self.client)
             self.assertEqual(response["type"], "joined_table")
 
             # Test 1: Negative bet amount (-1)
@@ -842,7 +843,7 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
 
             # Join the table
             await self.client.send({"type": "join_table", "moniker": table_id})
-            response = await self.client.receive()
+            response = await receive_join_reply(self.client)
             self.assertEqual(response["type"], "joined_table")
 
             # Place a bet
@@ -942,7 +943,7 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
 
             # Join the table
             await self.client.send({"type": "join_table", "moniker": table_id})
-            response = await self.client.receive()
+            response = await receive_join_reply(self.client)
             self.assertEqual(response["type"], "joined_table")
 
             # Place a bet
@@ -1048,7 +1049,7 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
 
             # Join the table
             await self.client.send({"type": "join_table", "moniker": table_id})
-            response = await self.client.receive()
+            response = await receive_join_reply(self.client)
             self.assertEqual(response["type"], "joined_table")
 
             # Place a bet
@@ -1158,7 +1159,7 @@ class TestBlackjackFullFlow(unittest.IsolatedAsyncioTestCase):
 
             # Join and place first bet
             await self.client.send({"type": "join_table", "moniker": table_id})
-            response = await self.client.receive()
+            response = await receive_join_reply(self.client)
             self.assertEqual(response["type"], "joined_table")
 
             await self.client.send({"type": "bet", "amount": 25})

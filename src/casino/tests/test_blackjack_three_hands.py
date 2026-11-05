@@ -110,7 +110,7 @@ class WebSocketTestClient:
 
 
 
-from casino.tests._ws_replies import receive_reply
+from casino.tests._ws_replies import receive_join_reply, receive_reply
 
 
 @pytest.mark.integration
@@ -253,7 +253,7 @@ class TestBlackjackThreeHands(unittest.IsolatedAsyncioTestCase):
 
         # 3. Join the table
         await self.client.send({"type": "join_table", "moniker": table_moniker})
-        joined = await receive_reply(self.client)
+        joined = await receive_join_reply(self.client)
         self.assertEqual(joined["type"], "joined_table")
         self.assertEqual(joined["moniker"], table_moniker)
 
