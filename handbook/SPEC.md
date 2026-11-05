@@ -368,6 +368,14 @@ Each option carries its `action`. `X` is the protected exit and `Q` is its alias
 The main client menu has a `slots` option, beside `bank`, shown only when connected.
 Its verbs (spin, paytable, history) sit under the option.
 
+**Slot settlement is a casino-owned op.** A spin settles through
+`engine.casino_settle_spin` (`sql/casino_settle_spin_functions.sql`): the bank move, the
+`casino.__slot_spin` audit row, and the player stats commit in one SECURITY DEFINER
+function. This is an explicit exception to "bed owns bank writes", accepted for slot
+settlement only, so the money and its audit row stay atomic. The function is granted to
+`bed_zoid6`, the daemon's login role. Other bank operations still go through bed's
+`engine.bed_bank_op`.
+
 **Slot wire types.** `SlotServiceHandler.SLOT_MSG_TYPES` declares the slot wire types
 (`slot_spin`, `slot_paytable`, `slot_history`, `slot_table_history`). The server
 registration reads that tuple, so the declaration and the registration cannot drift.
