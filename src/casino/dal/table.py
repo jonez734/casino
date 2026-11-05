@@ -385,6 +385,9 @@ def delete_table(args: Any, moniker: str, *, pool: Any = None) -> bool:
     """
     with _connect_ctx(args, pool) as conn, database.cursor(conn) as cur:
         cur.execute(database.query("DELETE FROM $casino.__game WHERE tablemoniker = :moniker", moniker=moniker))
+        # The table's bank mapping goes with it. Left behind, it blocks a new table with the same
+        # moniker (its primary key is the moniker).
+        cur.execute(database.query("DELETE FROM $casino.__bank_table WHERE table_moniker = :moniker", moniker=moniker))
         cur.execute(database.query("DELETE FROM $casino.__table WHERE moniker = :moniker", moniker=moniker))
         return cur.rowcount > 0
 
