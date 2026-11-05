@@ -455,7 +455,13 @@ def _get_or_bind_session_for(
         # never bound; the session stays as it was.
         if wire_token and not getattr(state, "auth_service_token", None):
             claims, token_err = _validate_wire_token(self_ref, message)
-            if token_err is None and claims is not None:
+            # The token must belong to the member this session is for. A valid token for another
+            # member is never bound, so it cannot be used to spend that member's money.
+            if (
+                token_err is None
+                and claims is not None
+                and (claims.get("moniker") or "") == (getattr(state, "moniker", None) or "")
+            ):
                 state.auth_service_token = wire_token
                 message["claims"] = claims
         return state, None
