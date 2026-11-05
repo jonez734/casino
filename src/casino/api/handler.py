@@ -1445,12 +1445,15 @@ class ChatServiceHandler(BaseService):
 class SlotServiceHandler(BaseService):
     """Handle slot machine messages.
 
-    Message types:
-    - ``slot_spin``         - client request: spin the reels
-    - ``slot_paytable``     - client request: get the table's paytable
-    - ``slot_history``      - client request: get the player's recent spins
-    - ``slot_table_history`` - client request: get the table's recent spins
+    Message types are declared once in ``SLOT_MSG_TYPES`` and registered from there.
     """
+
+    SLOT_MSG_TYPES = (
+        "slot_spin",          # client request: spin the reels
+        "slot_paytable",      # client request: get the table's paytable
+        "slot_history",       # client request: get the player's recent spins
+        "slot_table_history", # client request: get the table's recent spins
+    )
 
     def __init__(
         self,
@@ -1938,7 +1941,7 @@ class MessageRouter:
         server.register_service(self.chat_service, ["chat_table", "chat_global", "emote"])
 
         # Register slot service for slot machine play
-        server.register_service(self.slot_service, ["slot_spin", "slot_paytable", "slot_history", "slot_table_history"])
+        server.register_service(self.slot_service, list(SlotServiceHandler.SLOT_MSG_TYPES))
 
         # Register yahtzee service for dice play
         server.register_service(
