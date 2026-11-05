@@ -19,6 +19,7 @@ from websockets.exceptions import ConnectionClosed
 
 from casino import lib
 from casino.api.handler import MessageRouter
+from casino.tests._ws_replies import receive_join_reply
 from casino.tests import _dbname
 
 pytestmark = pytest.mark.integration
@@ -355,7 +356,7 @@ class TestPlayerAndObserver(unittest.IsolatedAsyncioTestCase):
             print(f"✓ Player created table {table_id}")
 
             await self.player_client.send({"type": "join_table", "moniker": table_id})
-            response = await self.player_client.receive()
+            response = await receive_join_reply(self.player_client)
             self.assertEqual(response["type"], "joined_table")
             print(f"✓ Player joined table {table_id}")
 
