@@ -4,6 +4,7 @@
 
 from bbsengine6 import io
 
+from casino import host
 from casino.commands import _common
 
 
@@ -52,6 +53,34 @@ def resign(args, client=None, **kwargs) -> bool:
     return _send(client, {"type": "tictactoe_resign"})
 
 
-def menu(args, **kwargs) -> None:
+def _tictactoe_options(args, client, **kwargs):
+    """The tictactoe submenu as menu_next options. ``move`` and ``resign`` are table verbs, reached via
+    ``table``; this menu offers the game's own actions. X (Q alias) is the exit."""
+    from bbsengine6.menu_next import MenuOption
+
+    def _run(handler):
+        return lambda state: handler(args, client=state, **kwargs)
+
+    return (
+        MenuOption("u", "quickplay (play vs AI)", action=_run(quickplay)),
+        MenuOption("j", "oin       (take the O seat)", action=_run(join)),
+        MenuOption("x", "it       (back to main menu)", aliases=("q",), action=lambda s: None),
+    )
+
+
+def menu(args, client=None, **kwargs) -> None:
     """Submenu shown when ``tictactoe`` is given no subcommand."""
-    io.echo("tictactoe: quickplay, move, join, resign")
+    from bbsengine6.menu_next import read_menu
+
+    client = client or _common.get_client()
+    if client is None:
+        io.echo("Not connected. Use Connect first.", level="error")
+        return
+    read_menu(
+        "{var:promptcolor}[U]uickplay  [J]oin  [X] Exit: {var:inputcolor}",
+        _tictactoe_options(args, client, **kwargs),
+        state=client,
+        mode="key",
+        default="X",
+        reader=host.choose,
+    )

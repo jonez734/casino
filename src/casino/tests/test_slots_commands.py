@@ -507,7 +507,7 @@ class TestSlotsMenuHelpWiring(unittest.TestCase):
         with patch(
             "casino.commands.slots.lib.get_client", return_value=client
         ), patch(
-            "bbsengine6.io.inputchoice"
+            "bbsengine6.io.inputchoice", return_value="x"
         ) as mock_ic, patch(
             "casino.commands.slots.lib.util.heading"
         ) as mock_heading:
@@ -524,7 +524,7 @@ class TestSlotsMenuHelpWiring(unittest.TestCase):
         with patch(
             "casino.commands.slots.lib.get_client", return_value=client
         ), patch(
-            "bbsengine6.io.inputchoice"
+            "bbsengine6.io.inputchoice", return_value="x"
         ) as mock_ic, patch(
             "casino.commands.slots.lib.util.heading"
         ) as mock_heading:

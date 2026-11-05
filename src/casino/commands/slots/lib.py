@@ -139,13 +139,36 @@ def slot_history(args: argparse.Namespace, client=None, **kwargs) -> bool:
 
 
 # Slots submenu exposes [S]pin / [P]aytable (both seat-gated to a slots table)
-# and [H]istory / [Q]uit (always available — slot_history is a player-scope
-# query on the server, see api/handler.py:_handle_history_msg).
+# and [H]istory / [X] Exit (always available; Q is an alias for X). slot_history
+# is a player-scope query on the server, see api/handler.py:_handle_history_msg.
+def _slots_options(args, client, **kwargs):
+    """The live slots submenu as menu_next options, each carrying its action.
+
+    key mode calls ``action(state)``; the state is the client, so the handlers get ``args`` from this
+    closure and the client from the state they receive.
+    """
+
+    def _run(handler):
+        return lambda state: handler(args, client=state, **kwargs)
+
+    return (
+        MenuOption("s", "pin     (place a bet and pull the lever)", requires_seated=True,
+                   allowed_game_types=frozenset({"slots"}), action=_run(slot_spin)),
+        MenuOption("p", "aytable (show the table's paytable)", requires_seated=True,
+                   allowed_game_types=frozenset({"slots"}), action=_run(slot_paytable)),
+        MenuOption("h", "istory  (list your recent spins)", requires_seated=False,
+                   action=_run(slot_history)),
+        MenuOption("x", "it      (back to main menu)", requires_seated=False,
+                   aliases=("q",), action=lambda a: None),
+    )
+
+
+# Static spec: visibility and help text only (no actions). menu() builds the live one.
 _SLOTS_OPTIONS_SPEC = (
     MenuOption("s", "pin     (place a bet and pull the lever)", requires_seated=True, allowed_game_types=frozenset({"slots"})),
     MenuOption("p", "aytable (show the table's paytable)",     requires_seated=True, allowed_game_types=frozenset({"slots"})),
     MenuOption("h", "istory  (list your recent spins)",         requires_seated=False),
-    MenuOption("q", "uit     (back to main menu)",              requires_seated=False),
+    MenuOption("x", "it      (back to main menu)",              requires_seated=False, aliases=("q",)),
 )
 
 
@@ -204,31 +227,21 @@ def menu(args: argparse.Namespace, client=None, **kwargs):
     if client is None:
         return True
 
+    from bbsengine6.menu_next import read_menu
+
     util.heading("Slots")
-    visible = _visible_slots_options(client)
-    option_str = ",".join(letter for letter, _label in visible)
-    inline = "".join(
-        # f-string ``{{`` collapses to literal ``{`` so ``io.echo``
-        # sees ``{var:optioncolor}`` / ``{var:labelcolor}`` markup.
-        f"{{var:optioncolor}}[{letter.upper()}]{{var:labelcolor}}{label}"
-        for letter, label in visible
-    )
     _render_help(client=client)
-    # host.choose: LO when hosted, io.inputchoice standalone. Uppercased for the checks below.
-    cmd = (host.choose(
-        "{var:promptcolor}" + inline + ": {var:inputcolor}",
-        option_str,
-        default="q",
+    # Read through host.choose so a hosting program still owns the terminal input. Key mode runs the
+    # matched option's action; X (Q alias) is the protected exit.
+    read_menu(
+        "{var:promptcolor}[S]pin  [P]aytable  [H]istory  [X] Exit: {var:inputcolor}",
+        _slots_options(args, client, **kwargs),
+        state=client,
+        mode="key",
+        default="X",
         help=_render_help,
-    ) or "").upper()
-
-    if cmd == "S":
-        slot_spin(args, client=client, **kwargs)
-    elif cmd == "P":
-        slot_paytable(args, client=client, **kwargs)
-    elif cmd == "H":
-        slot_history(args, client=client, **kwargs)
-
+        reader=host.choose,
+    )
     return True
 
 
