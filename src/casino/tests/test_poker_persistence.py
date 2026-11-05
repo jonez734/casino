@@ -115,6 +115,7 @@ def test_blackjack_lobby_excludes_poker_rows():
             from bbsengine6 import database
 
             with database.connect(ARGS) as conn, database.cursor(conn) as cur:
+                cur.execute(database.query("DELETE FROM $casino.__bank_table WHERE table_moniker = :m", m=bj_name))
                 cur.execute(database.query("DELETE FROM $casino.__table WHERE moniker = :m", m=bj_name))
 
 
