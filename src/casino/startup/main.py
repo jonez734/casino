@@ -237,7 +237,7 @@ def main(args, **kwargs):
         #     are zoid6-owned SECURITY DEFINER functions with EXECUTE granted to bed only.
         #     They read engine.__bed_token and engine.bed_is_sysop, which bed's install
         #     creates; a missing bed install fails here, not silently.
-        for sqlfile in ("casino_read_functions.sql", "casino_op_functions.sql"):
+        for sqlfile in ("casino_read_functions.sql", "casino_op_functions.sql", "casino_settle_spin_functions.sql"):
             io.echo(f"{{var:labelcolor}}function {{var:valuecolor}}{sqlfile}{{var:labelcolor}}: ", end="")
             if (
                 database.importsql(args, sqlfile, conn=conn, package="casino.sql")

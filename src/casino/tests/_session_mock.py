@@ -30,6 +30,7 @@ def make_mock_state(
     spectator_of: Optional[set] = None,
     session_id: str = "s1",
     websocket_id: str = "ws-1",
+    auth_service_token: Optional[str] = None,
 ) -> SimpleNamespace:
     """Build a ``SimpleNamespace`` that satisfies ``casino.access``'s
     attribute reads (``state.moniker`` / ``state.is_sysop`` /
@@ -43,7 +44,7 @@ def make_mock_state(
         is_sysop=bool(is_sysop),
         table_moniker=table_moniker,
         spectator_of=set(spectator_of) if spectator_of else set(),
-        auth_service_token=None,
+        auth_service_token=auth_service_token,
         loginid=None,
         balance=None,
     )
@@ -145,7 +146,14 @@ def make_sessions_mock(
                 sop = bool(sessions.get_is_sysop())
         except Exception:
             sop = bool(sessions.get_is_sysop())
-        return make_mock_state(moniker=m, is_sysop=sop, table_moniker=tm)
+        token = None
+        try:
+            token = sessions.get_auth_service_token(sid)
+        except Exception:
+            token = None
+        if not isinstance(token, str):
+            token = None
+        return make_mock_state(moniker=m, is_sysop=sop, table_moniker=tm, auth_service_token=token)
 
     sessions.get_by_websocket.side_effect = _resolve
     sessions.get_session.return_value = None

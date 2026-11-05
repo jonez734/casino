@@ -27,6 +27,7 @@ import contextlib
 import random
 import sys
 import unittest
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 sys.path.insert(0, "/home/opencode/data/work/casino/src")
@@ -681,6 +682,51 @@ class _StubConn:
         return False
 
 
+class _SettleConn:
+    """Fake casino connection for the settle op. It answers ``SELECT engine.casino_settle_spin(...)``
+    with a canned jsonb result and records the call, so tests assert the payload, not the old SQL trace."""
+
+    def __init__(self, result):
+        self._result = result
+        self.calls = []
+
+    def cursor(self, *a, **kw):
+        return self
+
+    def execute(self, sql, params=None):
+        self.calls.append((_sql_text(sql), params))
+
+    def fetchone(self):
+        return (self._result,)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+
+def _settle_patch(result):
+    """Patch casino_conn.connect so settlement returns ``result``. Yields (conn, connect_patch)."""
+    conn = _SettleConn(result)
+
+    @contextlib.contextmanager
+    def fake_connect(*a, **kw):
+        yield conn
+
+    return conn, patch("casino.services.slots.casino_conn.connect", fake_connect)
+
+
+def _digest(token):
+    import hashlib
+
+    return hashlib.sha256(token.encode()).digest()
+
+
+def _token_state(token="tok-alice"):
+    return SimpleNamespace(auth_service_token=token)
+
+
 class TestServiceAtomicTransaction(unittest.TestCase):
     """End-to-end through handle_spin with all DB calls faked.
     Verifies the SQL trace, the bank/audit/stats updates, and the
@@ -712,65 +758,34 @@ class TestServiceAtomicTransaction(unittest.TestCase):
         _dealers["t1"] = StubDealer()
         self.addCleanup(invalidate_dealer, "t1")
 
-        # Bank mutation now goes through bbsengine6.bank.BankService;
-        # mock it so the casino cursor only sees casino-specific SQL.
-        cursor = _StubCursor(insert_returning={"id": 42})
-        conn = _StubConn(cursor)
-
-        @contextlib.contextmanager
-        def fake_connect(*a, **kw):
-            yield conn
-
-        bank_calls = []
-
-        class StubBank:
-            def add_funds(self, moniker, amount, **kwargs):
-                bank_calls.append(("add", moniker, amount, kwargs))
-                return {"success": True, "new_balance": 1000 + amount}
-
-            def remove_funds(self, moniker, amount, **kwargs):
-                bank_calls.append(("remove", moniker, amount, kwargs))
-                return {"success": True, "new_balance": 1000 - amount}
-
-        with patch("casino.services.slots.database.connect", fake_connect), \
-             patch("casino.services.slots.database.cursor",
-                   side_effect=lambda c, **kw: c.cursor()), \
-             patch("bbsengine6.bank.BankService", lambda args: StubBank()), \
+        conn, connect = _settle_patch({"success": True, "spin_id": 42, "new_balance": 2440})
+        with connect, \
              patch("casino.services.slots.dal_table.get_table",
-                   return_value={"type": "slots", "minimumbet": 1,
-                                 "maximumbet": 1000}):
-            r = handle_spin(_make_args(), "t1", "alice", 10)
+                   return_value={"type": "slots", "minimumbet": 1, "maximumbet": 1000}):
+            r = handle_spin(_make_args(), "t1", "alice", 10, state=_token_state())
 
         self.assertTrue(r["success"])
         self.assertEqual(r["spin"]["id"], 42)
         self.assertEqual(r["spin"]["bet"], 10)
         self.assertEqual(r["spin"]["payout"], 1450)
         self.assertEqual(r["spin"]["net"], 1440)
-        self.assertEqual(r["spin"]["new_balance"], 1000 + 1440)
+        self.assertEqual(r["spin"]["new_balance"], 2440)
 
-        # Bank mutation routed through bbsengine6.bank.BankService
-        # (the bank service bed.api.bank.BankService wraps) with the
-        # net delta. ``conn=conn`` keeps it in the spin's atomic
-        # transaction alongside the casino audit + stats writes.
-        self.assertEqual(len(bank_calls), 1)
-        op, moniker, amount, kwargs = bank_calls[0]
-        self.assertEqual(op, "add")
-        self.assertEqual(moniker, "alice")
-        self.assertEqual(amount, 1440)
-        self.assertIs(kwargs.get("conn"), conn)
-        self.assertEqual(kwargs.get("transaction_type"), "slots_payout")
+        # One settle call. The token digest and the spin payload go in; the moniker does not.
+        self.assertEqual(len(conn.calls), 1)
+        sql, params = conn.calls[0]
+        self.assertIn("engine.casino_settle_spin", sql)
+        digest, payload = params
+        self.assertEqual(bytes(digest), _digest("tok-alice"))
+        body = payload.obj
+        self.assertEqual(body["table_moniker"], "t1")
+        self.assertEqual(body["bet"], 10)
+        self.assertEqual(body["payout"], 1450)
+        self.assertEqual(body["net"], 1440)
+        self.assertNotIn("player", body)
+        self.assertNotIn("moniker", body)
 
-        # Casino-side SQL trace: INSERT __slot_spin, UPDATE stats,
-        # UPDATE biggest_win (winning case). The bank SQL happens
-        # inside the StubBank mock, not on the casino cursor.
-        self.assertEqual(len(cursor.executed), 3)
-        sqls = [_sql_text(s) for s, _ in cursor.executed]
-        joined = " | ".join(sqls)
-        self.assertIn("__slot_spin", joined)
-        self.assertIn("INSERT", joined)
-        self.assertIn("biggest_win", joined)
-
-    def test_losing_spin_no_biggest_win_update(self):
+    def test_losing_spin_settles_the_net_loss(self):
         from casino.services.slots import (
             _dealers,
             handle_spin,
@@ -796,44 +811,25 @@ class TestServiceAtomicTransaction(unittest.TestCase):
         _dealers["t1"] = StubDealer()
         self.addCleanup(invalidate_dealer, "t1")
 
-        cursor = _StubCursor(insert_returning={"id": 7})
-        conn = _StubConn(cursor)
-
-        @contextlib.contextmanager
-        def fake_connect(*a, **kw):
-            yield conn
-
-        class StubBank:
-            def remove_funds(self, moniker, amount, **kwargs):
-                return {"success": True, "new_balance": 1000 - amount}
-
-            def add_funds(self, moniker, amount, **kwargs):
-                return {"success": True, "new_balance": 1000 + amount}
-
-        with patch("casino.services.slots.database.connect", fake_connect), \
-             patch("casino.services.slots.database.cursor",
-                   side_effect=lambda c, **kw: c.cursor()), \
-             patch("bbsengine6.bank.BankService", lambda args: StubBank()), \
+        conn, connect = _settle_patch({"success": True, "spin_id": 7, "new_balance": 990})
+        with connect, \
              patch("casino.services.slots.dal_table.get_table",
-                   return_value={"type": "slots", "minimumbet": 1,
-                                 "maximumbet": 1000}):
-            r = handle_spin(_make_args(), "t1", "alice", 10)
+                   return_value={"type": "slots", "minimumbet": 1, "maximumbet": 1000}):
+            r = handle_spin(_make_args(), "t1", "alice", 10, state=_token_state())
 
         self.assertTrue(r["success"])
-        self.assertEqual(r["spin"]["payout"], 0)
         self.assertEqual(r["spin"]["net"], -10)
-        # No biggest_win UPDATE because payout == 0.
-        # Trace: INSERT spin, UPDATE stats. 2 statements.
-        self.assertEqual(len(cursor.executed), 2)
-        for s, _ in cursor.executed:
-            self.assertNotIn("biggest_win", s)
+        self.assertEqual(r["spin"]["new_balance"], 990)
+        _, payload = conn.calls[0][1]
+        self.assertEqual(payload.obj["net"], -10)
+        self.assertEqual(payload.obj["payout"], 0)
 
 
 class TestServiceRollbackInsufficientFunds(unittest.TestCase):
     """If the player balance is below the bet, the service returns
     insufficient_funds without writing the audit row or stats."""
 
-    def test_insufficient_funds_short_circuits(self):
+    def test_insufficient_funds_is_refused_by_the_op(self):
         from casino.services.slots import (
             _dealers,
             handle_spin,
@@ -859,38 +855,44 @@ class TestServiceRollbackInsufficientFunds(unittest.TestCase):
         _dealers["t1"] = StubDealer()
         self.addCleanup(invalidate_dealer, "t1")
 
-        cursor = _StubCursor()
-        conn = _StubConn(cursor)
-
-        @contextlib.contextmanager
-        def fake_connect(*a, **kw):
-            yield conn
-
-        # Bank service rejects the debit because balance < bet; this
-        # mirrors the real bbsengine6.bank.BankService.remove_funds
-        # path when the player's balance is below the requested
-        # amount.
-        class StubBank:
-            def remove_funds(self, moniker, amount, **kwargs):
-                return {"success": False, "message": "Insufficient funds. Balance: 5"}
-
-            def add_funds(self, moniker, amount, **kwargs):
-                return {"success": True, "new_balance": amount}
-
-        with patch("casino.services.slots.database.connect", fake_connect), \
-             patch("casino.services.slots.database.cursor",
-                   side_effect=lambda c, **kw: c.cursor()), \
-             patch("bbsengine6.bank.BankService", lambda args: StubBank()), \
+        # The op refuses an overdraft and returns its own code; the spin passes it through.
+        conn, connect = _settle_patch(
+            {"success": False, "code": "insufficient_funds", "message": "Insufficient funds"}
+        )
+        with connect, \
              patch("casino.services.slots.dal_table.get_table",
-                   return_value={"type": "slots", "minimumbet": 1,
-                                 "maximumbet": 1000}):
-            r = handle_spin(_make_args(), "t1", "alice", 100)
+                   return_value={"type": "slots", "minimumbet": 1, "maximumbet": 1000}):
+            r = handle_spin(_make_args(), "t1", "alice", 100, state=_token_state())
 
         self.assertFalse(r["success"])
         self.assertEqual(r["code"], "insufficient_funds")
-        # No casino SQL executed: bank failure short-circuits before
-        # the audit/stats write inside the same transaction.
-        self.assertEqual(len(cursor.executed), 0)
+        self.assertEqual(len(conn.calls), 1)
+
+    def test_spin_without_a_token_is_refused_before_settlement(self):
+        from casino.services.slots import _dealers, handle_spin, invalidate_dealer
+        from casino.slots.lib import SpinResult, Symbol
+
+        lemon = Symbol("LEMON", 1, "L")
+
+        class StubDealer:
+            num_reels = 5
+            num_rows = 3
+            def play(self, bet):
+                return SpinResult(reels=[[lemon] * 3 for _ in range(5)],
+                                  center_row=[lemon] * 5, wins=[], bet=bet, payout=0, net=-bet)
+
+        _dealers["t1"] = StubDealer()
+        self.addCleanup(invalidate_dealer, "t1")
+
+        conn, connect = _settle_patch({"success": True, "spin_id": 1, "new_balance": 0})
+        with connect, \
+             patch("casino.services.slots.dal_table.get_table",
+                   return_value={"type": "slots", "minimumbet": 1, "maximumbet": 1000}):
+            r = handle_spin(_make_args(), "t1", "alice", 10)
+
+        self.assertFalse(r["success"])
+        self.assertEqual(r["code"], "forbidden")
+        self.assertEqual(conn.calls, [])
 
     def test_wrong_game_type_returns_error(self):
         from casino.services.slots import handle_spin
@@ -958,6 +960,8 @@ class TestHandlerFullMessageFlow(unittest.TestCase):
         self.ws = _StubWS()
         self.sessions.register_session(id(self.ws), "alice", is_sysop=False)
         self.sessions.set_table_moniker(id(self.ws), "slots-alice")
+        # A token-bearing session, as a validated wire token produces (api/_auth.py sets it).
+        self.sessions.get_auth_service_token.return_value = "tok-alice"
         self._asyncio = asyncio
 
     def _stub_dealer(self, result):
@@ -985,44 +989,25 @@ class TestHandlerFullMessageFlow(unittest.TestCase):
             net=90,
         ))
 
-        # Bank mutation routes through bbsengine6.bank.BankService;
-        # mock it so the casino cursor only sees casino-specific SQL.
-        cursor = _StubCursor(insert_returning={"id": 1})
-        conn = _StubConn(cursor)
-
-        @contextlib.contextmanager
-        def fake_connect(*a, **kw):
-            yield conn
-
-        class StubBank:
-            def add_funds(self, moniker, amount, **kwargs):
-                return {"success": True, "new_balance": 100 + amount}
-
-            def remove_funds(self, moniker, amount, **kwargs):
-                return {"success": True, "new_balance": 100 - amount}
-
-        server = AsyncMock()
+        conn, connect = _settle_patch({"success": True, "spin_id": 1, "new_balance": 190})
         published = []
 
         async def _capture(state, channel, message, **kwargs):
             published.append((channel, message))
 
-        with patch("casino.services.slots.database.connect", fake_connect), \
+        server = AsyncMock()
+        with connect, \
              patch("bbsengine6.net.channel_publish", side_effect=_capture), \
-             patch("casino.services.slots.database.cursor",
-                   side_effect=lambda c, **kw: c.cursor()), \
-             patch("bbsengine6.bank.BankService", lambda args: StubBank()), \
              patch("casino.services.slots.dal_table.get_table",
                    return_value={"type": "slots", "minimumbet": 1,
                                  "maximumbet": 1000}):
             r = self._asyncio.run(self.handler.handle_message(
-                server, self.ws, "/", {"type": "slot_spin", "bet": 10}
+                server, self.ws, "/", {"type": "slot_spin", "bet": 10, "token": "tok-alice"}
             ))
 
         self.assertEqual(r["type"], "slot_result")
         self.assertEqual(r["table_moniker"], "slots-alice")
         self.assertEqual(r["spin"]["bet"], 10)
-        # Broadcast goes out to the table's events channel with the same shape.
         from casino.services.table_channels import events_channel
 
         self.assertEqual(len(published), 1)
@@ -1130,15 +1115,7 @@ class TestHandlerFullMessageFlow(unittest.TestCase):
             net=-10,
         ))
 
-        cursor = _StubCursor(
-            initial={"id": 1, "balance": 100},
-            insert_returning={"id": 1},
-        )
-        conn = _StubConn(cursor)
-
-        @contextlib.contextmanager
-        def fake_connect(*a, **kw):
-            yield conn
+        conn, connect = _settle_patch({"success": True, "spin_id": 1, "new_balance": 90})
 
         async def bad_publish(*a, **kw):
             raise RuntimeError("publish exploded")
@@ -1146,14 +1123,12 @@ class TestHandlerFullMessageFlow(unittest.TestCase):
         server = AsyncMock()
         server.publish = bad_publish
 
-        with patch("casino.services.slots.database.connect", fake_connect), \
-             patch("casino.services.slots.database.cursor",
-                   side_effect=lambda c, **kw: c.cursor()), \
+        with connect, \
              patch("casino.services.slots.dal_table.get_table",
                    return_value={"type": "slots", "minimumbet": 1,
                                  "maximumbet": 1000}):
             r = self._asyncio.run(self.handler.handle_message(
-                server, self.ws, "/", {"type": "slot_spin", "bet": 10}
+                server, self.ws, "/", {"type": "slot_spin", "bet": 10, "token": "tok-alice"}
             ))
 
         self.assertEqual(r["type"], "slot_result")

@@ -11,31 +11,21 @@
 # Disconnect mid-spin is a non-event: the transaction either commits
 # or doesn't happen, so there is no in-flight bet to recover.
 #
-# Bank service + auth token
-# -------------------------
-# The bank mutation routes through ``bbsengine6.bank.BankService``
-# (the same bank service ``bed.api.bank.BankService`` wraps) so the
-# spin's ledger write uses the project's bank-account bookkeeping
-# (atomic SQL, ``bank.__transaction`` audit row, etc.) and goes
-# through the same code path as every other bed bank op. When the
-# spin handler is invoked from the bed WS handler with an auth
-# context (``message`` carrying validated token ``claims`` and
-# ``state`` carrying the bound session), the bank op is gated by
-# ``bbsengine6.bank.access`` so the claim-derived moniker /
-# ``is_sysop`` authorize the debit/credit. This mirrors the
-# defense-in-depth check ``bed.api.bank.BankService._check_access``
-# runs on every wire op, so a token revoked since WS open cannot
-# drive a slots bank move even if the casino slot-spin policy
-# already admitted the request.
+# Settlement + auth token
+# -----------------------
+# The spin settles through ``engine.casino_settle_spin`` (sql/casino_settle_spin_functions.sql), a
+# casino-owned SECURITY DEFINER function. It does the bank move, writes the casino.__slot_spin audit
+# row, and bumps the player's stats in one transaction. The acting moniker comes from the verified
+# token row in engine.__bed_token; the request names no player. The function is granted to
+# bed_zoid6, the login role casino's connections use (casino/dal/conn.py keeps the login role).
 #
-# The call from the casino WS handler goes through the bed
-# WebSocket (``casino.api.handler.SlotServiceHandler``); the
-# ``token`` field is already injected on every wire call by
-# ``CasinoClient.send`` (token-file flow) and the WS handler
-# validates it before ``handle_spin`` runs. ``handle_spin``
-# receives the resulting ``state`` + ``message["claims"]`` as
-# ``state`` and ``message`` kwargs and feeds them to the bank
-# access policy.
+# The bearer token reaches this module on ``state.auth_service_token``; its SHA-256 digest is
+# what the function checks. Door-mode and unit-test callers without a token are refused before any
+# SQL runs.
+#
+# The call from the casino WS handler goes through ``casino.api.handler.SlotServiceHandler``. The
+# token is injected on every wire call by ``CasinoClient.send``, and the WS handler validates it
+# before ``handle_spin`` runs.
 
 from __future__ import annotations
 from casino.dal import conn as casino_conn
@@ -179,20 +169,12 @@ def handle_spin(
     precondition failure. All side effects happen in a single atomic
     transaction.
 
-    When invoked from the bed WS handler (``message`` and ``state``
-    are passed through), the bank mutation is gated by
-    ``bbsengine6.bank.access`` so the claim-derived moniker /
-    ``is_sysop`` authorize the debit/credit. The wire call already
-    carries the bearer token (injected by ``CasinoClient.send`` on
-    the client side, validated by ``casino.api._auth.check_access``
-    on the server side); the bank policy reads ``message["claims"]``
-    rather than the in-memory session attributes so the second
-    authorization step matches the cryptographically verified
-    source.
+    Settlement is one call to ``engine.casino_settle_spin``. The acting moniker
+    and the token check come from ``state.auth_service_token`` inside the database.
+    A call with no token is refused before any SQL runs.
 
-    Door-mode callers and direct unit-test callers leave ``message``
-    and ``state`` at their default ``None`` and the bank gate is
-    skipped; the slot-spin policy has already admitted the request.
+    Callers without a session token (door mode, unit tests that do not supply
+    ``state``) are refused before settlement, because only a live token can move money.
     """
     correlation_id = uuid.uuid4().hex
     if not isinstance(bet, int) or isinstance(bet, bool) or bet <= 0:
@@ -230,185 +212,71 @@ def handle_spin(
 
     net = result.net  # payout - bet; may be negative
 
-    # Per-call defense-in-depth: re-verify the bearer-token claims
-    # against the bank access policy when an auth context is present.
-    # Mirrors bed.api.bank.BankService._check_access: the slot spin's
-    # bank move is gated by the same claim-derived authorization the
-    # bank's own add/remove handlers run, so a token revoked since WS
-    # open cannot drive a slots bank move even if the casino slot-spin
-    # policy admitted the request. Skipped when message/state are
-    # absent (door mode / unit tests where the slot-spin policy is
-    # the sole gate).
-    if message is not None and state is not None and net != 0:
-        from bbsengine6.bank import access as _bank_access
+    # The token is re-verified inside engine.casino_settle_spin (engine.__bed_token), so a token revoked
+    # since the WS open cannot move money. No separate bank-policy check runs here.
 
-        bank_op = "add" if net > 0 else "remove"
-        bank_msg: Dict[str, Any] = {
-            "moniker": player_moniker,
-            "amount": int(abs(net)),
-            "claims": dict(message.get("claims") or {}),
-        }
-        if not _bank_access(
-            args, bank_op, session=state, message=bank_msg
-        ):
-            io.echo(
-                f"slots: bank_access_denied member={player_moniker} "
-                f"op={bank_op} amount={bank_msg['amount']} "
-                f"corr={correlation_id}",
-                level="warning",
-            )
-            return {
-                "success": False,
-                "code": "forbidden",
-                "message": "Bank operation not permitted for this session",
-            }
-
-    # In an atomic transaction: move the net delta into the player
-    # account via bbsengine6.bank.BankService (the bank service bed
-    # wraps), write the casino spin row, bump stats. If anything
-    # fails, the whole spin is rolled back and the player keeps
-    # their credits.
+    # One casino-owned SECURITY DEFINER op settles the spin: the bank move, the casino.__slot_spin
+    # audit row, and the player's stats commit together (sql/casino_settle_spin_functions.sql). The
+    # acting moniker comes from the verified token row inside the database, never from this request.
     reels_json = [[s.name for s in col] for col in result.reels]
     wins_json = [w.to_dict() for w in result.wins]
-    spin_id: int | None = None
-    new_balance: int | None = None
     try:
-        from bbsengine6.bank import BankService as _BankService
+        token = getattr(state, "auth_service_token", None) or ""
+        if not token:
+            io.echo(f"slots: spin refused, no bearer token member={player_moniker} corr={correlation_id}", level="error")
+            return {"success": False, "code": "forbidden", "message": "No session token for this spin"}
+        from bed.store.token_store import token_hash
 
-        with casino_conn.connect(args) as conn:
-            # Route the bank move through bbsengine6.bank.BankService so
-            # the SQL is atomic (no read-then-write TOCTOU) and the
-            # bank.__transaction audit row is written next to the
-            # casino.__slot_spin audit row below. ``conn=conn`` keeps
-            # the move inside the spin's atomic transaction.
-            bank = _BankService(args)
-            if net > 0:
-                bank_result = bank.add_funds(
-                    player_moniker,
-                    int(net),
-                    transaction_type="slots_payout",
-                    description=(
-                        f"Slots spin payout at {table_moniker} "
-                        f"(spin corr={correlation_id})"
-                    ),
-                    member_moniker=player_moniker,
-                    conn=conn,
-                )
-            elif net < 0:
-                bank_result = bank.remove_funds(
-                    player_moniker,
-                    int(-net),
-                    transaction_type="slots_bet",
-                    description=(
-                        f"Slots spin debit at {table_moniker} "
-                        f"(spin corr={correlation_id})"
-                    ),
-                    member_moniker=player_moniker,
-                    conn=conn,
-                )
-            else:
-                # net == 0: push, no bank move. Read balance for the
-                # response so the client sees the unchanged figure.
-                bank_result = {
-                    "success": True,
-                    "new_balance": bank.get_balance(player_moniker),
-                }
-            if not bank_result.get("success"):
-                msg = bank_result.get("message", "") or ""
-                if (
-                    "Insufficient funds" in msg
-                    or "Account not found" in msg
-                    or "balance" in msg.lower()
-                ):
-                    io.echo(
-                        f"slots: insufficient_funds member={player_moniker} "
-                        f"bet={bet} corr={correlation_id}: {msg}",
-                        level="warning",
-                    )
-                    return {
-                        "success": False,
-                        "code": "insufficient_funds",
-                        "message": msg or f"Balance below bet {bet}",
-                    }
-                io.echo(
-                    f"slots: bank_op_failed member={player_moniker} "
-                    f"op={'add' if net > 0 else 'remove'} "
-                    f"corr={correlation_id}: {msg}",
-                    level="error",
-                )
-                return {
-                    "success": False,
-                    "code": "service_error",
-                    "message": msg or "Bank operation failed",
-                }
-            new_balance = int(bank_result.get("new_balance", 0))
+        with casino_conn.connect(args) as conn, database.cursor(conn) as cur:
+            cur.execute(
+                "SELECT engine.casino_settle_spin(%s, %s::jsonb)",
+                (
+                    token_hash(token),
+                    database.Jsonb({
+                        "table_moniker": table_moniker,
+                        "bet": bet,
+                        "payout": result.payout,
+                        "net": net,
+                        "reels": reels_json,
+                        "wins": wins_json,
+                        "correlation_id": correlation_id,
+                    }),
+                ),
+            )
+            row = cur.fetchone()
+        settled = row[0] if row else None
+        if isinstance(settled, str):
+            import json as _json
 
-            with database.cursor(conn) as cur:
-                # Audit row
-                cur.execute(
-                    database.query(
-                        """INSERT INTO $casino.__slot_spin
-                           (table_moniker, player_moniker, bet, payout, reels, wins)
-                           VALUES (:table_moniker, :player_moniker, :bet, :payout, :reels, :wins)
-                           RETURNING id""",
-                        table_moniker=table_moniker,
-                        player_moniker=player_moniker,
-                        bet=bet,
-                        payout=result.payout,
-                        reels=database.Jsonb(reels_json),
-                        wins=database.Jsonb(wins_json),
-                    )
-                )
-                spin_id_row = cur.fetchone()
-                spin_id = int(spin_id_row["id"])
-                # Stats
-                cur.execute(
-                    database.query(
-                        """UPDATE $casino.__player
-                           SET stats = stats || jsonb_build_object(
-                               'slots.spins', COALESCE((stats->>'slots.spins')::int, 0) + 1,
-                               'slots.wins', COALESCE((stats->>'slots.wins')::int, 0) + :is_win,
-                               'slots.net',  COALESCE((stats->>'slots.net')::int, 0) + :net_delta
-                           )
-                           WHERE moniker = :moniker""",
-                        is_win=1 if result.payout > 0 else 0,
-                        net_delta=net,
-                        moniker=player_moniker,
-                    )
-                )
-                if result.payout > 0:
-                    cur.execute(
-                        database.query(
-                            """UPDATE $casino.__player
-                               SET stats = stats || jsonb_build_object(
-                                   'slots.biggest_win',
-                                   GREATEST(COALESCE((stats->>'slots.biggest_win')::int, 0), :payout)
-                               )
-                               WHERE moniker = :moniker""",
-                            payout=result.payout,
-                            moniker=player_moniker,
-                        )
-                    )
-                    io.echo(f"slots: biggest_win updated member={player_moniker} payout={result.payout} corr={correlation_id}", level="info")
-        # Success
-        io.echo(f"slots: spin ok spin_id={spin_id} member={player_moniker} table={table_moniker} bet={bet} payout={result.payout} net={net} corr={correlation_id}", level="info")
-        return {
-            "success": True,
-            "spin": {
-                "id": spin_id,
-                "table_moniker": table_moniker,
-                "bet": bet,
-                "payout": result.payout,
-                "net": net,
-                "new_balance": new_balance,
-                "reels": reels_json,
-                "center_row": [s.name for s in result.center_row],
-                "wins": wins_json,
-            },
-        }
+            settled = _json.loads(settled)
+        settled = settled or {"success": False, "code": "service_error", "message": "settlement returned nothing"}
     except Exception as e:
         io.echo(f"slots: spin failed member={player_moniker} table={table_moniker} corr={correlation_id}: {e}", level="error")
         return {"success": False, "code": "service_error", "message": str(e)}
+
+    if not settled.get("success"):
+        code = settled.get("code") or "service_error"
+        msg = settled.get("message") or "Settlement failed"
+        io.echo(f"slots: settle_refused member={player_moniker} code={code} corr={correlation_id}: {msg}", level="warning")
+        return {"success": False, "code": code, "message": msg}
+
+    spin_id = int(settled["spin_id"])
+    new_balance = int(settled["new_balance"])
+    io.echo(f"slots: spin ok spin_id={spin_id} member={player_moniker} table={table_moniker} bet={bet} payout={result.payout} net={net} corr={correlation_id}", level="info")
+    return {
+        "success": True,
+        "spin": {
+            "id": spin_id,
+            "table_moniker": table_moniker,
+            "bet": bet,
+            "payout": result.payout,
+            "net": net,
+            "new_balance": new_balance,
+            "reels": reels_json,
+            "center_row": [s.name for s in result.center_row],
+            "wins": wins_json,
+        },
+    }
 
 
 def handle_get_paytable(args: Any, table_moniker: str) -> dict[str, Any]:
