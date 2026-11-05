@@ -71,14 +71,18 @@ class _Client:
 
 
 def _recorders(monkeypatch):
-    from casino.commands.game import lib as game
-    from casino.commands.poker import lib as poker
+    """Replace each game package's TABLE_VERBS entry with a recorder, the single point dispatch reads."""
+    from casino.commands.blackjack import __init__ as _bj  # noqa: F401
+    import importlib
 
     ran = []
-    for mod, names in ((game, ("bet", "hit", "stand", "double", "split", "play")),
-                       (poker, ("bet", "check", "call", "raise_bet", "fold", "all_in", "start_hand"))):
-        for name in names:
-            monkeypatch.setattr(mod, name, lambda args, client=None, _n=name, **kw: ran.append(_n) or True)
+    for pkg in ("casino.commands.blackjack", "casino.commands.poker"):
+        mod = importlib.import_module(pkg)
+        recorded = {
+            verb: (lambda args, client=None, _n=verb, **kw: ran.append(_n) or True)
+            for verb in mod.TABLE_VERBS
+        }
+        monkeypatch.setattr(mod, "TABLE_VERBS", recorded)
     return ran
 
 
@@ -91,7 +95,7 @@ def test_dispatch_runs_blackjacks_hit_at_a_blackjack_table(monkeypatch):
 def test_dispatch_runs_pokers_start_at_a_poker_table(monkeypatch):
     ran = _recorders(monkeypatch)
     assert play.dispatch("start", None, client=_Client("p-a", "poker")) is True
-    assert ran == ["start_hand"]
+    assert ran == ["start"]
 
 
 def test_dispatch_refuses_double_at_a_poker_table_and_runs_nothing(monkeypatch):

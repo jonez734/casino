@@ -9,6 +9,17 @@ from . import lib
 
 __version__ = "202406010000"
 
+# The verbs a seated poker table accepts through ``table <verb>``.
+TABLE_VERBS = {
+    "bet": lib.bet,
+    "check": lib.check,
+    "call": lib.call,
+    "raise": lib.raise_bet,
+    "fold": lib.fold,
+    "allin": lib.all_in,
+    "start": lib.start_hand,
+}
+
 SUBCOMMANDS = {
     "check": lib.check,
     "call": lib.call,

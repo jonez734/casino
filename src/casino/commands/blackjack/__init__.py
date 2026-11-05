@@ -13,6 +13,19 @@ SUBCOMMANDS = {
     "play": lib.play,
 }
 
+# The verbs a seated blackjack table accepts through ``table <verb>``. The implementations are the game
+# package's, so the blackjack table and the game command run the same code.
+from casino.commands.game import lib as _game_lib  # noqa: E402
+
+TABLE_VERBS = {
+    "bet": _game_lib.bet,
+    "hit": _game_lib.hit,
+    "stand": _game_lib.stand,
+    "double": _game_lib.double,
+    "split": _game_lib.split,
+    "play": _game_lib.play,
+}
+
 
 def _echo_error(message):
     """Report an ambiguous subcommand through this package's own ``io``."""

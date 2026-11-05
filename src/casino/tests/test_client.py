@@ -456,6 +456,16 @@ class TestMenuVisibility(unittest.TestCase):
 
         return {key for key, _label in _visible_options(client)}
 
+    @staticmethod
+    def _table_subkeys(client):
+        """The play verbs offered under the ``table`` option for ``client``."""
+        from casino.client.menu import _OPTIONS_SPEC, _checker
+        from bbsengine6.menu_next import visible_options
+
+        table = next(o for o in _OPTIONS_SPEC if o.letter == "table")
+        subs = visible_options(tuple(table.subcommands.values()), client, check=_checker(client))
+        return {s.letter for s in subs}
+
     def test_no_table_hides_seat_gated_options(self):
         keys = self._keys(_StubClient())
         for key in ("table", "bank", "chat", "channels", "message", "tictactoe", "quit"):
@@ -470,9 +480,11 @@ class TestMenuVisibility(unittest.TestCase):
             self.assertNotIn(key, keys, f"{key} is a poker action")
 
     def test_poker_table_shows_poker_actions(self):
+        """Poker actions are reached as table verbs, offered at a poker table."""
         keys = self._keys(_StubClient(tm="tbl", gt="poker"))
         for key in ("check", "call", "raise", "fold", "allin"):
-            self.assertIn(key, keys, f"{key} is valid at a poker table")
+            self.assertIn(key, self._table_subkeys(_StubClient(tm="tbl", gt="poker")),
+                          f"{key} is valid at a poker table")
 
     def test_slots_table_shows_no_game_actions(self):
         keys = self._keys(_StubClient(tm="tbl", gt="slots"))

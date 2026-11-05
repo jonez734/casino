@@ -85,6 +85,34 @@ def _table_parser(name: str):
     return None
 
 
+def _play_verb_sub(verb: str, label: str) -> MenuOption:
+    """A table play verb, seat-gated, and gated to the table types whose game declares it.
+
+    The allowed types come from the game packages' TABLE_VERBS, the same declaration the table
+    dispatch reads, so the menu and the dispatch agree without a second list here.
+    """
+    from casino.commands.table import play as _play
+
+    types = frozenset(t for t, verbs in _play.PLAY_VERBS.items() if verb in verbs)
+    return _sub(verb, label, _TABLE, op=verb, requires_seated=True, allowed_game_types=types)
+
+
+# Play verbs on the seated table, reached as ``table <verb>`` and as top-level aliases.
+_TABLE_PLAY_SUBS = {
+    "bet": _play_verb_sub("bet", "Bet     (place a wager)"),
+    "hit": _play_verb_sub("hit", "Hit     (take another card)"),
+    "stand": _play_verb_sub("stand", "Stand   (hold your hand)"),
+    "double": _play_verb_sub("double", "Double  (double down)"),
+    "split": _play_verb_sub("split", "Split   (split a pair)"),
+    "play": _play_verb_sub("play", "Play    (blackjack: take the next action)"),
+    "check": _play_verb_sub("check", "Check   (poker: pass the action)"),
+    "call": _play_verb_sub("call", "Call    (poker: match the bet)"),
+    "raise": _play_verb_sub("raise", "Raise   (poker: raise the bet)"),
+    "fold": _play_verb_sub("fold", "Fold    (poker: give up the hand)"),
+    "allin": _play_verb_sub("allin", "All-in (poker: bet everything)"),
+    "start": _play_verb_sub("start", "Start   (poker: deal the hand)"),
+}
+
 _TABLE_SUBS = {
     "list": _sub("list", "List open tables", _TABLE, op="list_tables",
                  parser=_table_parser("list")),
@@ -101,8 +129,10 @@ _TABLE_SUBS = {
 }
 
 _OPTIONS_SPEC = (
-    MenuOption("table", "Table   (list, create, join, update, leave, view)",
-               _TABLE, op="list_tables", subcommands=_TABLE_SUBS),
+    MenuOption("table", "Table   (list, create, join, update, leave, view, play verbs)",
+               _TABLE, op="list_tables", subcommands={**_TABLE_SUBS, **_TABLE_PLAY_SUBS},
+               aliases=tuple(_TABLE_PLAY_SUBS),
+               alias_subcommand={verb: verb for verb in _TABLE_PLAY_SUBS}),
     MenuOption("bank", "Bank    (open the bank submenu)", "casino.commands.bank", op="balance"),
     MenuOption("channels", "Channels (open the channel submenu)", None),
     MenuOption("chat", "Chat    (global or table chat)", "casino.commands.chat", op="chat"),
@@ -114,22 +144,28 @@ _OPTIONS_SPEC = (
                aliases=("ttt", "move", "resign"),
                alias_subcommand={"ttt": "quickplay", "move": "move", "resign": "resign"}),
     MenuOption("game", "Game    (bet, hit, stand, double, split)", _GAME,
-               op="bet", subcommands=_GAME_SUBS,
-               aliases=("hit", "stand", "double", "split", "bet"),
-               alias_subcommand={"hit": "hit", "stand": "stand", "double": "double",
-                                 "split": "split", "bet": "bet"}),
-    MenuOption("check", "Check   (poker: pass the action)", _POKER, op="check",
-               requires_seated=True, allowed_game_types=_POKER_ONLY),
-    MenuOption("call", "Call    (poker: match the bet)", _POKER, op="call",
-               requires_seated=True, allowed_game_types=_POKER_ONLY),
-    MenuOption("raise", "Raise   (poker: raise the bet)", _POKER, op="raise",
-               requires_seated=True, allowed_game_types=_POKER_ONLY),
-    MenuOption("fold", "Fold    (poker: give up the hand)", _POKER, op="fold",
-               requires_seated=True, allowed_game_types=_POKER_ONLY),
-    MenuOption("allin", "All-in (poker: bet everything)", _POKER, op="allin",
-               requires_seated=True, allowed_game_types=_POKER_ONLY),
+               op="bet", subcommands=_GAME_SUBS),
     MenuOption("quit", "Quit", None),
 )
+
+
+def _check_top_level_names(spec) -> None:
+    """Refuse a spec in which a top-level name or alias is used twice.
+
+    An alias that shares a name with another top-level command would silently shadow it. Failing here, at
+    menu build, names both so the clash is fixed at the source.
+    """
+    seen: dict[str, str] = {}
+    for opt in spec:
+        for name in (opt.letter, *opt.aliases):
+            if name in seen and seen[name] != opt.letter:
+                raise ValueError(
+                    f"top-level name {name!r} is used by both {seen[name]!r} and {opt.letter!r}"
+                )
+            seen[name] = opt.letter
+
+
+_check_top_level_names(_OPTIONS_SPEC)
 
 _DEFAULT = "quit"
 

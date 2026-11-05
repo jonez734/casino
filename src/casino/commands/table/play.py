@@ -11,11 +11,28 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable, Optional
 
-# Verbs per table type. Each maps to the existing implementation, so nothing moves.
-# ``play`` belongs to blackjack and ``start`` to poker: the two are not the same action.
+# The game packages declare their own table verbs (TABLE_VERBS in each package). This module only
+# gathers them by table type, so no game's verbs are listed here.
+#
+# The table type each package serves. Keys are the table's ``type`` value.
+_GAME_PACKAGES = {
+    "blackjack": "casino.commands.blackjack",
+    "poker": "casino.commands.poker",
+}
+
+
+def _table_verbs() -> dict[str, dict[str, Callable]]:
+    """Each table type's verbs and implementations, read from the game packages."""
+    import importlib
+
+    return {
+        game_type: dict(importlib.import_module(pkg).TABLE_VERBS)
+        for game_type, pkg in _GAME_PACKAGES.items()
+    }
+
+
 PLAY_VERBS: dict[str, tuple[str, ...]] = {
-    "blackjack": ("bet", "hit", "stand", "double", "split", "play"),
-    "poker": ("bet", "check", "call", "raise", "fold", "allin", "start"),
+    game_type: tuple(verbs) for game_type, verbs in _table_verbs().items()
 }
 
 
@@ -57,24 +74,6 @@ def union_of_verbs() -> tuple[str, ...]:
     return tuple(seen)
 
 
-def _implementations():
-    """Each game's implementation, by table type and verb. Imported lazily to avoid import cycles."""
-    from casino.commands.game import lib as game
-    from casino.commands.poker import lib as poker
-
-    return {
-        "blackjack": {
-            "bet": game.bet, "hit": game.hit, "stand": game.stand,
-            "double": game.double, "split": game.split, "play": game.play,
-        },
-        "poker": {
-            "bet": poker.bet, "check": poker.check, "call": poker.call,
-            "raise": poker.raise_bet, "fold": poker.fold, "allin": poker.all_in,
-            "start": poker.start_hand,
-        },
-    }
-
-
 def dispatch(verb: str, args, client=None, **kwargs) -> bool:
     """Run ``verb`` against the table the client is seated at, routed by that table's type.
 
@@ -89,4 +88,4 @@ def dispatch(verb: str, args, client=None, **kwargs) -> bool:
 
         io.echo(f"{{red}}{routed.message}{{/all}}")
         return False
-    return _implementations()[routed][verb](args, client=client, **kwargs)
+    return _table_verbs()[routed][verb](args, client=client, **kwargs)
