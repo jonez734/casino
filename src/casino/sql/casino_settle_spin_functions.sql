@@ -31,6 +31,8 @@ DECLARE
     v_spin_id bigint;
     v_corr text;
     v_desc text;
+    v_existing_id bigint;
+    v_existing_balance numeric;
 BEGIN
     SELECT t.moniker INTO v_actor
     FROM engine.__bed_token t
@@ -62,6 +64,20 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'code', 'insufficient_funds',
                                   'message', 'Account not found');
     END IF;
+
+    -- Dedupe on the correlation id while holding the account lock, so two concurrent retries of
+    -- the same spin cannot both pass this check. A retry returns the first settlement's result and
+    -- moves no money. The check runs before any balance change.
+    IF v_corr <> '' THEN
+        SELECT s.id INTO v_existing_id
+        FROM casino.__slot_spin s
+        WHERE s.correlation_id = v_corr;
+        IF v_existing_id IS NOT NULL THEN
+            SELECT balance INTO v_existing_balance FROM bank.__account WHERE id = v_account;
+            RETURN jsonb_build_object('success', true, 'spin_id', v_existing_id,
+                                      'new_balance', v_existing_balance, 'duplicate', true);
+        END IF;
+    END IF;
     IF v_net < 0 AND v_balance < -v_net THEN
         RETURN jsonb_build_object('success', false, 'code', 'insufficient_funds',
                                   'message', 'Insufficient funds');
@@ -86,8 +102,8 @@ BEGIN
     END IF;
 
     INSERT INTO casino.__slot_spin
-        (table_moniker, player_moniker, bet, payout, reels, wins)
-    VALUES (v_table, v_actor, v_bet, v_payout, v_reels, v_wins)
+        (table_moniker, player_moniker, bet, payout, reels, wins, correlation_id)
+    VALUES (v_table, v_actor, v_bet, v_payout, v_reels, v_wins, NULLIF(v_corr, ''))
     RETURNING id INTO v_spin_id;
 
     UPDATE casino.__player
