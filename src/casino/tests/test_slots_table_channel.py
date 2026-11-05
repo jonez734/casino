@@ -43,6 +43,8 @@ pytestmark = pytest.mark.integration
 
 class TestSlotsTableChannel(__import__("unittest").IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
+        self._issued_tokens: list[str] = []
+        self._tokens: dict[str, str] = {}
         from bbsengine6 import database
         from bbsengine6.console import member as con_member
         from bbsengine6.net import WebSocketServer
@@ -84,7 +86,18 @@ class TestSlotsTableChannel(__import__("unittest").IsolatedAsyncioTestCase):
                 grant_test_role(self.args, moniker, pool=self.pool)
 
         self.server = WebSocketServer(host="127.0.0.1", port=TEST_PORT)
-        self.router = MessageRouter(self.args)
+        # Wire the router the way bed does in production: the token gate needs the secret, the
+        # database token store (the rows _issue_token writes), and an instance id. Without them
+        # the gate is a no-op and a spin is refused as having no session token.
+        from bed.api.token_store import DBTokenStore
+
+        self._test_secret = b"slots-table-channel-test-secret-32b!!"
+        self.router = MessageRouter(
+            self.args,
+            secret=self._test_secret,
+            token_store=DBTokenStore(self.args),
+            instance_id="casino-test",
+        )
         self.router.register_all(self.server)
         for svc in (self.router.table_service, self.router.slot_service):
             svc.allow_legacy_session_only = True
@@ -96,6 +109,14 @@ class TestSlotsTableChannel(__import__("unittest").IsolatedAsyncioTestCase):
 
     async def asyncTearDown(self) -> None:
         from bbsengine6 import database
+
+        # Remove the bearer tokens this test minted, so reruns leave no rows in engine.__bed_token.
+        if getattr(self, "_issued_tokens", None):
+            from bed.api.token_store import DBTokenStore
+
+            store = DBTokenStore(self.args)
+            for token in self._issued_tokens:
+                store.delete(token)
 
         for client in (self.client_player, self.client_spectator):
             if client:
@@ -112,20 +133,56 @@ class TestSlotsTableChannel(__import__("unittest").IsolatedAsyncioTestCase):
                     (f"casino:table:{self.table_moniker}:events", f"casino:table:{self.table_moniker}:chat"),
                 )
 
+    def _issue_token(self, moniker: str) -> str:
+        """Mint a signed bed bearer token for ``moniker``, the way bed does at login.
+
+        The claims are built as bed's AuthService._mint_record builds them, signed with the router's
+        secret (the same secret the token gate verifies with), and the row is written to
+        engine.__bed_token through DBTokenStore. Nothing is bypassed: the server verifies the
+        signature, the expiry, and the stored row, and the spin settles through the real database.
+        """
+        import time
+        import uuid
+
+        from bed.api.token_store import DBTokenStore, TokenRecord
+        from casino.api._auth import _TOKEN_CLAIM_VERSION as TOKEN_CLAIM_VERSION, encode_token
+
+        now = time.time()
+        session_id = f"sess-{moniker}-{uuid.uuid4().hex[:8]}"
+        websocket_id = f"ws-{moniker}-{uuid.uuid4().hex[:8]}"
+        claims = {
+            "version": TOKEN_CLAIM_VERSION,
+            "moniker": moniker,
+            "issued_at": now,
+            "expires_at": now + 3600,
+            "session_id": session_id,
+            "is_sysop": False,
+            "bed_instance_id": "casino-test",
+            "websocket_id": websocket_id,
+            "loginid": moniker,
+        }
+        token = encode_token(claims, self._test_secret)
+        DBTokenStore(self.args).put(TokenRecord(
+            token=token, moniker=moniker, session_id=session_id, issued_at=now,
+            expires_at=now + 3600, is_sysop=False, bed_instance_id="casino-test",
+            websocket_id=websocket_id, claims=claims, loginid=moniker,
+        ))
+        self._issued_tokens.append(token)
+        self._tokens[moniker] = token
+        return token
+
     async def _login(self, moniker: str) -> WebSocketTestClient:
         client = WebSocketTestClient(TEST_URI)
         await client.connect()
-        await client.send({"type": "auth", "moniker": moniker, "password": TEST_PASSWORD})
+        await client.send({
+            "type": "auth", "moniker": moniker, "password": TEST_PASSWORD,
+            "token": self._issue_token(moniker),
+        })
         reply = await client.receive()
         self.assertEqual(reply["type"], "auth_result", f"auth for {moniker}: {reply}")
         self.assertTrue(reply["success"], f"auth for {moniker} failed: {reply}")
         return client
 
-    @unittest.skip(
-        "needs a bed-issued bearer token: a real slot spin settles money through "
-        "engine.casino_settle_spin and is refused without one (services/slots.py); this "
-        "test has no bed auth, so it is skipped rather than given a fake token"
-    )
     async def test_spectator_receives_a_slot_spin_on_the_table_channel(self) -> None:
         self.client_player = await self._login(self.player)
         self.client_spectator = await self._login(self.spectator)
@@ -148,7 +205,10 @@ class TestSlotsTableChannel(__import__("unittest").IsolatedAsyncioTestCase):
         watching = await self.client_spectator.receive()
         self.assertEqual(watching["type"], "watching_table", f"watch reply: {watching}")
 
-        await self.client_player.send({"type": "slot_spin", "bet": 1, "table_moniker": self.table_moniker})
+        await self.client_player.send({
+            "type": "slot_spin", "bet": 1, "table_moniker": self.table_moniker,
+            "token": self._tokens[self.player],
+        })
         spin_reply = await self.client_player.receive()
         self.assertEqual(spin_reply["type"], "slot_result", f"spin reply: {spin_reply}")
 
@@ -193,6 +253,7 @@ class TestSlotsBigWinShout(TestSlotsTableChannel):
         with _patch.object(self.router.slot_service, "_handle_spin", return_value=forced):
             await self.client_player.send({
                 "type": "slot_spin", "bet": 1, "table_moniker": self.table_moniker,
+                "token": self._tokens[self.player],
             })
             # The player is subscribed to casino:global too, so the shout may arrive first. Take
             # the spin reply by type.
