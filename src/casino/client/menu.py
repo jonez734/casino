@@ -132,6 +132,8 @@ _OPTIONS_SPEC = (
                aliases=tuple(_TABLE_PLAY_SUBS),
                alias_subcommand={verb: verb for verb in _TABLE_PLAY_SUBS}),
     MenuOption("bank", "Bank    (open the bank submenu)", "casino.commands.bank", op="balance"),
+    MenuOption("slots", "Slots   (open the slots submenu)", "casino.commands.slots", op="menu",
+               requires_connected=True),
     MenuOption("channels", "Channels (open the channel submenu)", None),
     MenuOption("chat", "Chat    (global or table chat)", "casino.commands.chat", op="chat"),
     MenuOption("message", "Message (send a direct message)", None),

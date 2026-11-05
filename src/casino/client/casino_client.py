@@ -1552,6 +1552,28 @@ class CasinoClient:
             self._dispatch_admin(sub)
         elif key == "tictactoe":
             self._dispatch_tictactoe(sub)
+        elif key == "slots":
+            self._dispatch_slots(sub)
+
+    def _dispatch_slots(self, sub) -> None:
+        """Run a slots action from the main menu, or open the slots submenu when none is named.
+
+        The actions are the client's own slot commands, so the wire path is the same one the
+        slots submenu uses. Spin and paytable are seat-gated by the menu's option gates.
+        """
+        if sub == "spin":
+            io.echo("Spin")
+            self.cmd_slot_spin()
+        elif sub == "paytable":
+            io.echo("Paytable")
+            self.cmd_slot_paytable()
+        elif sub == "history":
+            io.echo("History")
+            self.cmd_slot_history()
+        else:
+            from casino.commands.slots import lib as _slots_lib
+
+            _slots_lib.menu(None, client=self)
 
     def _dispatch_table(self, sub, targs=None) -> None:
         """Run a ``table`` subcommand. ``targs`` carries its typed arguments:
