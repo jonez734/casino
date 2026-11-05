@@ -448,10 +448,18 @@ def _get_or_bind_session_for(
     no bound session AND the wire token (if any) fails to validate.
     """
     state = _get_session_state(self_ref, websocket)
+    wire_token = (message.get("token") or "").strip()
     if state is not None:
+        # A session from a password login has no bearer token. When the message carries a valid
+        # one, bind it, so a money op (a slot spin) can be settled with it. An invalid token is
+        # never bound; the session stays as it was.
+        if wire_token and not getattr(state, "auth_service_token", None):
+            claims, token_err = _validate_wire_token(self_ref, message)
+            if token_err is None and claims is not None:
+                state.auth_service_token = wire_token
+                message["claims"] = claims
         return state, None
 
-    wire_token = (message.get("token") or "").strip()
     if not wire_token:
         return None, not_authenticated()
 
