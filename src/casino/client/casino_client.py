@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import uuid
 import argparse
 import asyncio
 import time
@@ -786,11 +787,15 @@ class CasinoClient:
         bet = io.inputinteger("{var:promptcolor}Bet amount: {var:inputcolor}", minimum=1)
         if bet is None:
             return
+        # One idempotency key per spin. Every send of this spin (a retry included) carries the same key,
+        # so the server settles it at most once and returns the original result on a retry.
+        idempotency_key = uuid.uuid4().hex
         self._loop.run_until_complete(
             self.send(
                 {
                     "type": "slot_spin",
                     "bet": int(bet),
+                    "idempotency_key": idempotency_key,
                 }
             )
         )
