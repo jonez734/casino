@@ -10,13 +10,14 @@ Status: open (2026-11-05). Everything below is committed locally in `casino/`, `
 
 ## Money and correctness
 
-- [ ] **Retry dedupe is not active for real retries (found in review).** `handle_spin` in
+- [x] **Retry dedupe is not active for real retries (found in review). Fixed: f06678f, cf5b79e, a9fa448.**
+      The client sends an `idempotency_key` per spin; the server uses it as the correlation id. `handle_spin` in
       `services/slots.py` generates `correlation_id = uuid.uuid4().hex` on every call (line ~179), so a
       client retry sends a new id and the database dedupe never matches. The dedupe only protects a
       retry that reuses the id, which the current code never sends. Fix: the client sends an
       idempotency key with each spin, and the server uses it as the correlation id. Needs a protocol
       decision (client change).
-- [ ] **A committed settle can still reply `service_error`** (`services/slots.py` lines ~257–260). The
+- [x] **A committed settle can still reply `service_error`** (fixed: a duplicate returns the stored spin, f06678f) (`services/slots.py` lines ~257–260). The
       money has moved, but the player is told the spin failed. Fix: when the database returns
       `duplicate: true`, return the stored spin, not an error.
 
