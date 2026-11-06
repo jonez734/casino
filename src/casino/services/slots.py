@@ -153,6 +153,20 @@ def _get_player_credits(args: Any, moniker: str) -> int:
         return int(row["balance"]) if row else 0
 
 
+def _idempotency_key_error(key: Any) -> Optional[str]:
+    """None when ``key`` is absent or a valid idempotency key, else the reason it is refused.
+
+    A key is 1 to 64 letters, digits, ``-`` or ``_``. Absent means the spin gets a server id.
+    """
+    if key is None:
+        return None
+    if not isinstance(key, str) or not 1 <= len(key) <= 64:
+        return "idempotency_key must be 1 to 64 letters, digits, '-' or '_'"
+    if not all(c.isalnum() or c in "-_" for c in key):
+        return "idempotency_key must be 1 to 64 letters, digits, '-' or '_'"
+    return None
+
+
 def handle_spin(
     args: Any,
     table_moniker: str,
@@ -176,7 +190,14 @@ def handle_spin(
     Callers without a session token (door mode, unit tests that do not supply
     ``state``) are refused before settlement, because only a live token can move money.
     """
-    correlation_id = uuid.uuid4().hex
+    # The client sends one idempotency key per spin and reuses it on a retry, so a retry is recognised
+    # and settles nothing (see the settle function). Without a key, the spin gets a server id and is
+    # not retry-safe; that is only for clients that do not send one yet.
+    key_error = _idempotency_key_error((message or {}).get("idempotency_key"))
+    if key_error is not None:
+        return {"success": False, "code": "invalid_request", "message": key_error}
+    idem = (message or {}).get("idempotency_key")
+    correlation_id = uuid.uuid4().hex if idem is None else idem
     if not isinstance(bet, int) or isinstance(bet, bool) or bet <= 0:
         io.echo(f"slots: invalid_bet member={player_moniker} table={table_moniker} bet={bet!r} corr={correlation_id}", level="warning")
         return {"success": False, "code": "invalid_bet", "message": "Bet must be a positive integer"}
@@ -267,6 +288,24 @@ def handle_spin(
 
     spin_id = int(settled["spin_id"])
     new_balance = int(settled["new_balance"])
+    if settled.get("duplicate"):
+        # A retry: report the spin that already settled, with its stored reels and payout.
+        io.echo(f"slots: spin retry spin_id={spin_id} member={player_moniker} corr={correlation_id}", level="info")
+        return {
+            "success": True,
+            "duplicate": True,
+            "spin": {
+                "id": spin_id,
+                "table_moniker": settled.get("table_moniker", table_moniker),
+                "bet": int(settled["bet"]),
+                "payout": int(settled["payout"]),
+                "net": int(settled["net"]),
+                "new_balance": new_balance,
+                "reels": settled.get("reels", []),
+                "center_row": [],
+                "wins": settled.get("wins", []),
+            },
+        }
     io.echo(f"slots: spin ok spin_id={spin_id} member={player_moniker} table={table_moniker} bet={bet} payout={result.payout} net={net} corr={correlation_id}", level="info")
     return {
         "success": True,
