@@ -33,6 +33,11 @@ DECLARE
     v_desc text;
     v_existing_id bigint;
     v_existing_balance numeric;
+    v_existing_bet numeric;
+    v_existing_payout numeric;
+    v_existing_reels jsonb;
+    v_existing_wins jsonb;
+    v_existing_table citext;
 BEGIN
     SELECT t.moniker INTO v_actor
     FROM engine.__bed_token t
@@ -69,13 +74,27 @@ BEGIN
     -- the same spin cannot both pass this check. A retry returns the first settlement's result and
     -- moves no money. The check runs before any balance change.
     IF v_corr <> '' THEN
-        SELECT s.id INTO v_existing_id
+        SELECT s.id, s.table_moniker, s.bet, s.payout, s.reels, s.wins
+          INTO v_existing_id, v_existing_table, v_existing_bet, v_existing_payout,
+               v_existing_reels, v_existing_wins
         FROM casino.__slot_spin s
-        WHERE s.correlation_id = v_corr;
+        WHERE s.correlation_id = v_corr AND s.player_moniker = v_actor;
         IF v_existing_id IS NOT NULL THEN
+            -- A retry of a spin that already settled. Return the stored spin, not an error, so the
+            -- player sees the result of the spin they paid for. No money moves.
             SELECT balance INTO v_existing_balance FROM bank.__account WHERE id = v_account;
-            RETURN jsonb_build_object('success', true, 'spin_id', v_existing_id,
-                                      'new_balance', v_existing_balance, 'duplicate', true);
+            RETURN jsonb_build_object(
+                'success', true,
+                'duplicate', true,
+                'spin_id', v_existing_id,
+                'new_balance', v_existing_balance,
+                'table_moniker', v_existing_table,
+                'bet', v_existing_bet,
+                'payout', v_existing_payout,
+                'net', v_existing_payout - v_existing_bet,
+                'reels', v_existing_reels,
+                'wins', v_existing_wins
+            );
         END IF;
     END IF;
     IF v_net < 0 AND v_balance < -v_net THEN
@@ -123,7 +142,18 @@ BEGIN
         WHERE moniker = v_actor;
     END IF;
 
-    RETURN jsonb_build_object('success', true, 'spin_id', v_spin_id, 'new_balance', v_balance);
+    RETURN jsonb_build_object(
+        'success', true,
+        'duplicate', false,
+        'spin_id', v_spin_id,
+        'new_balance', v_balance,
+        'table_moniker', v_table,
+        'bet', v_bet,
+        'payout', v_payout,
+        'net', v_net,
+        'reels', v_reels,
+        'wins', v_wins
+    );
 END;
 $$;
 
