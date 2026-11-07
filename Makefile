@@ -279,6 +279,9 @@ endif
 # bbsengine6 requires <3.13, so VENV_PYTHON defaults to python3.12 for a new venv.
 VENV_DIR ?= $(or $(DEPLOY_PREFIX),$(HOME)/.venv)
 VENV_PYTHON ?= python3.12
+# Internal wheels (bbsengine6, bed) come from this directory, through --find-links, as the deploy's
+# installer does. Without it, pip resolves them from the public index, where neither exists.
+DIST_DIR ?= /home/opencode/data/work/dist-wheels
 venv:
 	@if [ ! -x "$(VENV_DIR)/bin/python" ]; then \
 		command -v "$(VENV_PYTHON)" >/dev/null 2>&1 || { echo "venv: $(VENV_PYTHON) not found; install it or set VENV_PYTHON" >&2; exit 1; }; \
@@ -295,7 +298,8 @@ venv:
 	"$(VENV_DIR)/bin/python" -m build --wheel --outdir "$$wheels" "$$work/src" && \
 	whl="$$(ls "$$wheels"/*.whl)" && \
 	want="$$(unzip -p "$$whl" '*/METADATA' | sed -n 's/^Version: //p' | head -1)" && \
-	"$(VENV_DIR)/bin/python" -m pip install --upgrade --force-reinstall "$$whl" && \
+	"$(VENV_DIR)/bin/python" -m pip install --upgrade --no-index --find-links "$(DIST_DIR)" "bed>=0.5.0.dev20261106" "bbsengine6>=0.5.0.dev20261106" && \
+	"$(VENV_DIR)/bin/python" -m pip install --upgrade --force-reinstall --no-deps "$$whl" && \
 	have="$$("$(VENV_DIR)/bin/python" -c 'from casino._version import version as v; print(v)')" && \
 	if [ "$$have" != "$$want" ]; then echo "venv: installed casino $$have, but the wheel is $$want" >&2; exit 1; fi && \
 	echo "casino $$want installed into $(VENV_DIR)"
