@@ -154,20 +154,39 @@ def _payload(table: str, bet: int, payout: int, corr: str) -> dict:
     }
 
 
-def _cleanup(database, args, moniker: str, table: str, tokens: list[str]) -> None:
+def _cleanup(database, args, moniker: str, table: str, tokens: list[str]) -> list[str]:
+    """Remove the scratch rows this run created. Returns the names of any it could not remove.
+
+    Each table is cleared in its own transaction, in dependency order. A refused delete (for example
+    the member delete cascading into engine.map_member_flag, which some roles may not write) is
+    reported as a leftover and does not roll back the rows already removed. The caller prints the
+    leftovers, so nothing is left behind silently.
+    """
     from bed.api.token_store import DBTokenStore
 
+    leftovers: list[str] = []
     store = DBTokenStore(args)
     for t in tokens:
-        store.delete(t)
-    with database.connect(args) as conn, database.cursor(conn) as cur:
-        cur.execute("DELETE FROM casino.__slot_spin WHERE player_moniker = %s", (moniker,))
-        cur.execute("DELETE FROM bank.__transaction WHERE membermoniker = %s", (moniker,))
-        cur.execute("DELETE FROM bank.__account WHERE moniker = %s", (moniker,))
-        cur.execute("DELETE FROM casino.__player WHERE moniker = %s", (moniker,))
-        cur.execute("DELETE FROM casino.__table WHERE moniker = %s", (table,))
-        cur.execute("DELETE FROM engine.__member WHERE moniker = %s", (moniker,))
-        conn.commit()
+        try:
+            store.delete(t)
+        except Exception as exc:  # token store refusal: report, keep going
+            leftovers.append(f"token ({type(exc).__name__})")
+    steps = [
+        ("casino.__slot_spin", "DELETE FROM casino.__slot_spin WHERE player_moniker = %s", (moniker,)),
+        ("bank.__transaction", "DELETE FROM bank.__transaction WHERE membermoniker = %s", (moniker,)),
+        ("bank.__account", "DELETE FROM bank.__account WHERE moniker = %s", (moniker,)),
+        ("casino.__player", "DELETE FROM casino.__player WHERE moniker = %s", (moniker,)),
+        ("casino.__table", "DELETE FROM casino.__table WHERE moniker = %s", (table,)),
+        ("engine.__member", "DELETE FROM engine.__member WHERE moniker = %s", (moniker,)),
+    ]
+    for name, sql, params in steps:
+        try:
+            with database.connect(args) as conn, database.cursor(conn) as cur:
+                cur.execute(sql, params)
+                conn.commit()
+        except Exception as exc:
+            leftovers.append(f"{name} ({type(exc).__name__}: {str(exc).splitlines()[0]})")
+    return leftovers
 
 
 def run(db: str, keep: bool) -> list[Result]:
@@ -177,6 +196,7 @@ def run(db: str, keep: bool) -> list[Result]:
     table = f"retrychk_tbl_{suffix}"
     tokens: list[str] = []
     results: list[Result] = []
+    leftovers: list[str] = []
 
     try:
         _create_table(database, args, table)
@@ -235,21 +255,29 @@ def run(db: str, keep: bool) -> list[Result]:
             and spin_after == spin_before and _balance(database, args, poor) == 0,
             f"code={r5.get('code')} txns {txn_before}->{txn_after} spins {spin_before}->{spin_after}"))
         if not keep:
-            _cleanup(database, args, poor, table, [])
+            leftovers.extend(_cleanup(database, args, poor, table, []))
     finally:
         if not keep:
-            _cleanup(database, args, moniker, table, tokens)
-    return results
+            leftovers.extend(_cleanup(database, args, moniker, table, tokens))
+    return results, leftovers
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--db", required=True, help="test database name (never a production database)")
     ap.add_argument("--keep", action="store_true", help="leave the scratch rows in place")
+    ap.add_argument("--i-know", action="store_true",
+                    help="allow a database whose name does not start with zoid6test (only if it is disposable)")
     opts = ap.parse_args()
 
+    if not opts.db.lower().startswith("zoid6test") and not opts.i_know:
+        print(f"refusing database {opts.db!r}: this checker writes and deletes rows. Use a test database "
+              "(zoid6test), or pass --i-know if you have confirmed the database is disposable.",
+              file=sys.stderr)
+        return 2
+
     try:
-        results = run(opts.db, opts.keep)
+        results, leftovers = run(opts.db, opts.keep)
     except Exception as exc:  # setup or connection failure
         print(f"setup error: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 2
@@ -260,6 +288,11 @@ def main() -> int:
         failed += 0 if r.ok else 1
         print(f"{status}  {r.name}\n      {r.detail}")
     print(f"\n{len(results) - failed} passed, {failed} failed")
+    if leftovers:
+        print("LEFTOVER scratch rows (remove these by hand; they carry the retrychk_ prefix):")
+        for item in leftovers:
+            print(f"  - {item}")
+        return 1
     return 1 if failed else 0
 
 
