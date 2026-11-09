@@ -198,18 +198,40 @@ def _visible_options(client: "CasinoClient | None"):
     ]
 
 
-def _render_help(client: "CasinoClient | None" = None, **kwargs) -> None:
-    """F1/HELP callback. A sysop sees every command; entries that are not
-    available now are dimmed with ``menu.item.disabled``.
+_HELP_HEADING_WIDTH_OFFSET = 4  # same reduction as bbsengine6 util.heading()
+
+
+def _help_heading(title: str, width: int) -> str:
+    """The casino heading box as text, the same look as util.heading(). Ends with {f6}."""
+    inner = width - _HELP_HEADING_WIDTH_OFFSET
+    w = inner - len(title)
+    left = w // 2
+    right = w - left
+    return (
+        f"{{/all}}{{normalcolor}} {{boxcolor}}{{ulcorner}}{{hline:{inner}}}{{urcorner}}\n"
+        f" {{boxcolor}}{{vline}}{{titlecolor}}{' ' * left}{title}{' ' * right}{{/all}}{{boxcolor}}{{vline}}\n"
+        f" {{llcorner}}{{hline:{inner}}}{{lrcorner}}{{/all}}{{f6}}"
+    )
+
+
+def _render_help(client: "CasinoClient | None" = None, **kwargs) -> str:
+    """F1/HELP callback. Returns the help as text, so the input path draws it below the
+    prompt (bbsengine6 handle_help expects a string). The first line is the word ``help``.
+    A sysop sees every command; entries that are not available now are dimmed.
     """
     client = client or get_client()
-    util.heading("casino_client")
     sysop = bool(getattr(client, "is_sysop", False))
+    try:
+        width = io.terminal.width()
+    except Exception:
+        width = 80
+    lines = ["help", _help_heading("casino_client", width)]
     for opt, enabled in menu_entries(_OPTIONS_SPEC, client, check=_checker(client)):
         if not enabled and not sysop:
             continue
         style = "{var:menu.item.enabled}" if enabled else "{var:menu.item.disabled}"
-        io.echo(f"{{{style}}}[{opt.letter.upper()}]{{/all}} {opt.label}")
+        lines.append(f"{style}[{opt.letter.upper()}] {{labelcolor}}{opt.label}{{/all}}")
+    return "\n".join(lines)
 
 
 def menu(client: "CasinoClient | None" = None, **kwargs) -> Choice:

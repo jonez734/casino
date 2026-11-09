@@ -509,10 +509,7 @@ class TestMenuVisibility(unittest.TestCase):
         from casino.client.menu import _visible_options, _render_help
 
         stub = _StubClient()
-        with patch("casino.client.menu.io.echo") as echo, \
-             patch("casino.client.menu.util.heading"):
-            _render_help(client=stub)
-        printed = " ".join(str(c.args[0]) for c in echo.call_args_list)
+        printed = _render_help(client=stub)  # the help is returned text now, not echoed
         for key, _label in _visible_options(stub):
             self.assertIn(key.upper(), printed)
 
