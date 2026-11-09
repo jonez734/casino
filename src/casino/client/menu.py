@@ -167,7 +167,7 @@ def _check_top_level_names(spec) -> None:
 
 _check_top_level_names(_OPTIONS_SPEC)
 
-_DEFAULT = "quit"
+# No default: a blank line re-reads the menu instead of choosing an option. Quit is the explicit "q".
 
 
 def _checker(client: "CasinoClient | None"):
@@ -229,7 +229,6 @@ def menu(client: "CasinoClient | None" = None, **kwargs) -> Choice:
         _OPTIONS_SPEC,
         state=client,
         check=_checker(client),
-        default=_DEFAULT,
         help=lambda **kw: _render_help(client=client, **kw),
         reader=_host.read_line,
     )
