@@ -11,7 +11,6 @@ from typing import Any
 from bbsengine6 import bottombar, database, io, member, module, util
 from bbsengine6 import bottombar as bbsengine6_bottombar
 from bbsengine6.io import terminal as bbsengine6_terminal
-from PIL import Image, ImageOps, ImageTk
 
 PACKAGENAME = "casino"
 
@@ -96,7 +95,11 @@ class tkCard(Card):
         artpath = f"cards/{short}_of_{suitname}.png"
         return artpath
 
-    def getart(self) -> ImageTk.PhotoImage:
+    def getart(self) -> Any:
+        # PIL is imported here, not at module level: the package imports lib.py, so a wheel build
+        # or any import of casino must not need Pillow. Only the Tk UI calls getart().
+        from PIL import Image, ImageOps, ImageTk
+
         self.artpath = self.getartpath()
         with Image.open(self.artpath) as img:
             self.containedimage = ImageOps.contain(img, (100, 250))
