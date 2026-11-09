@@ -34,7 +34,7 @@ dependencies = [
 
 [project.optional-dependencies]
 # The Tk UI: card images need Pillow. Tkinter comes with Python.
-tk = ["pillow"]
+tk = ["pillow", "playingcarddata"]
 dev = [
     "pytest>=7",
     "pytest-cov>=4",

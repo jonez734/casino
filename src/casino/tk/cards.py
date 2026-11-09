@@ -1,19 +1,18 @@
 """Tk card, hand and table classes for the casino Tk UI.
 
 These extend the UI-neutral Card, Hand and Table classes in casino.lib. casino.lib does not import
-this module. Card art is read from CASINO_CARD_ART (see casino.tk.card_art_root).
+this module. Card images come from the playingcarddata package (see casino.tk.card_images).
 """
 
 from __future__ import annotations
 
-import os
 import tkinter as tk
 from typing import Any
 
 from bbsengine6 import io
 
 from casino.lib import Card, Hand, Table
-from casino.tk import card_art_root
+from casino.tk import card_images
 
 class tkCard(Card):
     def __init__(self, args: Any, **kwargs: Any) -> None:
@@ -24,33 +23,13 @@ class tkCard(Card):
         return f"tkCard({self.shorthand=}, {self.artpath=}, {self.suit=}, {self.pips=} {self.getart()=} {self.facedown=})"
 
     def getartpath(self) -> str:
-        suitname = "unknown"
+        """The image's file name in the playingcarddata set (the card back and blank are named)."""
         if self.suit is None and self.pips is None:
-            artpath = "card-blank-008000.png"
-        elif self.facedown is True:
-            artpath = "card-back-electricblue.png"
-        elif self.suit == "D":
-            suitname = "diamonds"
-        elif self.suit == "H":
-            suitname = "hearts"
-        elif self.suit == "S":
-            suitname = "spades"
-        elif self.suit == "C":
-            suitname = "clubs"
-
-        if self.pips == "A":
-            short = "ace"
-        elif self.pips == "J":
-            short = "jack"
-        elif self.pips == "Q":
-            short = "queen"
-        elif self.pips == "K":
-            short = "king"
-        else:
-            short = self.pips if self.pips is not None else "unknown"
-
-        artpath = f"{short}_of_{suitname}.png"
-        return artpath
+            return card_images.CARD_BLANK
+        if self.facedown is True:
+            return card_images.CARD_BACK
+        suit = card_images.SUIT_FROM_LETTER.get(self.suit or "", "")
+        return card_images.card_filename(self.pips or "", suit)
 
     def getart(self) -> Any:
         # PIL is imported here, not at module level: the package imports lib.py, so a wheel build
@@ -58,7 +37,7 @@ class tkCard(Card):
         from PIL import Image, ImageOps, ImageTk
 
         self.artpath = self.getartpath()
-        path = os.path.join(card_art_root(), self.artpath)
+        path = card_images.image_path(self.artpath)
         with Image.open(path) as img:
             self.containedimage = ImageOps.contain(img, (100, 250))
             self.tkart = ImageTk.PhotoImage(self.containedimage)

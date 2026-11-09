@@ -58,24 +58,26 @@ def test_tk_package_loads_when_its_requirements_are_present():
     assert hasattr(mod, "tkCard") and hasattr(mod, "tkHand") and hasattr(mod, "tkTable")
 
 
-def test_card_art_root_is_required_and_named(monkeypatch):
-    from casino.tk import CARD_ART_ENV, card_art_root
+def test_card_images_default_to_the_playingcarddata_bicycle_set(monkeypatch):
+    from casino.tk import card_images
 
-    monkeypatch.delenv(CARD_ART_ENV, raising=False)
-    with pytest.raises(RuntimeError, match=CARD_ART_ENV):
-        card_art_root()
-
-
-def test_card_art_root_must_be_a_directory(monkeypatch, tmp_path):
-    from casino.tk import CARD_ART_ENV, card_art_root
-
-    monkeypatch.setenv(CARD_ART_ENV, str(tmp_path / "missing"))
-    with pytest.raises(RuntimeError, match="not a directory"):
-        card_art_root()
+    monkeypatch.delenv(card_images.CARD_ART_ENV, raising=False)
+    path = card_images.image_path("ace_of_spades.png")
+    assert os.path.isfile(path)
+    assert os.path.basename(os.path.dirname(path)) == "bicycle"
 
 
-def test_card_art_root_returns_the_configured_directory(monkeypatch, tmp_path):
-    from casino.tk import CARD_ART_ENV, card_art_root
+def test_card_images_override_wins_when_it_holds_the_file(monkeypatch, tmp_path):
+    from casino.tk import card_images
 
-    monkeypatch.setenv(CARD_ART_ENV, str(tmp_path))
-    assert card_art_root() == str(tmp_path)
+    (tmp_path / "ace_of_spades.png").write_bytes(b"x")
+    monkeypatch.setenv(card_images.CARD_ART_ENV, str(tmp_path))
+    assert card_images.image_path("ace_of_spades.png") == str(tmp_path / "ace_of_spades.png")
+
+
+def test_card_images_fall_back_when_the_override_lacks_the_file(monkeypatch, tmp_path):
+    from casino.tk import card_images
+
+    monkeypatch.setenv(card_images.CARD_ART_ENV, str(tmp_path))
+    path = card_images.image_path("ace_of_spades.png")
+    assert os.path.isfile(path)
