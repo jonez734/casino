@@ -1563,10 +1563,15 @@ class CasinoClient:
             self._show_help()
 
     def _show_help(self) -> None:
-        """Print the command list: the same text F1 shows, drawn as a line of output."""
+        """Print the command list the typed ``help`` / ``?`` command shows.
+
+        The F1 text starts with the word ``help`` (it is drawn beside the prompt). The typed
+        command is already the word, so its first line is left out and only the list is printed.
+        """
         from . import menu as _menu
 
-        for line in _menu._render_help(client=self).split("\n"):
+        lines = _menu._render_help(client=self).split("\n")
+        for line in lines[1:]:
             io.echo(line)
 
     def _dispatch_slots(self, sub) -> None:

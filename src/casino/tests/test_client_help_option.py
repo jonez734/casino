@@ -37,14 +37,16 @@ def test_quit_is_unchanged():
     assert ch.key == "quit"
 
 
-def test_show_help_prints_the_same_lines_as_f1():
+def test_typed_help_prints_the_f1_lines_without_the_word_help():
+    # The typed command is already "help", so only the list prints; F1 keeps the word.
     from casino.client.casino_client import CasinoClient
 
     fake = SimpleNamespace(is_sysop=False, moniker="jam", balance=0,
                            current_table_moniker=None, connected=True, authenticated=True)
-    expected = client_menu._render_help(client=fake).split("\n")
+    f1_lines = client_menu._render_help(client=fake).split("\n")
     printed = []
     with patch("casino.client.casino_client.io.echo", side_effect=lambda t, *a, **k: printed.append(t)):
         CasinoClient._show_help(fake)
-    assert printed == expected
-    assert printed[0] == "help"
+    assert f1_lines[0] == "help"
+    assert printed == f1_lines[1:]
+    assert "help" not in printed
