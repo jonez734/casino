@@ -183,3 +183,23 @@ def get_big_win_settings(args: Any) -> dict[str, Any]:
         multiplier = BIG_WIN_DEFAULTS["multiplier"]
 
     return {"enabled": enabled, "multiplier": multiplier}
+
+
+#: Default card set for casino's Tk UI, from ``casino.playingcard.set_name``.
+DEFAULT_PLAYINGCARD_SET = "bicycle"
+
+
+def get_playingcard_set(args: Any) -> str:
+    """The card set the Tk UI draws, from the ``casino.playingcard`` block.
+
+    Defaults to ``"bicycle"``. A missing, empty or non-string value falls back to the default.
+    The set itself is provided by the ``playingcarddata`` package.
+    """
+    cfg = get_casino_config(args)
+    block = cfg.get("playingcard", {}) if isinstance(cfg, dict) else {}
+    if not isinstance(block, dict):
+        return DEFAULT_PLAYINGCARD_SET
+    value = block.get("set_name", DEFAULT_PLAYINGCARD_SET)
+    if not isinstance(value, str) or not value.strip():
+        return DEFAULT_PLAYINGCARD_SET
+    return value.strip()

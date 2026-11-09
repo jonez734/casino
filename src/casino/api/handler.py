@@ -1783,7 +1783,7 @@ class MessageRouter:
         When the caller (typically :class:`bed.main.BED`) has already
         wired ``args._casino_config`` we leave it alone — bed is the
         authoritative source. Otherwise we read the JSON pointed at by
-        ``args.config_file`` (bed's ``bed.json``) and pull the
+        ``args.config_file`` (the host's config: zoid6's ``zoid6.json`` under the daemon) and pull the
         ``casino`` section out so game-level helpers like
         :func:`casino.config.get_surrender_multiplier` see the
         configured values.
