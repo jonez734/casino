@@ -30,10 +30,11 @@ classifiers = [
 dependencies = [
     "bbsengine6>=0.5.0.dev20261106",
     "bed>=0.5.0.dev20261103",
-    "pillow",
 ]
 
 [project.optional-dependencies]
+# The Tk UI: card images need Pillow. Tkinter comes with Python.
+tk = ["pillow"]
 dev = [
     "pytest>=7",
     "pytest-cov>=4",
@@ -69,7 +70,7 @@ package-dir = { "" = "src" }
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["casino*"]
-exclude = ["casino.docs", "casino.docs.*", "casino.tk", "casino.tk.*"]
+exclude = ["casino.docs", "casino.docs.*"]
 namespaces = true
 
 [tool.setuptools.package-data]
