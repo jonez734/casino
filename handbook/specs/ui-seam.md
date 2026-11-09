@@ -1,7 +1,8 @@
 # casino — UI seam specification (blackjack)
 
 > **Last updated:** 2026-11-09.
-> **Status:** Draft for review. No code changes until this spec is approved.
+> **Status:** Draft for review. Section 5 and 5a (events, bottom bar) and the package
+> name are settled. No code changes until this spec is approved.
 > **Scope:** blackjack only. `GameService` in `services/game.py`, its blackjack methods, and
 > the events a blackjack round produces.
 
@@ -103,12 +104,37 @@ class Event:
 | `card_dealt` | A card is drawn to a hand | `hand_id`, `card`, `total` |
 | `hand_settled` | A hand is settled | `hand_id`, `outcome`, `payout` |
 | `round_expired` | The round clock ends the round | `table` |
-| `error` | An action is refused, when the refusal is worth showing unprompted | `code`, `message` |
+| `debug` | A debug message, when the member's debug setting is on | `text`, `source` |
+| `info` | An informational message | `text` |
+| `ok` | A confirmed success message | `text` |
+| `warning` | A non-fatal problem the member should see | `code`, `text` |
+| `error` | An action is refused, when the refusal is worth showing unprompted | `code`, `text` |
+| `fragment` | A bottom-bar fragment's value changed (see section 5a) | `name`, `value`, `level` |
 
-- Debug logging (`io.echo(..., level="debug")`) goes to the standard `logging` module, never
-  to the event queue. A GUI must not receive debug text.
+- Message kinds (`debug`, `info`, `ok`, `warning`, `error`) match the echo levels, so a
+  message's level means the same on the echo path and the event path. `warn` is not used;
+  `warning` is the only spelling.
+- `debug` events are emitted only when the member's debug setting is on. The queue is quiet
+  by default. Each UI filters on its own debug setting.
+- Refusals are the `error` message kind plus the result `code` (section 4). The code is never
+  duplicated in a second vocabulary.
 - Events are ordered per table. A UI that drains the queue sees them in the order they
   happened.
+- Logging (`logging`) is the file log only. The event queue is the UI channel; a GUI receives
+  debug and info text through it, not through the log.
+
+### 5a. Bottom bar as events
+
+The bottom bar is built from named fragments (`register_bottombar_fragment`). A fragment's
+value is game or member state. When that value changes, the game emits a `fragment` event, so
+a GUI and the TUI show the same values.
+
+- `name` is the fragment's registered name (for example `balance`, `table`, `moniker`).
+- `value` is the fragment's current value as data, not formatted text.
+- `level` is the echo level the fragment uses, so a UI can colour it the same way as a message.
+- A fragment event is emitted on change only, not on every redraw.
+- The TUI renders the bar from the same values. Its drawing is a UI concern and is not part
+  of this seam.
 - **Open question:** the queue's thread model. How the TUI's event loop and the bottom bar
   share output today is not settled. The queue will be drained by each UI on its own loop
   (Tk and Qt run their own loops), but the exact drain point for the TUI is to be decided
@@ -159,19 +185,20 @@ Prompts, menus, and validation messages belong to the UI.
 
 ## 9. Package and file layout
 
-- New package: `casino/ui_api/` (name under review), with `results.py` (`ActionResult`) and
-  `events.py` (`Event` and the queue).
+- New package: `casino/api/ui/`, the UI seam under the existing `api/` package. It holds
+  `results.py` (`ActionResult`) and `events.py` (`Event` and the queue).
 - `services/game.py` returns `ActionResult` for the blackjack methods.
 - `api/handler.py` maps results back to the wire dict (section 8).
 - `SPEC.md` section 3 (layered package layout) is updated in the same change to list
-  `ui_api/` and to point to this spec. This is a required step, not an afterthought.
+  `api/ui/` and to point to this spec. This is a required step, not an afterthought.
 
 ## 10. Verification
 
 - The blackjack tests in `tests/` run before and after each method is migrated. They must pass
   unchanged, except where a test asserts a refusal `message` that is deliberately kept.
-- Tests for `ui_api/results.py` and `ui_api/events.py`: codes are from the section 4 table; the
-  queue preserves per-table order; `ActionResult` is immutable.
+- Tests for `api/ui/results.py` and `api/ui/events.py`: codes are from the section 4 table; the
+  queue preserves per-table order; `ActionResult` is immutable; message kinds are only
+  `debug`, `info`, `ok`, `warning`, `error`; `debug` events are not queued when debug is off.
 - A migration test per method: the result's `ok`, `code`, and `data` match section 6, and the
   API's wire dict is unchanged.
 
@@ -185,5 +212,5 @@ Prompts, menus, and validation messages belong to the UI.
 
 ## 12. Open questions
 
-1. Queue drain point for the TUI (section 5).
-2. Whether `ui_api/` is the final package name (section 9).
+None. The package is `api/ui/` (section 9). The TUI's queue drain point is an implementation
+question for the TUI adapter step, not a spec question.
