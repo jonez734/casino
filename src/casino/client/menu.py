@@ -145,6 +145,7 @@ _OPTIONS_SPEC = (
                alias_subcommand={"ttt": "quickplay"}),
     MenuOption("game", "Game    (bet, hit, stand, double, split)", _GAME,
                op="bet", subcommands=_GAME_SUBS),
+    MenuOption("help", "Help    (list the commands; also F1)", None, aliases=("?",)),
     MenuOption("quit", "Quit", None),
 )
 

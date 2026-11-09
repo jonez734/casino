@@ -1559,6 +1559,15 @@ class CasinoClient:
             self._dispatch_tictactoe(sub)
         elif key == "slots":
             self._dispatch_slots(sub)
+        elif key == "help":
+            self._show_help()
+
+    def _show_help(self) -> None:
+        """Print the command list: the same text F1 shows, drawn as a line of output."""
+        from . import menu as _menu
+
+        for line in _menu._render_help(client=self).split("\n"):
+            io.echo(line)
 
     def _dispatch_slots(self, sub) -> None:
         """Run a slots action from the main menu, or open the slots submenu when none is named.
