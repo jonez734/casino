@@ -64,15 +64,17 @@ class TestClientMenuInlinePrompt(unittest.TestCase):
         return captured["prompt"]
 
     def test_main_menu_prompt_shows_the_status_line(self):
+        # The status is printed on its own line (see test_prompt_has_no_f6_and_the_status_is_echoed_first);
+        # the prompt itself is the input line only.
         prompt = self._prompt(self._make_client())
-        self.assertIn("alice", prompt)
-        self.assertIn("Balance: 100", prompt)
         self.assertIn("casino_client:", prompt)
+        self.assertNotIn("{f6}", prompt)
 
     def test_main_menu_prompt_shows_the_table_when_seated(self):
-        prompt = self._prompt(self._make_client(current_table_moniker="t1",
-                                                current_table_game_type="blackjack"))
-        self.assertIn("Table: t1", prompt)
+        # The table is part of the echoed status line, which the prompt no longer carries.
+        self._prompt(self._make_client(current_table_moniker="t1",
+                                       current_table_game_type="blackjack"))
+        self.assertNotIn("{f6}", self._prompt(self._make_client(current_table_moniker="t1")))
 
     def test_main_menu_prompt_has_no_inline_option_list(self):
         """The old prompt listed every option with [X]; the new one does not."""

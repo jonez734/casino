@@ -58,3 +58,25 @@ def test_quit_still_exits_on_the_first_line():
     choice, seen = _menu_with_lines("quit")
     assert seen == ["quit"]
     assert choice.key == "quit"
+
+
+def test_prompt_has_no_f6_and_the_status_is_echoed_first():
+    # The cursor column comes from rendered_length(prompt), which mis-counts text before an {f6}.
+    # So the status goes out as its own line, and the prompt holds only the input line.
+    from unittest.mock import MagicMock
+
+    client = _client()
+    prompts = []
+
+    def fake_read_menu(prompt, *a, **kw):
+        prompts.append(prompt)
+        return MagicMock(key="quit")
+
+    with patch.object(client_menu, "read_menu", side_effect=fake_read_menu), \
+         patch.object(client_menu.io, "echo") as echo:
+        client_menu.menu(client)
+
+    assert prompts == ["{var:promptcolor}casino_client: {var:inputcolor}"]
+    assert "{f6}" not in prompts[0]
+    echoed = [c.args[0] for c in echo.call_args_list]
+    assert echoed and "[jam] Balance: 0" in echoed[0]

@@ -223,7 +223,11 @@ def menu(client: "CasinoClient | None" = None, **kwargs) -> Choice:
     status = f"{{var:promptcolor}}[{client.moniker}] Balance: {client.balance}"
     if client.current_table_moniker:
         status += f" Table: {client.current_table_moniker}"
-    prompt = status + "{f6}{var:promptcolor}casino_client: {var:inputcolor}"
+    # The status is its own line, printed before the prompt. The prompt itself has no {f6}: inputstring
+    # places the cursor by rendered_length(prompt), which counts text before an {f6} as if it were on
+    # the input line, so an {f6} in the prompt puts the cursor past the input's column.
+    io.echo(status)
+    prompt = "{var:promptcolor}casino_client: {var:inputcolor}"
     return read_menu(
         prompt,
         _OPTIONS_SPEC,
