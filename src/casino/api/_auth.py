@@ -57,12 +57,14 @@ from bbsengine6 import io
 
 # ----- Wire-protocol error envelopes ----------------------------------
 
+from bbsengine6.seam.codes import ErrorCode as _Seam  # the shared generic codes
+
 CODE_TOKEN_INVALID = "token_invalid"
 CODE_TOKEN_REVOKED = "token_revoked"
 CODE_INSTANCE_MISMATCH = "instance_mismatch"
 CODE_TOKEN_EXPIRED = "token_expired"
-CODE_NOT_AUTHENTICATED = "not_authenticated"
-CODE_FORBIDDEN = "forbidden"
+CODE_NOT_AUTHENTICATED = _Seam.NOT_AUTHENTICATED.value
+CODE_FORBIDDEN = _Seam.FORBIDDEN.value
 CODE_BAD_CREDENTIALS = "bad_credentials"
 CODE_MISSING_CREDENTIALS = "missing_credentials"
 CODE_DATABASE_ERROR = "database_error"
@@ -70,7 +72,7 @@ CODE_OPERATION_FAILED = "operation_failed"
 CODE_MISSING_MONIKER = "missing_moniker"
 CODE_INVALID_AMOUNT = "invalid_amount"
 CODE_INVALID_REQUEST = "invalid_request"
-CODE_NOT_AT_TABLE = "not_at_table"
+CODE_NOT_AT_TABLE = _Seam.NOT_AT_TABLE.value
 
 _TOKEN_CLAIM_VERSION = 1
 _SUPPORTED_TOKEN_VERSIONS = frozenset({_TOKEN_CLAIM_VERSION})
