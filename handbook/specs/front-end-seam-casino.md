@@ -2,7 +2,7 @@
 
 > **Last updated:** 2026-11-11.
 > **Status:** Draft for review. The generic core is in bbsengine6:
-> [`bbsengine6/handbook/specs/ui-seam.md`](../../../bbsengine6/handbook/specs/ui-seam.md). This file
+> [`bbsengine6/handbook/specs/front-end-seam.md`](../../../bbsengine6/handbook/specs/front-end-seam.md). This file
 > holds only casino's per-game sections. Blackjack (section 12) is the first migration. No code
 > changes until this spec is approved.
 > **Structure:** Part B only. Part A (`ActionResult`, the codes, the events, input, compatibility,
@@ -29,7 +29,7 @@
   code calls it 24 times.
 
 **Game codes** (added to the enum; the generic set and the rule are in bbsengine6's
-`ui-seam.md`, section 4):
+`front-end-seam.md`, section 4):
 
 | Code | Replaces message |
 |---|---|
