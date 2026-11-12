@@ -1,19 +1,19 @@
-# casino — UI seam, blackjack and per-game sections
+# casino — front-end seam, blackjack and per-application sections
 
 > **Last updated:** 2026-11-11.
 > **Status:** Draft for review. The generic core is in bbsengine6:
 > [`bbsengine6/handbook/specs/front-end-seam.md`](../../../bbsengine6/handbook/specs/front-end-seam.md). This file
-> holds only casino's per-game sections. Blackjack (section 12) is the first migration. No code
+> holds only casino's per-application sections. Blackjack (section 12) is the first migration. No code
 > changes until this spec is approved.
 > **Structure:** Part B only. Part A (`ActionResult`, the codes, the events, input, compatibility,
-> and verification) is defined in bbsengine6, and each game's section here follows its rules.
+> and verification) is defined in bbsengine6, and each application section here follows its rules.
 
 ## 11. Out of scope
 
-- The door-mode versions of any game (for example `blackjack/play.py`, which uses its own
+- The door-mode versions of any application's domain (for example `blackjack/play.py`, which uses its own
   in-memory `Hand`).
 - Changing the client wire protocol.
-- Wrapped or multi-line status display in any UI.
+- Wrapped or multi-line status display in any front end.
 
 ## 12. Blackjack (first migration)
 
@@ -25,10 +25,10 @@
   `hit`, `stand`, `double`, `split`, `surrender`, `settle_game`, and `take_settled_round`.
 - `services/round_clock.py` refers to `GameService` only in a comment.
 - `blackjack/play.py` and `blackjack/settle.py` do not call `GameService`.
-- `services/game.py` calls `io.echo` 41 times across the service package; blackjack's own game
+- `services/game.py` calls `io.echo` 41 times across the service package; blackjack's own domain
   code calls it 24 times.
 
-**Game codes** (added to the enum; the generic set and the rule are in bbsengine6's
+**Domain codes** (added to the enum; the generic set and the rule are in bbsengine6's
 `front-end-seam.md`, section 4):
 
 | Code | Replaces message |
@@ -41,9 +41,9 @@
 | `cannot_double` | Double refusals |
 | `cannot_surrender` | Surrender refusals (the reason is in `message`) |
 
-The refusal `message` text stays as it is today, so a UI that shows `message` looks the same.
+The refusal `message` text stays as it is today, so a front end that shows `message` looks the same.
 
-**Game event kinds:** `round_started` (`shoe_cards`, `dealer_up`), `bet_placed` (`amount`),
+**Domain event kinds:** `round_started` (`shoe_cards`, `dealer_up`), `bet_placed` (`amount`),
 `card_dealt` (`hand_id`, `card`, `total`), `hand_settled` (`hand_id`, `outcome`, `payout`),
 `round_expired` (`table`).
 
@@ -74,15 +74,15 @@ The refusal `message` text stays as it is today, so a UI that shows `message` lo
 | `settle_game` | `outcomes` (one entry per hand) |
 | `take_settled_round` | `outcomes`, `payouts` |
 
-## 13. Template for another game
+## 13. Template for another application
 
-To migrate a game (poker, slots, yahtzee, tictactoe), add a section here with these parts, and
+To migrate another application's domain (poker, slots, yahtzee, tictactoe), add a section here with these parts, and
 change nothing in Part A:
 
 1. **Current state.** The service, its callers, and the `io.echo` count, checked in the code.
-2. **Game codes.** Only refusals the game makes that the generic table does not cover. Each goes
+2. **Domain codes.** Only refusals the domain makes that the generic table does not cover. Each goes
    into the enum.
-3. **Game event kinds.** Name, when emitted, and payload. No name may match a message kind.
+3. **Domain event kinds.** Name, when emitted, and payload. No name may match a message kind.
 4. **Requests.** One row per request, mapped to a method.
 5. **Results per method.** The `data` table.
 6. **Migration order.** The methods, and which API handler maps them.
