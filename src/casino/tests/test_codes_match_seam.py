@@ -49,3 +49,15 @@ def test_messages_error_codes_are_seam_codes_where_they_overlap():
 def test_casino_specific_codes_stay_in_casino():
     # bot_refused and friends are casino's own refusals; they are not in the generic set.
     assert "bot_refused" not in {c.value for c in Generic}
+
+
+def test_handler_has_no_literal_shared_codes():
+    # The handler's responses use the seam's values by name, not as repeated string literals, so a
+    # rename in the seam cannot leave a stale copy behind in the handler.
+    import pathlib
+    import re
+
+    src = pathlib.Path(importlib.import_module("casino.api.handler").__file__).read_text(encoding="utf-8")
+    seam = {c.value for c in Generic if c.value != "ok"}
+    for value in seam:
+        assert not re.search(r'"code":\s*"' + re.escape(value) + '"', src), value

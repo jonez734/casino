@@ -19,6 +19,7 @@ from bbsengine6.net import (
 )
 from bbsengine6.session import SessionManager
 
+from bbsengine6.seam.codes import ErrorCode as _SeamCode
 from casino.api._auth import (
     check_access as _check_access_pipeline,
 )
@@ -657,7 +658,7 @@ class TableServiceHandler(BaseService):
         from casino.access import access as _casino_access
 
         if not _casino_access(self.args, "update_table", session=state, message=message):
-            return {"type": "error", "code": "forbidden", "message": "Operation not permitted for this session"}
+            return {"type": "error", "code": _SeamCode.FORBIDDEN.value, "message": "Operation not permitted for this session"}
 
         updates = {}
         if "new_moniker" in message:
@@ -817,7 +818,7 @@ class TableServiceHandler(BaseService):
 
         table_moniker = message.get("moniker") or self._get_seated(websocket)
         if not table_moniker:
-            return {"type": "error", "code": "not_at_table"}
+            return {"type": "error", "code": _SeamCode.NOT_AT_TABLE.value}
 
         result = self.table_service.leave_table(table_moniker, state.moniker)
 
@@ -921,7 +922,7 @@ class TableServiceHandler(BaseService):
             table = await async_dal_table.get_table(self.args, table_moniker, pool=await _resolve_async_pool(self.args))
         except Exception as e:
             io.echo(f"_handle_watch_table error: {e}", level="error")
-            return {"type": "error", "code": "service_error", "message": str(e)}
+            return {"type": "error", "code": _SeamCode.SERVICE_ERROR.value, "message": str(e)}
 
         if not table:
             return {"type": "error", "code": "invalid_request", "message": "Table not found"}
@@ -1117,7 +1118,7 @@ class GameServiceHandler(BaseService):
             level="info",
         )
         if not table_moniker:
-            return {"type": "error", "code": "not_at_table"}
+            return {"type": "error", "code": _SeamCode.NOT_AT_TABLE.value}
 
         result = None
         settled = None
@@ -1265,7 +1266,7 @@ class BetServiceHandler(BaseService):
             level="info",
         )
         if not table_moniker:
-            return {"type": "error", "code": "not_at_table"}
+            return {"type": "error", "code": _SeamCode.NOT_AT_TABLE.value}
 
         amount = message.get("amount", 0)
 
@@ -1277,7 +1278,7 @@ class BetServiceHandler(BaseService):
             )
             return {
                 "type": "error",
-                "code": "invalid_bet",
+                "code": _SeamCode.INVALID_BET.value,
                 "message": "Bet amount must be a positive integer",
             }
 
@@ -1403,7 +1404,7 @@ class ChatServiceHandler(BaseService):
 
         if msg_type == "chat_table":
             if not table_moniker:
-                return {"type": "error", "code": "not_at_table"}
+                return {"type": "error", "code": _SeamCode.NOT_AT_TABLE.value}
 
             reply = {
                 "type": "chat_message",
@@ -1568,7 +1569,7 @@ class SlotServiceHandler(BaseService):
         table_moniker = message.get("table_moniker") or self._get_seated(websocket)
         message["table_moniker"] = table_moniker
         if not table_moniker:
-            return {"type": "error", "code": "not_at_table"}
+            return {"type": "error", "code": _SeamCode.NOT_AT_TABLE.value}
 
         # Thread the auth context through to the slot service so the
         # bank mutation can re-verify the bearer-token claims against
@@ -1659,7 +1660,7 @@ class SlotServiceHandler(BaseService):
         table_moniker = message.get("table_moniker") or self._get_seated(websocket)
         message["table_moniker"] = table_moniker
         if not table_moniker:
-            return {"type": "error", "code": "not_at_table"}
+            return {"type": "error", "code": _SeamCode.NOT_AT_TABLE.value}
         result = self._handle_paytable(self.args, table_moniker)
         if not result.get("success"):
             return {
@@ -1720,7 +1721,7 @@ class SlotServiceHandler(BaseService):
 
         table_moniker = message.get("table_moniker") or self._get_seated(websocket)
         if not table_moniker:
-            return {"type": "error", "code": "not_at_table"}
+            return {"type": "error", "code": _SeamCode.NOT_AT_TABLE.value}
         try:
             limit = int(message.get("limit", 50))
         except (TypeError, ValueError):
@@ -2032,7 +2033,7 @@ class MessageHandler(MessageRouter):
         # for unauthenticated callers.
         auth_required = msg_type not in ("auth", "list_tables")
         if auth_required and not self.sessions.get_moniker(session_id):
-            return {"type": "error", "code": "not_authenticated", "message": "Not authenticated"}
+            return {"type": "error", "code": _SeamCode.NOT_AUTHENTICATED.value, "message": "Not authenticated"}
 
         # Use dispatch via server
         response = await server.dispatch_message(websocket, path, message)
