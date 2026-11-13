@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### refactor(api): shared codes come from the bbsengine6 seam; casino owns its table and money codes
+
+Casino's generic result codes (`not_authenticated`, `forbidden`, `invalid_action`, `service_error`)
+take their values from `bbsengine6.seam.codes`, and the API handler uses them by name, not as string
+literals. The table, bet, and balance codes (`not_at_table`, `table_not_found`, `invalid_bet`,
+`insufficient_funds`) are casino's own, defined in `api/messages.py`, with their wire values
+unchanged. `tests/test_codes_match_seam.py` pins the wire values and blocks literals from returning to
+the handler. Spec: `handbook/specs/front-end-seam-casino.md`.
+
 ### feat(casino): table message groups and seat roles
 
 - Every table gets a message group `table:<moniker>`. A member is in the

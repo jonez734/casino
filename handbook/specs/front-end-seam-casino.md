@@ -47,19 +47,19 @@ The refusal `message` text stays as it is today, so a front end that shows `mess
 
 **Domain event kinds:** `round_started` (`shoe_cards`, `dealer_up`), `bet_placed` (`amount`),
 `card_dealt` (`hand_id`, `card`, `total`), `hand_settled` (`hand_id`, `outcome`, `payout`),
-`round_expired` (`table`).
+`round_expired` (`scope`, the table moniker).
 
-**Requests:**
+**Requests** (casino's table is the framework's `scope`; each request carries it as `scope`):
 
 | Request | Maps to |
 |---|---|
-| `StartGame(table, game_type)` | `start_game` |
-| `PlaceBet(table, moniker, amount)` | `place_bet` |
-| `Hit(table, moniker)` | `hit` |
-| `Stand(table, moniker)` | `stand` |
-| `Double(table, moniker, hand_id)` | `double` |
-| `Split(table, moniker, hand_id)` | `split` |
-| `Surrender(table, moniker)` | `surrender` |
+| `StartGame(scope, game_type)` | `start_game` |
+| `PlaceBet(scope, moniker, amount)` | `place_bet` |
+| `Hit(scope, moniker)` | `hit` |
+| `Stand(scope, moniker)` | `stand` |
+| `Double(scope, moniker, hand_id)` | `double` |
+| `Split(scope, moniker, hand_id)` | `split` |
+| `Surrender(scope, moniker)` | `surrender` |
 
 **Results per method (`data`):**
 
@@ -93,5 +93,5 @@ change nothing in Part A:
 
 - The TUI's queue drain point is an implementation question for the TUI adapter step, not a
   spec question.
-- Whether an event queue is per table or per process. Section 5 orders events per table; the
-  queue's scope is decided with the first implementation.
+- Resolved in bbsengine6: the event log is per domain, and each front end reads it through its own
+  subscription (see `front-end-seam.md`, section 7a). Events keep their order within a scope.

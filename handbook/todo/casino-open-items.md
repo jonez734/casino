@@ -50,3 +50,18 @@ Status: open (2026-11-05). Everything below is committed locally in `casino/`, `
 - [ ] `bbsengine6`: screen echo of late DA/DCS replies in cooked mode. Needs a tty-mode design decision.
 - [ ] `bed`: the 11 `zoid6`-ownership test failures were fixed (commit `6e6af8a`), but the commit message repeats a wrong claim that the owner migration misses `bed_*` functions. It does not (verified in `zoid6`: zero `engine`/`bank` objects owned by anyone but `zoid6`).
 - [ ] All repos: nothing pushed. Push from your terminal when ready (`bbsengine6`, `bed`, `casino`).
+
+## Front-end seam (bbsengine6 `handbook/specs/front-end-seam.md`)
+
+- [x] Generic codes come from `bbsengine6.seam.codes`; casino's handler uses them by name (`d70929f`).
+- [x] Casino owns its table, bet, and balance codes; wire values unchanged (`4f2dedb`).
+- [x] Casino spec renamed to `front-end-seam-casino.md`; wording is domain and front end (`2afe66b`).
+- [ ] Blackjack domain adoption: `GameService` returns `ActionResult`, the handler maps it to the
+  wire dict, and blackjack emits events into a `Domain`. Needs a plan first; it changes the service's
+  return shape and its tests.
+- [ ] Check the seam's event kinds and `scope` against a second application (zoidoffice) before the
+  framework spec is called final.
+- [ ] Decide whether seam settings are per-domain or process-wide (currently process-wide).
+- [ ] Mobile front end: the wire form (`bbsengine6.seam.wire`) is tested, but no client uses it yet.
+- [ ] `test_b1_login_through_casino_prompt_setpassword_path` passes alone and fails only in the full
+  run (order-dependent). Not investigated.
