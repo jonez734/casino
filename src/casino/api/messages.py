@@ -91,13 +91,14 @@ class ChatScope(str, Enum):
 
 
 class ErrorCode(str, Enum):
-    # The first five members are the seam's shared generic codes (bbsengine6.seam.codes); their values
-    # come from there so the two cannot drift. The rest are casino's own refusals.
+    # The seam's generic codes take their values from bbsengine6.seam.codes, so they cannot drift.
+    # The rest are casino's own: money, wagers, and tables are casino concepts, not generic ones.
     NOT_AUTHENTICATED = _SeamCode.NOT_AUTHENTICATED.value
-    INSUFFICIENT_FUNDS = _SeamCode.INSUFFICIENT_FUNDS.value
-    TABLE_NOT_FOUND = _SeamCode.TABLE_NOT_FOUND.value
-    INVALID_BET = _SeamCode.INVALID_BET.value
     INVALID_ACTION = _SeamCode.INVALID_ACTION.value
+    INSUFFICIENT_FUNDS = "insufficient_funds"
+    TABLE_NOT_FOUND = "table_not_found"
+    INVALID_BET = "invalid_bet"
+    NOT_AT_TABLE = "not_at_table"
     INVALID_CREDENTIALS = "invalid_credentials"
     TABLE_FULL = "table_full"
     NOT_YOUR_TURN = "not_your_turn"

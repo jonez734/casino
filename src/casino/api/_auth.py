@@ -72,7 +72,7 @@ CODE_OPERATION_FAILED = "operation_failed"
 CODE_MISSING_MONIKER = "missing_moniker"
 CODE_INVALID_AMOUNT = "invalid_amount"
 CODE_INVALID_REQUEST = "invalid_request"
-CODE_NOT_AT_TABLE = _Seam.NOT_AT_TABLE.value
+CODE_NOT_AT_TABLE = "not_at_table"  # casino's table code; not a generic seam code
 
 _TOKEN_CLAIM_VERSION = 1
 _SUPPORTED_TOKEN_VERSIONS = frozenset({_TOKEN_CLAIM_VERSION})

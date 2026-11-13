@@ -818,7 +818,7 @@ class TableServiceHandler(BaseService):
 
         table_moniker = message.get("moniker") or self._get_seated(websocket)
         if not table_moniker:
-            return {"type": "error", "code": _SeamCode.NOT_AT_TABLE.value}
+            return {"type": "error", "code": "not_at_table"}
 
         result = self.table_service.leave_table(table_moniker, state.moniker)
 
@@ -1118,7 +1118,7 @@ class GameServiceHandler(BaseService):
             level="info",
         )
         if not table_moniker:
-            return {"type": "error", "code": _SeamCode.NOT_AT_TABLE.value}
+            return {"type": "error", "code": "not_at_table"}
 
         result = None
         settled = None
@@ -1266,7 +1266,7 @@ class BetServiceHandler(BaseService):
             level="info",
         )
         if not table_moniker:
-            return {"type": "error", "code": _SeamCode.NOT_AT_TABLE.value}
+            return {"type": "error", "code": "not_at_table"}
 
         amount = message.get("amount", 0)
 
@@ -1278,7 +1278,7 @@ class BetServiceHandler(BaseService):
             )
             return {
                 "type": "error",
-                "code": _SeamCode.INVALID_BET.value,
+                "code": "invalid_bet",
                 "message": "Bet amount must be a positive integer",
             }
 
@@ -1404,7 +1404,7 @@ class ChatServiceHandler(BaseService):
 
         if msg_type == "chat_table":
             if not table_moniker:
-                return {"type": "error", "code": _SeamCode.NOT_AT_TABLE.value}
+                return {"type": "error", "code": "not_at_table"}
 
             reply = {
                 "type": "chat_message",
@@ -1569,7 +1569,7 @@ class SlotServiceHandler(BaseService):
         table_moniker = message.get("table_moniker") or self._get_seated(websocket)
         message["table_moniker"] = table_moniker
         if not table_moniker:
-            return {"type": "error", "code": _SeamCode.NOT_AT_TABLE.value}
+            return {"type": "error", "code": "not_at_table"}
 
         # Thread the auth context through to the slot service so the
         # bank mutation can re-verify the bearer-token claims against
@@ -1660,7 +1660,7 @@ class SlotServiceHandler(BaseService):
         table_moniker = message.get("table_moniker") or self._get_seated(websocket)
         message["table_moniker"] = table_moniker
         if not table_moniker:
-            return {"type": "error", "code": _SeamCode.NOT_AT_TABLE.value}
+            return {"type": "error", "code": "not_at_table"}
         result = self._handle_paytable(self.args, table_moniker)
         if not result.get("success"):
             return {
@@ -1721,7 +1721,7 @@ class SlotServiceHandler(BaseService):
 
         table_moniker = message.get("table_moniker") or self._get_seated(websocket)
         if not table_moniker:
-            return {"type": "error", "code": _SeamCode.NOT_AT_TABLE.value}
+            return {"type": "error", "code": "not_at_table"}
         try:
             limit = int(message.get("limit", 50))
         except (TypeError, ValueError):

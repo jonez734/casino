@@ -29,7 +29,9 @@
   code calls it 24 times.
 
 **Domain codes** (added to the enum; the generic set and the rule are in bbsengine6's
-`front-end-seam.md`, section 4):
+`front-end-seam.md`, section 4). Casino's table, bet, and balance codes (`table_not_found`,
+`not_at_table`, `invalid_bet`, `insufficient_funds`) are casino's own, defined in `api/messages.py`,
+with their wire values unchanged:
 
 | Code | Replaces message |
 |---|---|

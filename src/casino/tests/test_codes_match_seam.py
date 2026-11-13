@@ -34,9 +34,15 @@ def test_shared_generic_codes_are_the_seam_values():
     for name, value in {
         "CODE_NOT_AUTHENTICATED": "not_authenticated",
         "CODE_FORBIDDEN": "forbidden",
-        "CODE_NOT_AT_TABLE": "not_at_table",
     }.items():
         assert value in {c.value for c in Generic}, name
+
+
+def test_table_and_money_codes_are_casino_not_seam():
+    # not_at_table, table_not_found, invalid_bet and insufficient_funds are casino's own codes.
+    seam = {c.value for c in Generic}
+    for value in ("not_at_table", "table_not_found", "invalid_bet", "insufficient_funds"):
+        assert value not in seam, value
 
 
 def test_messages_error_codes_are_seam_codes_where_they_overlap():
