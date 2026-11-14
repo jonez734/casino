@@ -28,13 +28,6 @@ def _refused(message: str) -> ActionResult:
     return _results.refusal_from_message(message)
 
 
-def _from_dict(result: dict[str, Any]) -> ActionResult:
-    """A dict result from a helper (for example can_double) as an ActionResult, with its casino code."""
-    from casino.api import results as _results
-
-    return _results.to_action_result(result)
-
-
 class GameService:
     """Service for game management and blackjack logic."""
 
@@ -407,40 +400,40 @@ class GameService:
 
         return {"success": True, "can_surrender": True}
 
-    def can_split(self, table_moniker: str, player_moniker: str, hand_id: Optional[int] = None) -> dict[str, Any]:
+    def can_split(self, table_moniker: str, player_moniker: str, hand_id: Optional[int] = None) -> ActionResult:
         """Check if player can split their hand."""
         game = dal_game.get_active_game(self.args, table_moniker, pool=self._pool)
         if not game:
-            return {"success": False, "message": "No active game"}
+            return _refused("No active game")
 
         from casino.dal import bet as dal_bet
 
         if hand_id is not None:
             hand = dal_game.get_hand(self.args, hand_id, pool=self._pool)
             if not hand:
-                return {"success": False, "message": "Hand not found"}
+                return _refused("Hand not found")
 
             cards = list(hand["cards"]) if hand["cards"] else []
             if len(cards) != 2:
-                return {"success": False, "message": "Can only split with exactly 2 cards"}
+                return _refused("Can only split with exactly 2 cards")
 
             card1_rank = cards[0][:-1]
             card2_rank = cards[1][:-1]
             if card1_rank != card2_rank:
-                return {"success": False, "message": "Cards must have same rank to split"}
+                return _refused("Cards must have same rank to split")
 
             attrs = hand.get("attrs") or {}
             split_count = attrs.get("split_count", 0)
             if split_count >= 3:
-                return {"success": False, "message": "Maximum splits reached (4 hands max)"}
+                return _refused("Maximum splits reached (4 hands max)")
 
             player_bet = dal_bet.get_bet_for_hand(self.args, hand_id, pool=self._pool)
             if not player_bet:
-                return {"success": False, "message": "No bet found"}
+                return _refused("No bet found")
 
             balance = self._get_player_balance(player_moniker)
             if balance < player_bet["amount"] * 2:
-                return {"success": False, "message": "Insufficient funds to split"}
+                return _refused("Insufficient funds to split")
 
             return {
                 "success": True,
@@ -451,34 +444,35 @@ class GameService:
 
         hands = dal_game.get_player_hands(self.args, game["id"], player_moniker, pool=self._pool)
         if not hands:
-            return {"success": False, "message": "No hand found"}
+            return _refused("No hand found")
 
         hand = hands[0]
         cards = list(hand["cards"]) if hand["cards"] else []
 
         if len(cards) != 2:
-            return {"success": False, "message": "Can only split with exactly 2 cards"}
+            return _refused("Can only split with exactly 2 cards")
 
         card1_rank = cards[0][:-1]
         card2_rank = cards[1][:-1]
 
         if card1_rank != card2_rank:
-            return {"success": False, "message": "Cards must have same rank to split"}
+            return _refused("Cards must have same rank to split")
 
         player_bet = dal_bet.get_player_bet_for_game(self.args, game["id"], player_moniker, pool=self._pool)
         if not player_bet:
-            return {"success": False, "message": "No bet found"}
+            return _refused("No bet found")
 
         balance = self._get_player_balance(player_moniker)
         if balance < player_bet["amount"] * 2:
-            return {"success": False, "message": "Insufficient funds to split"}
+            return _refused("Insufficient funds to split")
 
-        return {
-            "success": True,
-            "message": "Can split",
-            "hand_id": hand["id"],
-            "bet_amount": player_bet["amount"],
-        }
+        return success(
+            {
+                "hand_id": hand["id"],
+                "bet_amount": player_bet["amount"],
+            },
+            message="Can split",
+        )
 
     def split(self, table_moniker: str, player_moniker: str, hand_id: Optional[int] = None) -> ActionResult:
         """Split a pair into two hands. Returns an ActionResult; data has the two hands."""
@@ -487,8 +481,8 @@ class GameService:
         if game and self._round_expired(table_moniker, game):
             return _refused("The round clock expired")
         can_split = self.can_split(table_moniker, player_moniker, hand_id)
-        if not can_split["success"]:
-            return _from_dict(can_split)
+        if not can_split.ok:
+            return can_split
 
         game = dal_game.get_active_game(self.args, table_moniker, pool=self._pool)
         if not game:
@@ -578,28 +572,28 @@ class GameService:
             message="Hand split",
         )
 
-    def can_double(self, table_moniker: str, player_moniker: str, hand_id: Optional[int] = None) -> dict[str, Any]:
+    def can_double(self, table_moniker: str, player_moniker: str, hand_id: Optional[int] = None) -> ActionResult:
         """Check if player can double down."""
         game = dal_game.get_active_game(self.args, table_moniker, pool=self._pool)
         if not game:
-            return {"success": False, "message": "No active game"}
+            return _refused("No active game")
 
         if hand_id is not None:
             player_bet = dal_bet.get_bet_for_hand(self.args, hand_id, pool=self._pool)
             if not player_bet:
-                return {"success": False, "message": "No bet found for hand"}
+                return _refused("No bet found for hand")
 
             hand = dal_game.get_hand(self.args, hand_id, pool=self._pool)
             if not hand:
-                return {"success": False, "message": "Hand not found"}
+                return _refused("Hand not found")
 
             cards = list(hand["cards"]) if hand["cards"] else []
             if len(cards) != 2:
-                return {"success": False, "message": "Can only double with exactly 2 cards"}
+                return _refused("Can only double with exactly 2 cards")
 
             balance = self._get_player_balance(player_moniker)
             if balance < player_bet["amount"]:
-                return {"success": False, "message": "Insufficient funds to double"}
+                return _refused("Insufficient funds to double")
 
             return {
                 "success": True,
@@ -610,28 +604,29 @@ class GameService:
 
         hands = dal_game.get_player_hands(self.args, game["id"], player_moniker, pool=self._pool)
         if not hands:
-            return {"success": False, "message": "No hand found"}
+            return _refused("No hand found")
 
         hand = hands[0]
         cards = list(hand["cards"]) if hand["cards"] else []
 
         if len(cards) != 2:
-            return {"success": False, "message": "Can only double with exactly 2 cards"}
+            return _refused("Can only double with exactly 2 cards")
 
         player_bet = dal_bet.get_player_bet_for_game(self.args, game["id"], player_moniker, pool=self._pool)
         if not player_bet:
-            return {"success": False, "message": "No bet found"}
+            return _refused("No bet found")
 
         balance = self._get_player_balance(player_moniker)
         if balance < player_bet["amount"]:
-            return {"success": False, "message": "Insufficient funds to double"}
+            return _refused("Insufficient funds to double")
 
-        return {
-            "success": True,
-            "message": "Can double",
-            "hand_id": hand["id"],
-            "additional_cost": player_bet["amount"],
-        }
+        return success(
+            {
+                "hand_id": hand["id"],
+                "additional_cost": player_bet["amount"],
+            },
+            message="Can double",
+        )
 
     def _get_player_balance(self, player_moniker: str) -> int:
         """Get player's credit balance."""
@@ -655,8 +650,8 @@ class GameService:
         if game and self._round_expired(table_moniker, game):
             return _refused("The round clock expired")
         can_double = self.can_double(table_moniker, player_moniker, hand_id)
-        if not can_double["success"]:
-            return _from_dict(can_double)
+        if not can_double.ok:
+            return can_double
 
         game = dal_game.get_active_game(self.args, table_moniker, pool=self._pool)
         if not game:

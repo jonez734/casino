@@ -11,7 +11,13 @@ from unittest.mock import patch
 import pytest
 
 from bbsengine6.seam.results import ActionResult
+from casino.api import results as _res
 from casino.services import game as game_mod
+
+
+def res_refusal(message):
+    """The ActionResult a capability check returns for a refusal message."""
+    return _res.refusal_from_message(message)
 
 pytestmark = pytest.mark.unit
 
@@ -95,7 +101,7 @@ def test_double_refused_by_can_double_keeps_its_code():
     game = {"id": 9, "status": "player", "tablemoniker": "t1"}
     with patch.object(game_mod.dal_game, "get_active_game", return_value=game), \
          patch.object(svc, "_round_expired", return_value=False), \
-         patch.object(svc, "can_double", return_value={"success": False, "message": "Can only double with exactly 2 cards"}):
+         patch.object(svc, "can_double", return_value=res_refusal("Can only double with exactly 2 cards")):
         r = svc.double("t1", "alice")
     assert r.ok is False and r.code == "cannot_double"
     assert r.message == "Can only double with exactly 2 cards"
@@ -114,7 +120,7 @@ def test_split_refused_by_can_split_keeps_its_code():
     game = {"id": 9, "status": "player", "tablemoniker": "t1"}
     with patch.object(game_mod.dal_game, "get_active_game", return_value=game), \
          patch.object(svc, "_round_expired", return_value=False), \
-         patch.object(svc, "can_split", return_value={"success": False, "message": "Cards must have same rank to split"}):
+         patch.object(svc, "can_split", return_value=res_refusal("Cards must have same rank to split")):
         r = svc.split("t1", "alice")
     assert r.ok is False and r.code == "cannot_split"
     assert r.message == "Cards must have same rank to split"
@@ -137,3 +143,19 @@ def test_surrender_not_allowed_at_this_table_is_cannot_surrender():
         r = svc.surrender("t1", "alice")
     assert r.ok is False and r.code == "cannot_surrender"
     assert r.message == "Surrender not allowed at this table"
+
+
+def test_can_double_refusal_is_an_action_result():
+    svc = _service()
+    with patch.object(game_mod.dal_game, "get_active_game", return_value=None):
+        r = svc.can_double("t1", "alice")
+    assert isinstance(r, ActionResult)
+    assert r.ok is False and r.code == "no_active_game"
+
+
+def test_can_split_refusal_is_an_action_result():
+    svc = _service()
+    with patch.object(game_mod.dal_game, "get_active_game", return_value=None):
+        r = svc.can_split("t1", "alice")
+    assert isinstance(r, ActionResult)
+    assert r.ok is False and r.code == "no_active_game"
