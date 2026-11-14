@@ -28,6 +28,13 @@ def _refused(message: str) -> ActionResult:
     return _results.refusal_from_message(message)
 
 
+def _from_dict(result: dict[str, Any]) -> ActionResult:
+    """A dict result from a helper (for example can_double) as an ActionResult, with its casino code."""
+    from casino.api import results as _results
+
+    return _results.to_action_result(result)
+
+
 class GameService:
     """Service for game management and blackjack logic."""
 
@@ -297,51 +304,52 @@ class GameService:
 
         return success({"total": total, "status": "standing"}, message=f"Stood at {total}")
 
-    def surrender(self, table_moniker: str, player_moniker: str) -> dict[str, Any]:
+    def surrender(self, table_moniker: str, player_moniker: str) -> ActionResult:
+        """Surrender the hand for half its bet. Returns an ActionResult; data has what was returned."""
         """Player surrenders - forfeit 50% of bet."""
         from casino.dal import bet as dal_bet
 
         game = dal_game.get_active_game(self.args, table_moniker, pool=self._pool)
         if game and self._round_expired(table_moniker, game):
-            return {"success": False, "message": "The round clock expired"}
+            return _refused("The round clock expired")
         game = dal_game.get_active_game(self.args, table_moniker, pool=self._pool)
         if not game:
-            return {"success": False, "message": "No active game"}
+            return _refused("No active game")
 
         table = dal_table.get_table(self.args, table_moniker, pool=self._pool)
         if not table:
-            return {"success": False, "message": "Table not found"}
+            return _refused("Table not found")
 
         attrs = table.get("attrs", {}) or {}
         surrender_rule = attrs.get("surrender", "early")
 
         if not surrender_rule:
-            return {"success": False, "message": "Surrender not allowed at this table"}
+            return _refused("Surrender not allowed at this table")
 
         hand = dal_game.get_player_hand(self.args, game["id"], player_moniker, pool=self._pool)
         if not hand:
-            return {"success": False, "message": "No hand found"}
+            return _refused("No hand found")
 
         cards = list(hand["cards"]) if hand["cards"] else []
         if len(cards) != 2:
-            return {"success": False, "message": "Can only surrender with exactly 2 cards"}
+            return _refused("Can only surrender with exactly 2 cards")
 
         attrs = hand.get("attrs") or {}
         status = attrs.get("status")
         if status in ("hit", "bust", "standing", "done"):
-            return {"success": False, "message": "Cannot surrender after hitting"}
+            return _refused("Cannot surrender after hitting")
 
         hand_id = hand.get("id")
         if not hand_id:
-            return {"success": False, "message": "Hand not found"}
+            return _refused("Hand not found")
 
         bet = dal_bet.get_bet_for_hand(self.args, hand_id, pool=self._pool)
         if not bet:
-            return {"success": False, "message": "No bet found"}
+            return _refused("No bet found")
 
         surrender_multiplier = get_surrender_multiplier(self.args)
         if surrender_multiplier <= 0:
-            return {"success": False, "message": "Surrender not allowed at this table"}
+            return _refused("Surrender not allowed at this table")
 
         # The bet comes back from the DB as Decimal; Decimal * float raises TypeError.
         surrender_amount = int(int(bet["amount"]) * surrender_multiplier)
@@ -359,13 +367,14 @@ class GameService:
             pool=self._pool,
         )
 
-        return {
-            "success": True,
-            "surrendered": True,
-            "forfeited": int(bet["amount"] - surrender_amount),
-            "returned": int(surrender_amount),
-            "message": f"Surrendered, returned {surrender_amount}",
-        }
+        return success(
+            {
+                "surrendered": True,
+                "forfeited": int(bet["amount"] - surrender_amount),
+                "returned": int(surrender_amount),
+            },
+            message=f"Surrendered, returned {surrender_amount}",
+        )
 
     def can_surrender(self, table_moniker: str, player_moniker: str) -> dict[str, Any]:
         """Check if player can surrender."""
@@ -471,35 +480,36 @@ class GameService:
             "bet_amount": player_bet["amount"],
         }
 
-    def split(self, table_moniker: str, player_moniker: str, hand_id: Optional[int] = None) -> dict[str, Any]:
+    def split(self, table_moniker: str, player_moniker: str, hand_id: Optional[int] = None) -> ActionResult:
+        """Split a pair into two hands. Returns an ActionResult; data has the two hands."""
         """Split player's hand into two hands."""
         game = dal_game.get_active_game(self.args, table_moniker, pool=self._pool)
         if game and self._round_expired(table_moniker, game):
-            return {"success": False, "message": "The round clock expired"}
+            return _refused("The round clock expired")
         can_split = self.can_split(table_moniker, player_moniker, hand_id)
         if not can_split["success"]:
-            return can_split
+            return _from_dict(can_split)
 
         game = dal_game.get_active_game(self.args, table_moniker, pool=self._pool)
         if not game:
-            return {"success": False, "message": "No active game"}
+            return _refused("No active game")
 
         if hand_id is not None:
             hand = dal_game.get_hand(self.args, hand_id, pool=self._pool)
             if not hand:
-                return {"success": False, "message": "Hand not found"}
+                return _refused("Hand not found")
             player_bet = dal_bet.get_bet_for_hand(self.args, hand_id, pool=self._pool)
         else:
             hands = dal_game.get_player_hands(self.args, game["id"], player_moniker, pool=self._pool)
             if not hands:
-                return {"success": False, "message": "No hand found"}
+                return _refused("No hand found")
             hand = hands[0]
             player_bet = dal_bet.get_player_bet_for_game(self.args, game["id"], player_moniker, pool=self._pool)
 
         cards = list(hand["cards"]) if hand["cards"] else []
 
         if len(cards) != 2:
-            return {"success": False, "message": "Can only split with exactly 2 cards"}
+            return _refused("Can only split with exactly 2 cards")
 
         bet_amount = player_bet["amount"]
 
@@ -550,22 +560,23 @@ class GameService:
 
         io.echo(f"split: hand1={hand1_cards}, hand2={hand2_cards}", level="info")
 
-        return {
-            "success": True,
-            "message": "Hand split",
-            "hand1": {
-                "hand_id": hand["id"],
-                "cards": hand1_cards,
-                "total": self._hand_value(hand1_cards),
-                "bet": bet_amount,
+        return success(
+            {
+                "hand1": {
+                    "hand_id": hand["id"],
+                    "cards": hand1_cards,
+                    "total": self._hand_value(hand1_cards),
+                    "bet": bet_amount,
+                },
+                "hand2": {
+                    "hand_id": hand2["id"],
+                    "cards": hand2_cards,
+                    "total": self._hand_value(hand2_cards),
+                    "bet": bet_amount,
+                },
             },
-            "hand2": {
-                "hand_id": hand2["id"],
-                "cards": hand2_cards,
-                "total": self._hand_value(hand2_cards),
-                "bet": bet_amount,
-            },
-        }
+            message="Hand split",
+        )
 
     def can_double(self, table_moniker: str, player_moniker: str, hand_id: Optional[int] = None) -> dict[str, Any]:
         """Check if player can double down."""
@@ -638,38 +649,38 @@ class GameService:
                 return 0
             return int(row["credits"])
 
-    def double(self, table_moniker: str, player_moniker: str, hand_id: Optional[int] = None) -> dict[str, Any]:
-        """Double down - double bet and get exactly one more card."""
+    def double(self, table_moniker: str, player_moniker: str, hand_id: Optional[int] = None) -> ActionResult:
+        """Double down - double bet and get exactly one more card. Returns an ActionResult."""
         game = dal_game.get_active_game(self.args, table_moniker, pool=self._pool)
         if game and self._round_expired(table_moniker, game):
-            return {"success": False, "message": "The round clock expired"}
+            return _refused("The round clock expired")
         can_double = self.can_double(table_moniker, player_moniker, hand_id)
         if not can_double["success"]:
-            return can_double
+            return _from_dict(can_double)
 
         game = dal_game.get_active_game(self.args, table_moniker, pool=self._pool)
         if not game:
-            return {"success": False, "message": "No active game"}
+            return _refused("No active game")
 
         if hand_id is not None:
             player_bet = dal_bet.get_bet_for_hand(self.args, hand_id, pool=self._pool)
             if not player_bet:
-                return {"success": False, "message": "No bet found for hand"}
+                return _refused("No bet found for hand")
 
             hand = dal_game.get_hand(self.args, hand_id, pool=self._pool)
             if not hand:
-                return {"success": False, "message": "Hand not found"}
+                return _refused("Hand not found")
         else:
             hands = dal_game.get_player_hands(self.args, game["id"], player_moniker, pool=self._pool)
             if not hands:
-                return {"success": False, "message": "No hand found"}
+                return _refused("No hand found")
             hand = hands[0]
             player_bet = dal_bet.get_player_bet_for_game(self.args, game["id"], player_moniker, pool=self._pool)
 
         cards = list(hand["cards"]) if hand["cards"] else []
 
         if len(cards) != 2:
-            return {"success": False, "message": "Can only double with exactly 2 cards"}
+            return _refused("Can only double with exactly 2 cards")
 
         bet_amount = player_bet["amount"]
 
@@ -700,15 +711,16 @@ class GameService:
 
         io.echo(f"double: {cards}, total={total}, status={status}", level="info")
 
-        return {
-            "success": True,
-            "message": f"Doubled - got {new_card}",
-            "hand_id": hand["id"],
-            "cards": cards,
-            "total": total,
-            "status": status,
-            "bet_amount": bet_amount * 2,
-        }
+        return success(
+            {
+                "hand_id": hand["id"],
+                "cards": cards,
+                "total": total,
+                "status": status,
+                "bet_amount": bet_amount * 2,
+            },
+            message=f"Doubled - got {new_card}",
+        )
 
     def get_game_state(self, table_moniker: str, player_moniker: str) -> dict[str, Any]:
         """Get current game state for a player."""

@@ -79,3 +79,61 @@ def test_stand_success_carries_total_and_status_in_data():
     assert r.ok is True and r.code == "ok"
     assert r.data["total"] == 17 and r.data["status"] == "standing"
     assert r.message == "Stood at 17"
+
+
+def test_double_refusal_is_an_action_result_with_its_code():
+    svc = _service()
+    with patch.object(game_mod.dal_game, "get_active_game", return_value=None):
+        r = svc.double("t1", "alice")
+    assert isinstance(r, ActionResult)
+    assert r.ok is False and r.code == "no_active_game" and r.message == "No active game"
+
+
+def test_double_refused_by_can_double_keeps_its_code():
+    # can_double's own refusal (here: not exactly two cards) reaches the caller with its code.
+    svc = _service()
+    game = {"id": 9, "status": "player", "tablemoniker": "t1"}
+    with patch.object(game_mod.dal_game, "get_active_game", return_value=game), \
+         patch.object(svc, "_round_expired", return_value=False), \
+         patch.object(svc, "can_double", return_value={"success": False, "message": "Can only double with exactly 2 cards"}):
+        r = svc.double("t1", "alice")
+    assert r.ok is False and r.code == "cannot_double"
+    assert r.message == "Can only double with exactly 2 cards"
+
+
+def test_split_refusal_is_an_action_result_with_its_code():
+    svc = _service()
+    with patch.object(game_mod.dal_game, "get_active_game", return_value=None):
+        r = svc.split("t1", "alice")
+    assert isinstance(r, ActionResult)
+    assert r.ok is False and r.code == "no_active_game" and r.message == "No active game"
+
+
+def test_split_refused_by_can_split_keeps_its_code():
+    svc = _service()
+    game = {"id": 9, "status": "player", "tablemoniker": "t1"}
+    with patch.object(game_mod.dal_game, "get_active_game", return_value=game), \
+         patch.object(svc, "_round_expired", return_value=False), \
+         patch.object(svc, "can_split", return_value={"success": False, "message": "Cards must have same rank to split"}):
+        r = svc.split("t1", "alice")
+    assert r.ok is False and r.code == "cannot_split"
+    assert r.message == "Cards must have same rank to split"
+
+
+def test_surrender_refusal_is_an_action_result_with_its_code():
+    svc = _service()
+    with patch.object(game_mod.dal_game, "get_active_game", return_value=None):
+        r = svc.surrender("t1", "alice")
+    assert isinstance(r, ActionResult)
+    assert r.ok is False and r.code == "no_active_game" and r.message == "No active game"
+
+
+def test_surrender_not_allowed_at_this_table_is_cannot_surrender():
+    svc = _service()
+    game = {"id": 9, "status": "player", "tablemoniker": "t1"}
+    with patch.object(game_mod.dal_game, "get_active_game", return_value=game), \
+         patch.object(svc, "_round_expired", return_value=False), \
+         patch.object(game_mod.dal_table, "get_table", return_value={"attrs": {"surrender": None}}):
+        r = svc.surrender("t1", "alice")
+    assert r.ok is False and r.code == "cannot_surrender"
+    assert r.message == "Surrender not allowed at this table"

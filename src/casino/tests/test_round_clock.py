@@ -88,9 +88,7 @@ def test_expired_round_refuses_hit_before_any_card_is_drawn():
 
 
 @pytest.mark.unit
-# Only stand returns an ActionResult so far. double, split and surrender are added to this list when
-# they convert (blackjack slice 3b); until then they still return dicts.
-@pytest.mark.parametrize("action", ["stand"])
+@pytest.mark.parametrize("action", ["stand", "double", "split", "surrender"])
 def test_every_action_is_refused_after_the_clock_runs_out(action):
     svc = _service_known()
     game = {"id": 7}

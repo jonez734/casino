@@ -46,10 +46,10 @@ def test_surrender_accepts_a_decimal_bet_amount():
          patch.object(svc, "_round_expired", return_value=False):
         result = svc.surrender("blackjack-x", "player")
 
-    assert result.get("success") is True, result
+    assert result.ok is True, result
     assert settled["amount"] == 50
-    assert result["returned"] == 50
-    assert result["forfeited"] == 50
+    assert result.data["returned"] == 50
+    assert result.data["forfeited"] == 50
 
 
 def _state_with_table(attrs):

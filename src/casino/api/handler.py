@@ -1130,13 +1130,13 @@ class GameServiceHandler(BaseService):
             settled = self.game_service.settle_game(table_moniker)
         elif action == "double":
             hand_id = message.get("hand_id") if message else None
-            result = self.game_service.double(table_moniker, moniker, hand_id)
+            result = to_wire(self.game_service.double(table_moniker, moniker, hand_id))
             settled = self.game_service.settle_game(table_moniker)
         elif action == "split":
             hand_id = message.get("hand_id") if message else None
-            result = self.game_service.split(table_moniker, moniker, hand_id)
+            result = to_wire(self.game_service.split(table_moniker, moniker, hand_id))
         elif action == "surrender":
-            result = self.game_service.surrender(table_moniker, moniker)
+            result = to_wire(self.game_service.surrender(table_moniker, moniker))
             if result and result.get("success"):
                 settled = self.game_service.settle_game(table_moniker)
 

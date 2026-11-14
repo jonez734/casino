@@ -136,9 +136,9 @@ def test_actions_are_refused_once_a_dealer_natural_has_settled_the_round():
     with patch.object(dal_game, "get_active_game", return_value=None):
         assert svc.hit("blackjack-x", "p1").ok is False
         assert svc.stand("blackjack-x", "p1").ok is False
-        assert svc.double("blackjack-x", "p1")["success"] is False
-        assert svc.split("blackjack-x", "p1")["success"] is False
-        assert svc.surrender("blackjack-x", "p1")["success"] is False
+        assert svc.double("blackjack-x", "p1").ok is False
+        assert svc.split("blackjack-x", "p1").ok is False
+        assert svc.surrender("blackjack-x", "p1").ok is False
 
 
 @pytest.mark.unit
