@@ -488,9 +488,9 @@ class TestCasinoAuthEndToEnd(unittest.IsolatedAsyncioTestCase):
         one_shot_args.bed_call_timeout = 5.0
         one_shot_args.bed_probe_timeout = 0.25
         one_shot_conn = BedConnection(one_shot_args)
-        # Share the already-open WS so the one-shot connection
-        # bypasses its own connect handshake.
-        one_shot_conn._ws = self.client_ws
+        # The one-shot connection opens its own socket, as in production. Sharing self.client_ws would let
+        # its close (auth_prompt's cleanup) reach the reader below and lose the reply to ConnectionClosedOK.
+        one_shot_conn._ws = await one_shot_conn._connect()
 
         with patch("bed.tools.auth._collect_credentials", return_value=(moniker, password)), \
              patch("bed.tools.auth._persist_token", return_value=True), \
@@ -808,3 +808,55 @@ class _BedServerHarness:
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestOneShotConnectionDoesNotCloseTheReader(unittest.IsolatedAsyncioTestCase):
+    """Regression for the flaky b1/b2 tests: auth_prompt closes its one-shot bed connection when it is
+    done. If that connection shares the test's WebSocket, the close reaches the test's reader and the
+    reply can be lost to a ConnectionClosedOK. The one-shot connection must own its own socket."""
+
+    async def test_closing_the_one_shot_connection_leaves_the_reader_open(self):
+        import websockets
+
+        from bed.client.connection import BedConnection
+
+        async def echo(ws):
+            async for message in ws:
+                await ws.send(message)
+
+        async with websockets.serve(echo, "127.0.0.1", 0) as server:
+            port = server.sockets[0].getsockname()[1]
+            reader = await websockets.connect(f"ws://127.0.0.1:{port}/")
+            args = argparse.Namespace(bed_host="127.0.0.1", bed_port=port, bed_path="/",
+                                      bed_call_timeout=5.0, bed_probe_timeout=0.25)
+            one_shot = BedConnection(args, probe_terminal=False)
+            one_shot._ws = await one_shot._connect()
+            one_shot.force_close()
+            await reader.send("still open")
+            assert await asyncio.wait_for(reader.recv(), timeout=5) == "still open"
+            await reader.close()
+
+
+class TestSharedSocketCloseReachesTheReader(unittest.IsolatedAsyncioTestCase):
+    """The mechanism behind the flake, pinned: closing a one-shot connection that shares the reader's socket
+    closes the reader. This documents why the driver must give the one-shot connection its own socket."""
+
+    async def test_sharing_a_socket_lets_the_close_reach_the_reader(self):
+        import websockets
+
+        from bed.client.connection import BedConnection
+
+        async def echo(ws):
+            async for message in ws:
+                await ws.send(message)
+
+        async with websockets.serve(echo, "127.0.0.1", 0) as server:
+            port = server.sockets[0].getsockname()[1]
+            reader = await websockets.connect(f"ws://127.0.0.1:{port}/")
+            args = argparse.Namespace(bed_host="127.0.0.1", bed_port=port, bed_path="/",
+                                      bed_call_timeout=5.0, bed_probe_timeout=0.25)
+            one_shot = BedConnection(args, probe_terminal=False)
+            one_shot._ws = reader  # the shared socket the driver used to hand over
+            one_shot.force_close()
+            with self.assertRaises(websockets.exceptions.ConnectionClosed):
+                await asyncio.wait_for(reader.recv(), timeout=5)
