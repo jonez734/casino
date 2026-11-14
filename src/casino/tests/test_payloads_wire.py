@@ -100,3 +100,29 @@ def test_settle_game_with_no_active_game_returns_an_empty_settlement():
         got = svc.settle_game("t1")
     assert isinstance(got, RoundSettlement)
     assert got.has_outcomes is False and got.outcomes == ()
+
+
+
+def test_place_bet_success_is_a_typed_placed_bet():
+    from unittest.mock import patch
+
+    from casino.services import game as game_mod
+
+    svc = game_mod.GameService.__new__(game_mod.GameService)
+    svc.args = None
+    svc._pool = None
+    game = {"id": 9, "status": "betting"}
+    with patch.object(game_mod.dal_table, "get_table", return_value={"minimumbet": 1, "maximumbet": 100}), \
+         patch.object(game_mod.dal_game, "get_active_game", return_value=game), \
+         patch.object(game_mod.dal_bet, "place_bet", return_value={"id": 5}), \
+         patch.object(game_mod.dal_game, "create_hand", return_value={"id": 3}), \
+         patch.object(game_mod.dal_game, "update_hand_cards"), \
+         patch.object(game_mod.dal_bet, "update_bet_hand_id"), \
+         patch.object(game_mod.dal_bet, "update_bet_currenthand"), \
+         patch.object(svc, "_draw_card", side_effect=["10H", "7D"]), \
+         patch.object(svc, "_round_expired", return_value=False), \
+         patch.object(svc, "_deal_dealer_and_peek", return_value={"natural": False, "checked": True}):
+        got = svc.place_bet("t1", "alice", 10)
+    assert isinstance(got, PlacedBet)
+    assert got.bet_id == 5 and got.hand_id == 3 and got.cards == ["10H", "7D"]
+    assert got.to_dict()["dealer_peek"] == {"natural": False, "checked": True}

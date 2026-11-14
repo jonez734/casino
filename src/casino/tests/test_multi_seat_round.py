@@ -129,7 +129,7 @@ def test_a_second_seats_bet_joins_the_open_round_instead_of_starting_one():
     place.assert_called_once()
     # place_bet(args, player, table, game_id, amount): the bet is recorded against the open game.
     assert place.call_args.args[3] == 7
-    assert result["success"] is True
+    assert result.to_dict()["success"] is True
 
 
 @pytest.mark.unit

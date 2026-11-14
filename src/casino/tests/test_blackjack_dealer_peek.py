@@ -72,8 +72,8 @@ def test_dealer_natural_settles_the_round_inside_place_bet():
          patch.object(svc, "settle_game", settle):
         result = svc.place_bet("blackjack-x", "p1", 10)
 
-    assert result["success"] is True
-    assert result["dealer_peek"] == {"natural": True, "checked": True}
+    assert result.to_dict()["success"] is True
+    assert result.to_dict()["dealer_peek"] == {"natural": True, "checked": True}
     reveal.assert_called_once()
     settle.assert_called_once_with("blackjack-x")
 
@@ -98,7 +98,7 @@ def test_no_natural_leaves_the_round_open_for_play():
          patch.object(svc, "settle_game", settle):
         result = svc.place_bet("blackjack-x", "p1", 10)
 
-    assert result["dealer_peek"] == {"natural": False, "checked": True}
+    assert result.to_dict()["dealer_peek"] == {"natural": False, "checked": True}
     reveal.assert_not_called()
     settle.assert_not_called()
 
@@ -123,7 +123,7 @@ def test_no_peek_when_the_upcard_cannot_make_a_natural():
          patch.object(svc, "settle_game", settle):
         result = svc.place_bet("blackjack-x", "p1", 10)
 
-    assert result["dealer_peek"] == {"natural": False, "checked": False}
+    assert result.to_dict()["dealer_peek"] == {"natural": False, "checked": False}
     reveal.assert_not_called()
     settle.assert_not_called()
 

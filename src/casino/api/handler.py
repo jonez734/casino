@@ -1293,6 +1293,8 @@ class BetServiceHandler(BaseService):
         io.echo(f"_handle_bet: {moniker} betting {amount} at {table_moniker}", level="info")
 
         result = self.game_service.place_bet(table_moniker, moniker, amount)
+        if hasattr(result, "to_dict"):  # a typed success (PlacedBet); a refusal is still a dict
+            result = result.to_dict()
 
         if result.get("success"):
             game_state = self.game_service.get_game_state(table_moniker, moniker)

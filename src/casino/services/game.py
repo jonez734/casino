@@ -171,7 +171,9 @@ class GameService:
         if game is not None:
             peek = self._deal_dealer_and_peek(table_moniker, game)
 
-        return {
+        from casino.api.payloads import PlacedBet
+
+        return PlacedBet.from_dict({
             "success": True,
             "bet_id": bet["id"],
             "hand_id": hand["id"],
@@ -179,7 +181,7 @@ class GameService:
             "total": self._hand_value(cards),
             "dealer_peek": peek,
             "message": f"Bet {amount} placed",
-        }
+        })
 
     def _deal_dealer_and_peek(self, table_moniker: str, game: dict[str, Any]) -> dict[str, Any]:
         """Deal the dealer's two cards if not yet dealt, then check the hole card for a natural.
