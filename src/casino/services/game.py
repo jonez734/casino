@@ -18,6 +18,14 @@ from casino.dal import table as dal_table
 from casino.services.round_clock import ACTED_STATUSES, STANDUP_STATUS
 from casino.dal import shoe as shoe_store
 from casino.shoe import Shoe, build_cards
+from bbsengine6.seam.results import ActionResult, success
+
+
+def _refused(message: str) -> ActionResult:
+    """A refused action, with the casino code for its message (see casino.api.results)."""
+    from casino.api import results as _results
+
+    return _results.refusal_from_message(message)
 
 
 class GameService:
@@ -219,17 +227,17 @@ class GameService:
         _rc.expire_round(self, table_moniker, pool=self._pool)
         return True
 
-    def hit(self, table_moniker: str, player_moniker: str) -> dict[str, Any]:
-        """Player hits (takes another card)."""
+    def hit(self, table_moniker: str, player_moniker: str) -> ActionResult:
+        """Player hits (takes another card). Returns an ActionResult; data has cards, total, status."""
         game = dal_game.get_active_game(self.args, table_moniker, pool=self._pool)
         if not game:
-            return {"success": False, "message": "No active game"}
+            return _refused("No active game")
         if self._round_expired(table_moniker, game):
-            return {"success": False, "message": "The round clock expired"}
+            return _refused("The round clock expired")
 
         hand = dal_game.get_player_hand(self.args, game["id"], player_moniker, pool=self._pool)
         if not hand:
-            return {"success": False, "message": "No hand found"}
+            return _refused("No hand found")
 
         cards = list(hand["cards"])
         cards.append(self._draw_card(table_moniker))
@@ -249,13 +257,10 @@ class GameService:
         elif status == "bust":
             dal_game.update_hand_status(self.args, hand["id"], "bust", pool=self._pool)
 
-        return {
-            "success": True,
-            "cards": cards,
-            "total": total,
-            "status": status,
-            "message": "5-card Charlie!" if status == "charlie" else ("Hit" if status != "bust" else "Bust!"),
-        }
+        return success(
+            {"cards": cards, "total": total, "status": status},
+            message="5-card Charlie!" if status == "charlie" else ("Hit" if status != "bust" else "Bust!"),
+        )
 
     # Hand states that mean the seat has finished acting. Any other state, or none, is still open.
     _ACTED_STATUSES = ACTED_STATUSES

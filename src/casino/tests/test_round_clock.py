@@ -81,7 +81,8 @@ def test_expired_round_refuses_hit_before_any_card_is_drawn():
          patch.object(rc, "expire_round", return_value={"success": True}) as expire, \
          patch.object(gamemod.dal_game, "get_player_hand") as get_hand:
         out = svc.hit("t1", "alice")
-    assert out == {"success": False, "message": "The round clock expired"}
+    assert out.ok is False and out.code == "round_expired"
+    assert out.message == "The round clock expired"
     expire.assert_called_once()
     get_hand.assert_not_called()
 
@@ -214,4 +215,5 @@ def test_a_round_started_here_is_never_treated_as_a_reload():
         out = svc.hit("t1", "alice")
     expire.assert_called_once()
     set_deadline.assert_not_called()
-    assert out == {"success": False, "message": "The round clock expired"}
+    assert out.ok is False and out.code == "round_expired"
+    assert out.message == "The round clock expired"

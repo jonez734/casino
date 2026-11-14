@@ -84,7 +84,7 @@ def _round_settled_payload(settled: dict[str, Any], moniker: Optional[str]) -> d
 
 
 from casino.api.messages import send_table_state, table_state_message  # noqa: E402
-from casino.api.results import to_action_result  # noqa: E402
+from casino.api.results import to_action_result, to_wire  # noqa: E402
 
 
 class CasinoSessionManager(SessionManager):
@@ -1124,7 +1124,7 @@ class GameServiceHandler(BaseService):
         result = None
         settled = None
         if action == "hit":
-            result = self.game_service.hit(table_moniker, moniker)
+            result = to_wire(self.game_service.hit(table_moniker, moniker))
         elif action == "stand":
             result = self.game_service.stand(table_moniker, moniker)
             settled = self.game_service.settle_game(table_moniker)
