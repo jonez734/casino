@@ -195,7 +195,7 @@ def test_game_state_lists_every_seat_with_its_acted_state():
          patch.object(dal_game, "set_dealer_hole_card", create=True), \
          patch.object(game_mod.dal_bet, "get_insurance", return_value=None), \
          patch.object(svc, "_hide_hole_card", return_value=[]):
-        state = svc.get_game_state("blackjack-x", "bob")
+        state = svc.get_game_state("blackjack-x", "bob").to_dict()
     seats_view = {s["player"]: s for s in state["seats"]}
     assert seats_view["alice"]["acted"] is True
     assert seats_view["bob"]["acted"] is False

@@ -67,6 +67,11 @@ async def _resolve_async_pool(args: Any) -> Any:
     return await database.get_async_pool(args)
 
 
+def _state_dict(state) -> dict:
+    """The table state as the dict the handler's reply code edits (it sets "type" on it). A fresh copy."""
+    return state.to_dict() if hasattr(state, "to_dict") else dict(state)
+
+
 def _settlement_dict(settlement) -> Optional[dict]:
     """The settled round as the dict the handler's reply code reads, or None when there is none."""
     return None if settlement is None else settlement.to_dict()
@@ -1155,7 +1160,7 @@ class GameServiceHandler(BaseService):
             settled = _settlement_dict(self.game_service.take_settled_round(table_moniker))
 
         # Return game state directly to player
-        game_state = self.game_service.get_game_state(table_moniker, moniker)
+        game_state = _state_dict(self.game_service.get_game_state(table_moniker, moniker))
         game_state["type"] = "game_state"
         if settled and settled.get("outcomes"):
             # The round ended: tell the player each hand's result and the money that moved.
@@ -1163,7 +1168,7 @@ class GameServiceHandler(BaseService):
 
         # Broadcast game_state to all at the table (including spectators)
         if server and table_moniker:
-            broadcast_state = self.game_service.get_game_state(table_moniker, "")
+            broadcast_state = _state_dict(self.game_service.get_game_state(table_moniker, ""))
             broadcast_state["type"] = "game_state"
             if settled and settled.get("outcomes"):
                 # Every seat and spectator sees each hand's ending, not only the acting player.
@@ -1297,7 +1302,7 @@ class BetServiceHandler(BaseService):
             result = result.to_dict()
 
         if result.get("success"):
-            game_state = self.game_service.get_game_state(table_moniker, moniker)
+            game_state = _state_dict(self.game_service.get_game_state(table_moniker, moniker))
             game_state["type"] = "game_state"
             io.echo(f"_handle_bet: SUCCESS: {moniker} bet {amount} at {table_moniker}", level="info")
 
@@ -1318,7 +1323,7 @@ class BetServiceHandler(BaseService):
 
             # Broadcast game_state to all at the table (including spectators)
             if server and table_moniker:
-                broadcast_state = self.game_service.get_game_state(table_moniker, "")
+                broadcast_state = _state_dict(self.game_service.get_game_state(table_moniker, ""))
                 broadcast_state["type"] = "game_state"
                 if settled and settled.get("outcomes"):
                     broadcast_state["round_settled"] = _round_settled_payload(settled, None)

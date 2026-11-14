@@ -719,7 +719,9 @@ class GameService:
             message=f"Doubled - got {new_card}",
         )
 
-    def get_game_state(self, table_moniker: str, player_moniker: str) -> dict[str, Any]:
+    def get_game_state(self, table_moniker: str, player_moniker: str) -> "GameState | dict[str, Any]":
+        """The table state the client renders. A GameState; {"error": ...} when the table is unknown."""
+        from casino.api.payloads import GameState
         """Get current game state for a player."""
         io.echo(f"get_game_state: table_moniker={table_moniker}, player={player_moniker}", level="info")
         table = dal_table.get_table(self.args, table_moniker, pool=self._pool)
@@ -728,14 +730,14 @@ class GameService:
 
         game = dal_game.get_current_game(self.args, table_moniker, pool=self._pool)
         if not game:
-            return {
+            return GameState.from_dict({
                 "table_moniker": table_moniker,
                 "phase": "waiting",
                 "hands": [],
                 "dealer_hand": [],
                 "insurance_available": False,
                 "insurance_taken": 0,
-            }
+            })
 
         hands = dal_game.get_player_hands(self.args, game["id"], player_moniker, pool=self._pool)
 
@@ -815,7 +817,7 @@ class GameService:
             for h in dal_game.get_game_hands(self.args, game["id"], pool=self._pool)
         ]
 
-        return {
+        return GameState.from_dict({
             "table_moniker": table_moniker,
             "game_id": int(game["id"]),
             "phase": game["status"],
@@ -827,7 +829,7 @@ class GameService:
             "dealer_total": self._hand_value(dealer_hand_for_client) if dealer_hand_for_client else 0,
             "insurance_available": insurance_available,
             "insurance_taken": insurance_taken,
-        }
+        })
 
     def _is_blackjack(self, cards: list) -> bool:
         """Check for natural blackjack (21 with exactly 2 cards)."""

@@ -126,3 +126,20 @@ def test_place_bet_success_is_a_typed_placed_bet():
     assert isinstance(got, PlacedBet)
     assert got.bet_id == 5 and got.hand_id == 3 and got.cards == ["10H", "7D"]
     assert got.to_dict()["dealer_peek"] == {"natural": False, "checked": True}
+
+
+
+def test_get_game_state_waiting_is_a_typed_game_state():
+    from unittest.mock import patch
+
+    from casino.services import game as game_mod
+
+    svc = game_mod.GameService.__new__(game_mod.GameService)
+    svc.args = None
+    svc._pool = None
+    with patch.object(game_mod.dal_table, "get_table", return_value={"attrs": {}}), \
+         patch.object(game_mod.dal_game, "get_current_game", return_value=None):
+        got = svc.get_game_state("t1", "bob")
+    assert isinstance(got, GameState)
+    assert got.phase == "waiting" and got.table_moniker == "t1"
+    assert got.to_dict()["hands"] == []
