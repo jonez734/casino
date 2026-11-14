@@ -152,10 +152,10 @@ def test_surrendered_seat_is_listed_with_its_text_and_no_win_loss_stat():
               "attrs": {"status": "surrendered"}}]
     bets = {10: {"id": 100, "amount": Decimal("10"), "status": "pending"}}
     result, _, increment = _run_settle(svc, hands, bets, ["KS", "9C"])
-    [o] = result["outcomes"]
-    assert o["result"] == "surrender"
-    assert o["reason"] == "surrender"
-    assert o["text"] == "surrendered, bet 10, returned 5, net -5"
+    [o] = result.outcomes
+    assert o.result == "surrender"
+    assert o.reason == "surrender"
+    assert o.text == "surrendered, bet 10, returned 5, net -5"
     stats = _stats(increment)
     assert "wins" not in stats and "losses" not in stats and "pushes" not in stats
     assert "blackjack.surrenders" in stats
@@ -168,10 +168,10 @@ def test_standup_seat_is_refunded_listed_and_not_counted():
               "attrs": {"status": rc.STANDUP_STATUS}}]
     bets = {11: {"id": 101, "amount": Decimal("10"), "status": "pending"}}
     result, settle_bet, increment = _run_settle(svc, hands, bets, ["KS", "9C"])
-    [o] = result["outcomes"]
-    assert o["result"] == "standup"
-    assert o["text"] == "standup, bet 10 refunded, net 0"
-    assert o["net"] == 0
+    [o] = result.outcomes
+    assert o.result == "standup"
+    assert o.text == "standup, bet 10 refunded, net 0"
+    assert o.net == 0
     # The standup hand was never played out: no win, loss, push, hand-played, or net stat.
     assert _stats(increment) == []
     # Standup hands are not paid or charged by settle_game; the refund was made by the round clock.

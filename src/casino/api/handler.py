@@ -67,6 +67,11 @@ async def _resolve_async_pool(args: Any) -> Any:
     return await database.get_async_pool(args)
 
 
+def _settlement_dict(settlement) -> Optional[dict]:
+    """The settled round as the dict the handler's reply code reads, or None when there is none."""
+    return None if settlement is None else settlement.to_dict()
+
+
 def _round_settled_payload(settled: dict[str, Any], moniker: Optional[str]) -> dict[str, Any]:
     """The settled round as sent to clients, shared by every reply and broadcast that announces it.
 
@@ -1127,18 +1132,18 @@ class GameServiceHandler(BaseService):
             result = to_wire(self.game_service.hit(table_moniker, moniker))
         elif action == "stand":
             result = to_wire(self.game_service.stand(table_moniker, moniker))
-            settled = self.game_service.settle_game(table_moniker)
+            settled = _settlement_dict(self.game_service.settle_game(table_moniker))
         elif action == "double":
             hand_id = message.get("hand_id") if message else None
             result = to_wire(self.game_service.double(table_moniker, moniker, hand_id))
-            settled = self.game_service.settle_game(table_moniker)
+            settled = _settlement_dict(self.game_service.settle_game(table_moniker))
         elif action == "split":
             hand_id = message.get("hand_id") if message else None
             result = to_wire(self.game_service.split(table_moniker, moniker, hand_id))
         elif action == "surrender":
             result = to_wire(self.game_service.surrender(table_moniker, moniker))
             if result and result.get("success"):
-                settled = self.game_service.settle_game(table_moniker)
+                settled = _settlement_dict(self.game_service.settle_game(table_moniker))
 
         if result and not result.get("success", True):
             # The refusal is converted to the seam's ActionResult (with its code); the reply keeps its shape.
@@ -1147,7 +1152,7 @@ class GameServiceHandler(BaseService):
 
         # A round the round clock settled while this action was checked is announced too.
         if settled is None:
-            settled = self.game_service.take_settled_round(table_moniker)
+            settled = _settlement_dict(self.game_service.take_settled_round(table_moniker))
 
         # Return game state directly to player
         game_state = self.game_service.get_game_state(table_moniker, moniker)
@@ -1296,7 +1301,7 @@ class BetServiceHandler(BaseService):
 
             # A dealer natural settled the round inside place_bet (the peek). Announce it like any
             # other settled round.
-            settled = self.game_service.take_settled_round(table_moniker)
+            settled = _settlement_dict(self.game_service.take_settled_round(table_moniker))
             if settled and settled.get("outcomes"):
                 game_state["round_settled"] = _round_settled_payload(settled, moniker)
 

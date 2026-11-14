@@ -52,14 +52,14 @@ def test_settle_game_returns_each_hands_outcome_and_net():
          patch.object(svc, "_run_dealer_turn", return_value=["10H", "7D"]):
         result = svc.settle_game("blackjack-x")
 
-    outcomes = result.get("outcomes")
-    assert outcomes is not None, "settle_game must return the per-hand outcomes"
-    assert [o["hand_id"] for o in outcomes] == [10, 11]
+    assert result.has_outcomes, "settle_game must return the per-hand outcomes"
+    outcomes = result.outcomes
+    assert [o.hand_id for o in outcomes] == [10, 11]
     # dealer 17. 19 beats 17 (win, +10). 15 loses to 17 (loss, -10).
-    assert outcomes[0]["result"] == "win" and outcomes[0]["net"] == 10
-    assert outcomes[1]["result"] == "loss" and outcomes[1]["net"] == -10
-    assert all(o["bet"] == 10 for o in outcomes)
-    assert result.get("dealer_total") == 17
+    assert outcomes[0].result == "win" and outcomes[0].net == 10
+    assert outcomes[1].result == "loss" and outcomes[1].net == -10
+    assert all(o.bet == 10 for o in outcomes)
+    assert result.dealer_total == 17
 
 
 @pytest.mark.unit
@@ -69,7 +69,7 @@ def test_stand_reply_carries_the_settled_outcomes():
     from casino.api import handler as handler_mod
 
     src = inspect.getsource(handler_mod.GameServiceHandler._handle_game_action)
-    assert 'settled = self.game_service.settle_game(table_moniker)' in src, (
+    assert 'settled = _settlement_dict(self.game_service.settle_game(table_moniker))' in src, (
         "stand must keep the settlement result"
     )
     assert '"round_settled"' in src, "the reply must carry a round_settled message"

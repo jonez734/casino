@@ -947,11 +947,14 @@ class GameService:
 
         return dealer_cards
 
-    def settle_game(self, table_moniker: str) -> dict[str, Any]:
+    def settle_game(self, table_moniker: str) -> "RoundSettlement":
+        """Settle the round. Returns a RoundSettlement; with no active game it is empty (no outcomes)."""
+        from casino.api.payloads import RoundSettlement
+
         """Settle all bets for a game."""
         game = dal_game.get_active_game(self.args, table_moniker, pool=self._pool)
         if not game:
-            return {"success": False, "message": "No active game"}
+            return RoundSettlement.from_dict({})
 
         game_type = game.get("kind", "blackjack")
 
@@ -1043,11 +1046,14 @@ class GameService:
         # Kept so the handler can announce the round to the table even when no player action
         # triggered the settlement (round-clock expiry).
         self.__dict__.setdefault("_last_settled", {})[table_moniker] = settled
-        return settled
+        return RoundSettlement.from_dict(settled)
 
-    def take_settled_round(self, table_moniker: str) -> Optional[dict[str, Any]]:
+    def take_settled_round(self, table_moniker: str) -> Optional["RoundSettlement"]:
         """Return and clear the last settled round for a table, or None if there is none."""
-        return self.__dict__.setdefault("_last_settled", {}).pop(table_moniker, None)
+        from casino.api.payloads import RoundSettlement
+
+        raw = self.__dict__.setdefault("_last_settled", {}).pop(table_moniker, None)
+        return None if raw is None else RoundSettlement.from_dict(raw)
 
     def _payout_for(self, outcome: str, original_bet: int) -> tuple[int, int]:
         """``(payout, net)`` for a settled outcome. Payout is what returns to the player."""
