@@ -61,7 +61,7 @@ def test_stand_does_not_settle_while_another_seat_is_open():
         result = svc.stand("blackjack-x", "p0")
     settle.assert_not_called()
     mark.assert_called_once()  # this seat is marked standing, the round is not settled
-    assert result["success"] is True
+    assert result.ok is True
 
 
 @pytest.mark.unit

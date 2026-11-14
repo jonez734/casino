@@ -1126,7 +1126,7 @@ class GameServiceHandler(BaseService):
         if action == "hit":
             result = to_wire(self.game_service.hit(table_moniker, moniker))
         elif action == "stand":
-            result = self.game_service.stand(table_moniker, moniker)
+            result = to_wire(self.game_service.stand(table_moniker, moniker))
             settled = self.game_service.settle_game(table_moniker)
         elif action == "double":
             hand_id = message.get("hand_id") if message else None

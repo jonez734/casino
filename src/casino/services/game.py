@@ -276,17 +276,17 @@ class GameService:
                 return False
         return True
 
-    def stand(self, table_moniker: str, player_moniker: str) -> dict[str, Any]:
-        """Player stands. The round settles once every seated hand has acted."""
+    def stand(self, table_moniker: str, player_moniker: str) -> ActionResult:
+        """Player stands. The round settles once every seated hand has acted. Returns an ActionResult."""
         game = dal_game.get_active_game(self.args, table_moniker, pool=self._pool)
         if not game:
-            return {"success": False, "message": "No active game"}
+            return _refused("No active game")
         if self._round_expired(table_moniker, game):
-            return {"success": False, "message": "The round clock expired"}
+            return _refused("The round clock expired")
 
         hand = dal_game.get_player_hand(self.args, game["id"], player_moniker, pool=self._pool)
         if not hand:
-            return {"success": False, "message": "No hand found"}
+            return _refused("No hand found")
 
         total = self._hand_value(list(hand["cards"]))
 
@@ -295,12 +295,7 @@ class GameService:
         if self._all_hands_acted(game):
             self.settle_game(table_moniker)
 
-        return {
-            "success": True,
-            "total": total,
-            "status": "standing",
-            "message": f"Stood at {total}",
-        }
+        return success({"total": total, "status": "standing"}, message=f"Stood at {total}")
 
     def surrender(self, table_moniker: str, player_moniker: str) -> dict[str, Any]:
         """Player surrenders - forfeit 50% of bet."""

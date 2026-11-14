@@ -56,3 +56,26 @@ def test_hit_refusals_map_to_the_same_codes_as_before():
          patch.object(svc, "_round_expired", return_value=True):
         r = svc.hit("t1", "alice")
     assert r.code == res.code_for_message("The round clock expired")
+
+
+def test_stand_refusal_is_an_action_result_with_its_code():
+    svc = _service()
+    with patch.object(game_mod.dal_game, "get_active_game", return_value=None):
+        r = svc.stand("t1", "alice")
+    assert isinstance(r, ActionResult)
+    assert r.ok is False and r.code == "no_active_game" and r.message == "No active game"
+
+
+def test_stand_success_carries_total_and_status_in_data():
+    svc = _service()
+    game = {"id": 9, "status": "player", "tablemoniker": "t1"}
+    hand = {"id": 3, "cards": ["10H", "7D"], "playermoniker": "alice"}
+    with patch.object(game_mod.dal_game, "get_active_game", return_value=game), \
+         patch.object(svc, "_round_expired", return_value=False), \
+         patch.object(game_mod.dal_game, "get_player_hand", return_value=hand), \
+         patch.object(game_mod.dal_game, "update_hand_status"), \
+         patch.object(svc, "_all_hands_acted", return_value=False):
+        r = svc.stand("t1", "alice")
+    assert r.ok is True and r.code == "ok"
+    assert r.data["total"] == 17 and r.data["status"] == "standing"
+    assert r.message == "Stood at 17"
