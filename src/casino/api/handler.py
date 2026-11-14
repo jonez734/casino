@@ -84,6 +84,7 @@ def _round_settled_payload(settled: dict[str, Any], moniker: Optional[str]) -> d
 
 
 from casino.api.messages import send_table_state, table_state_message  # noqa: E402
+from casino.api.results import to_action_result  # noqa: E402
 
 
 class CasinoSessionManager(SessionManager):
@@ -1140,7 +1141,9 @@ class GameServiceHandler(BaseService):
                 settled = self.game_service.settle_game(table_moniker)
 
         if result and not result.get("success", True):
-            return {"type": "error", "code": "action_failed", "message": result.get("message", "")}
+            # The refusal is converted to the seam's ActionResult (with its code); the reply keeps its shape.
+            refused = to_action_result(result)
+            return {"type": "error", "code": "action_failed", "message": refused.message}
 
         # A round the round clock settled while this action was checked is announced too.
         if settled is None:
@@ -1327,7 +1330,7 @@ class BetServiceHandler(BaseService):
 
             return None
         else:
-            error_msg = result.get("message", "")
+            error_msg = to_action_result(result).message
             io.echo(f"_handle_bet: FAILED: {moniker} bet {amount} at {table_moniker}: {error_msg}", level="warning")
             return {"type": "error", "code": "bet_failed", "message": error_msg}
 

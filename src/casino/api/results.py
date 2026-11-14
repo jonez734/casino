@@ -8,6 +8,7 @@ not in the table raises KeyError, so a new refusal cannot ship without a code.
 
 from __future__ import annotations
 
+import re
 from typing import Any, Mapping
 
 from bbsengine6.seam.results import ActionResult, refusal, register_code, success
@@ -36,15 +37,35 @@ REFUSAL_CODES: dict[str, str] = {
 }
 
 
-# Casino's blackjack refusal codes, registered with the seam so it accepts them. Table, bet, and money
-# codes are casino's too; they are already in api/messages.py.
-for _code in sorted(set(REFUSAL_CODES.values())):
-    register_code(_code)
+# Refusals whose text contains a value (a limit, a cap). Matched by pattern; the first match wins.
+REFUSAL_PATTERNS: list[tuple[str, str]] = [
+    (r"^Bet must be at least \d+$", "invalid_bet"),
+    (r"^Bet cannot exceed \d+$", "invalid_bet"),
+    (r"^Insurance cannot exceed \d+$", "cannot_insure"),
+]
+
+# A refusal the adapter does not recognise (an exception's text, for example) gets this generic code,
+# so the reply is still produced rather than the handler crashing.
+UNRECOGNISED_CODE = "service_error"
+
+
+
+def code_for_message(message: str) -> str:
+    """The casino code for a refusal message: the exact table, then the patterns, else UNRECOGNISED_CODE."""
+    if message in REFUSAL_CODES:
+        return REFUSAL_CODES[message]
+    for pattern, code in REFUSAL_PATTERNS:
+        if re.match(pattern, message):
+            return code
+    return UNRECOGNISED_CODE
 
 
 def refusal_from_message(message: str) -> ActionResult:
-    """The ActionResult for a refusal message. Raises KeyError for a message with no code."""
-    return refusal(REFUSAL_CODES[message], message)
+    """The ActionResult for a refusal message whose code is known. Raises KeyError for an unknown text,
+    so the table cannot silently miss a message the service really returns."""
+    if message not in REFUSAL_CODES and not any(re.match(p, message) for p, _ in REFUSAL_PATTERNS):
+        raise KeyError(message)
+    return refusal(code_for_message(message), message)
 
 
 def to_action_result(result: Mapping[str, Any]) -> ActionResult:
@@ -52,7 +73,7 @@ def to_action_result(result: Mapping[str, Any]) -> ActionResult:
     data = {k: v for k, v in result.items() if k not in ("success", "message")}
     if result.get("success"):
         return success(data)
-    return refusal(REFUSAL_CODES[result["message"]], result["message"], data)
+    return refusal(code_for_message(result["message"]), result["message"], data)
 
 
 def to_wire(result: ActionResult) -> dict[str, Any]:
@@ -66,3 +87,10 @@ def to_wire(result: ActionResult) -> dict[str, Any]:
         body["message"] = result.message
     body.update(result.data)
     return body
+
+
+# Casino's blackjack refusal codes, registered with the seam so it accepts them. Table, bet, and money
+# codes are casino's too; they are already in api/messages.py.
+# UNRECOGNISED_CODE is generic (service_error) and already known to the seam, so it is not registered.
+for _code in sorted(set(REFUSAL_CODES.values()) | {c for _, c in REFUSAL_PATTERNS}):
+    register_code(_code)

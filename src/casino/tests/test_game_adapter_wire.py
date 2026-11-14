@@ -36,6 +36,8 @@ def test_success_is_code_ok():
     assert r.ok is True and r.code == "ok" and dict(r.data) == {"hand_id": 1}
 
 
-def test_unmapped_refusal_fails_the_conversion():
-    with pytest.raises(KeyError):
-        res.to_action_result({"success": False, "message": "never mapped"})
+def test_unmapped_refusal_still_converts_to_the_fallback_code():
+    # The conversion never raises for a refusal: the reply must be produced. The strict check that a
+    # message is known lives in refusal_from_message, and the service-literal test enforces it.
+    r = res.to_action_result({"success": False, "message": "never mapped"})
+    assert r.code == res.UNRECOGNISED_CODE and r.message == "never mapped"
