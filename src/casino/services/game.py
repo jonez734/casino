@@ -37,6 +37,12 @@ class GameService:
     def __init__(self, args: Any, *, pool: Any = None):
         self.args = args
         self._pool = pool
+        # Round progress is published here as seam events. Nothing reads it yet (slice 4 only publishes).
+        from bbsengine6.seam.domain import Domain
+        from casino.services.events import register_kinds
+
+        self.domain = Domain("casino")
+        register_kinds(self.domain)
         self._shoes: dict[str, Shoe] = {}  # table_moniker -> shoe (persisted on the table row)
         self._known_rounds: set[int] = set()  # game ids this process started or has checked
         self._last_settled: dict[str, dict[str, Any]] = {}  # table_moniker -> last settled round
@@ -71,6 +77,7 @@ class GameService:
             shoe_store.record_event(self.args, table_moniker, kind="reshuffle", shoe=shoe, pool=self._pool)
         shoe_store.record_event(self.args, table_moniker, kind="draw", shoe=shoe, card=card, pool=self._pool)
         self._save_shoe(table_moniker)
+        self._publish_card(table_moniker, card)
         return card
 
     def _card_value(self, card: str) -> int:
@@ -173,6 +180,7 @@ class GameService:
 
         from casino.api.payloads import PlacedBet
 
+        self._publish_bet(table_moniker, player_moniker, amount)
         return PlacedBet.from_dict({
             "success": True,
             "bet_id": bet["id"],
@@ -208,6 +216,40 @@ class GameService:
         dal_game.reveal_dealer_hole_card(self.args, game["id"], pool=self._pool)
         self.settle_game(table_moniker)
         return {"natural": True, "checked": True}
+
+    # --- round progress, published as seam events -------------------------------------------------
+
+    def _domain(self):
+        """This service's seam Domain. Created on first use for a service built without __init__ (tests)."""
+        domain = self.__dict__.get("domain")
+        if domain is None:
+            from bbsengine6.seam.domain import Domain
+            from casino.services.events import register_kinds
+
+            domain = Domain("casino")
+            register_kinds(domain)
+            self.__dict__["domain"] = domain
+        return domain
+
+    def _publish(self, kind: str, table_moniker: str, moniker: str | None, payload: dict[str, Any]) -> None:
+        from bbsengine6.seam import events as _events
+
+        self._domain().emit(_events.Event(kind, table_moniker, moniker, payload))
+
+    def _publish_card(self, table_moniker: str, card: str) -> None:
+        self._publish("card_dealt", table_moniker, None, {"card": card})
+
+    def _publish_bet(self, table_moniker: str, moniker: str, amount: int) -> None:
+        self._publish("bet_placed", table_moniker, moniker, {"amount": amount})
+
+    def _publish_settled(self, table_moniker: str, outcomes: list[dict[str, Any]]) -> None:
+        for o in outcomes:
+            self._publish("hand_settled", table_moniker, o.get("player"), {
+                "hand_id": o["hand_id"], "result": o["result"], "net": o["net"],
+            })
+
+    def _publish_expired(self, table_moniker: str) -> None:
+        self._publish("round_expired", table_moniker, None, {})
 
     def _round_expired(self, table_moniker: str, game: dict[str, Any]) -> bool:
         """True (and the expiry applied) when the round's clock has run out.
@@ -1050,6 +1092,7 @@ class GameService:
         # Kept so the handler can announce the round to the table even when no player action
         # triggered the settlement (round-clock expiry).
         self.__dict__.setdefault("_last_settled", {})[table_moniker] = settled
+        self._publish_settled(table_moniker, settled.get("outcomes", []))
         return RoundSettlement.from_dict(settled)
 
     def take_settled_round(self, table_moniker: str) -> Optional["RoundSettlement"]:

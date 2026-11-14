@@ -123,4 +123,8 @@ def expire_round(game_service: Any, table_moniker: str, *, pool: Any = None) -> 
 
     if expired:
         game_service.settle_game(table_moniker)
+        # One event per expired round, not per seat. Publishing is a no-op for a service without a domain.
+        publish = getattr(game_service, "_publish_expired", None)
+        if publish is not None:
+            publish(table_moniker)
     return {"success": True, "expired": expired, "penalty": penalty}
