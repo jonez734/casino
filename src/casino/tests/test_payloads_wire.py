@@ -138,7 +138,8 @@ def test_get_game_state_waiting_is_a_typed_game_state():
     svc.args = None
     svc._pool = None
     with patch.object(game_mod.dal_table, "get_table", return_value={"attrs": {}}), \
-         patch.object(game_mod.dal_game, "get_current_game", return_value=None):
+         patch.object(game_mod.dal_game, "get_current_game", return_value=None), \
+         patch.object(game_mod.dal_table, "seated_monikers", return_value=[]):
         got = svc.get_game_state("t1", "bob")
     assert isinstance(got, GameState)
     assert got.phase == "waiting" and got.table_moniker == "t1"

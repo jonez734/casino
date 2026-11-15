@@ -771,7 +771,7 @@ class GameService:
             message=f"Doubled - got {new_card}",
         )
 
-    def get_game_state(self, table_moniker: str, player_moniker: str) -> "GameState | dict[str, Any]":
+    def get_game_state(self, table_moniker: str, player_moniker: str, *, deal: bool = True) -> "GameState | dict[str, Any]":
         """The table state the client renders. A GameState; {"error": ...} when the table is unknown."""
         from casino.api.payloads import GameState
         """Get current game state for a player."""
@@ -782,10 +782,14 @@ class GameService:
 
         game = dal_game.get_current_game(self.args, table_moniker, pool=self._pool)
         if not game:
+            # Between rounds there are no hands yet, but the seated players are still shown, so a join or
+            # leave at an idle table is visible to the viewer.
+            seated = dal_table.seated_monikers(self.args, table_moniker, pool=self._pool)
             return GameState.from_dict({
                 "table_moniker": table_moniker,
                 "phase": "waiting",
                 "hands": [],
+                "seats": [{"player": m, "hand_id": None, "status": None, "acted": False} for m in seated],
                 "dealer_hand": [],
                 "insurance_available": False,
                 "insurance_taken": 0,
@@ -801,7 +805,7 @@ class GameService:
             list(dealer_hand["cards"]) if dealer_hand and dealer_hand["cards"] else []
         )
 
-        if hands and not dealer_cards:
+        if deal and hands and not dealer_cards:
             if not dealer_hand:
                 dal_game.create_dealer_hand(self.args, game["id"], pool=self._pool)
             dealer_cards = [self._draw_card(table_moniker), self._draw_card(table_moniker)]

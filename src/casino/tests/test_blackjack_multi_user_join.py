@@ -355,10 +355,14 @@ class TestBlackjackMultiUserJoin(unittest.IsolatedAsyncioTestCase):
     async def _wait_for_game_state(
         self, client: WebSocketTestClient, max_messages: int = 10
     ) -> dict:
+        # A join broadcasts a game_state too; the bet's state is the one that carries the player's hand.
         messages = await client.receive_messages(max_count=max_messages, timeout=5.0)
-        for msg in messages:
-            if msg.get("type") == "game_state":
-                return msg
+        with_hand = [m for m in messages if m.get("type") == "game_state" and m.get("player_hand")]
+        if with_hand:
+            return with_hand[-1]
+        states = [m for m in messages if m.get("type") == "game_state"]
+        if states:
+            return states[-1]
         self.fail(f"No game_state received after {max_messages} messages: {messages}")
 
 

@@ -447,6 +447,7 @@ class TableServiceHandler(BaseService):
         clock: Any = None,
         pool: Any = None,
         poker_service_handler: Any = None,
+        game_service: Any = None,
     ) -> None:
         super().__init__(
             args,
@@ -462,6 +463,17 @@ class TableServiceHandler(BaseService):
         self._pool = pool
         # In-memory poker tables are listed through the same lobby message.
         self.poker_service_handler = poker_service_handler
+        # The shared game service, so a join or leave broadcasts the same table state the bets do.
+        self.game_service = game_service
+
+    async def _broadcast_table_state(self, server: Any, table_moniker: str) -> None:
+        """Publish the table's game_state to everyone watching it (a join or leave changed its seats)."""
+        if server is None or self.game_service is None or not table_moniker:
+            return
+        # deal=False: a join or leave reads the table, it never deals (the bet and the actions do).
+        state = _state_dict(self.game_service.get_game_state(table_moniker, "", deal=False))
+        state["type"] = "game_state"
+        await self._publish_to_table(server, table_moniker, state, sender_moniker="")
 
     async def handle_message(
         self, server: Any, websocket: Any, path: str, message: dict[str, Any]
@@ -475,9 +487,9 @@ class TableServiceHandler(BaseService):
         elif msg_type == "create_table":
             return await self._handle_create_table(websocket, message)
         elif msg_type == "join_table":
-            return await self._handle_join_table(websocket, message)
+            return await self._handle_join_table(websocket, message, server=server)
         elif msg_type == "leave_table":
-            return await self._handle_leave_table(websocket, message)
+            return await self._handle_leave_table(websocket, message, server=server)
         elif msg_type == "add_bot":
             return await self._handle_add_bot(websocket, message)
         elif msg_type == "remove_bot":
@@ -707,7 +719,7 @@ class TableServiceHandler(BaseService):
             return {"type": "error", "code": "update_failed", "message": result["message"]}
 
     async def _handle_join_table(
-        self, websocket: Any, message: dict[str, Any]
+        self, websocket: Any, message: dict[str, Any], server: Any = None
     ) -> dict[str, Any]:
         state, err = self._check_access(websocket, "join_table", message)
         if err is not None:
@@ -767,6 +779,7 @@ class TableServiceHandler(BaseService):
                 game_type=result.get("game_type"),
                 seated=True,
             )
+            await self._broadcast_table_state(server, table_moniker)
 
             return {
                 "type": "joined_table",
@@ -827,7 +840,7 @@ class TableServiceHandler(BaseService):
         return {"type": "bots_filled", "moniker": table_moniker, "added": result["added"], "message": result["message"]}
 
     async def _handle_leave_table(
-        self, websocket: Any, message: dict[str, Any]
+        self, websocket: Any, message: dict[str, Any], server: Any = None
     ) -> dict[str, Any]:
         state, err = self._check_access(websocket, "leave_table", message)
         if err is not None:
@@ -847,6 +860,7 @@ class TableServiceHandler(BaseService):
                 _tc.unsubscribe_table(self.channel_state, self._legacy_session_id(websocket), table_moniker)
             _tc.sync_announcers(self.args, table_moniker, owner=state.moniker)
             await send_table_state(websocket, moniker=None, game_type=None, seated=False)
+            await self._broadcast_table_state(server, table_moniker)
 
         return {
             "type": "left_table",
@@ -1139,8 +1153,10 @@ class GameServiceHandler(BaseService):
 
         moniker = state.moniker
         session_id = self._legacy_session_id(websocket)
-        # Reuse the seated-table lookup from TableServiceHandler via duck typing.
-        table_moniker = getattr(state, "table_moniker", None)
+        # The session's table, or the member's seat in the database (as a bet resolves it).
+        from casino import access as _access
+
+        table_moniker = getattr(state, "table_moniker", None) or _access._seated_table(self.args, moniker)
         io.echo(
             f"_handle_game_action: action={action}, session_id={session_id}, table_moniker={table_moniker}",
             level="info",
@@ -1924,13 +1940,13 @@ class MessageRouter:
         self.poker_service_handler = PokerServiceHandler(
             args, self.sessions, channel_state=self.channel_state, **token_kwargs
         )
+        # One GameService for the aggregate: the table, bet and game handlers share its shoe, its last settled
+        # round, and its event domain.
+        shared_game = GameServiceHandler.GameService(args, pool=token_kwargs.get("pool"))
         self.table_service = TableServiceHandler(
             args, self.sessions, self.channel_state,
-            poker_service_handler=self.poker_service_handler, **token_kwargs
+            poker_service_handler=self.poker_service_handler, game_service=shared_game, **token_kwargs
         )
-        # One GameService for the aggregate: the bet and game handlers share its shoe, its last settled round,
-        # and its event domain.
-        shared_game = GameServiceHandler.GameService(args, pool=token_kwargs.get("pool"))
         # A headless subscriber logs the round's events (slice 6). It reads only; nothing is sent to a client.
         from casino.services.round_event_log import RoundEventLog
 

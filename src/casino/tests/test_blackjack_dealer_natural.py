@@ -70,7 +70,11 @@ class TestDealerNatural(BaseIntegrationTest):
 
             await client.send({"type": "bet", "amount": 10})
             messages = await client.receive_messages(max_count=10, timeout=5.0)
-            state = next(m for m in messages if m.get("type") == "game_state")
+            # A join broadcasts a game_state too; the bet's round is the one that settled.
+            state = next(
+                (m for m in messages if m.get("type") == "game_state" and m.get("phase") == "settled"),
+                next(m for m in messages if m.get("type") == "game_state"),
+            )
             self.assertEqual(state.get("phase"), "settled",
                              f"a dealer natural must settle the round on the bet; "
                              f"player={state.get('player_hand')} dealer={state.get('dealer_hand')}")
