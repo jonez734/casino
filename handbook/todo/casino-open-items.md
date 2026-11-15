@@ -83,3 +83,12 @@ headless subscriber (a bot, a log, or a test client), not a change to the TUI. W
 - [ ] Decide later, with the Tk or mobile front end: whether events go on the wire (a new message type,
   which needs a client change) or stay server-side.
 
+## Test environment: playingcarddata installed for testing
+
+- [x] The casino card and Tk-name tests need `playingcarddata` importable. It is installed into the test
+  runner's user site as an editable install of `playingcarddata/` (a for-testing install).
+- [ ] When done with it, remove it: `python3 -m pip uninstall -y playingcarddata` and delete
+  `~/.local/lib/python3.14/site-packages/playingcarddata.FOR-TESTING.txt`.
+- [ ] Afterwards, the four card-image tests (`test_ui_split.py`) and `test_tk_card_names.py` will fail
+  again until the package is installed some other way (for example in the test venv via its Makefile).
+
