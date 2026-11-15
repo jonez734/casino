@@ -18,9 +18,35 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "src"))
 
 
+def _json_sink(target: str):
+    """A sink that writes each message as one JSON line to a file, or to stdout for '-'."""
+    import json
+
+    out = sys.stdout if target == "-" else open(target, "a", encoding="utf-8", buffering=1)
+
+    def write(message: dict) -> None:
+        out.write(json.dumps(message, default=str) + "\n")
+        out.flush()
+
+    return write
+
+
+def _default_token_path() -> str:
+    """The token path bed's auth tool uses (the same default the casino client reads)."""
+    from bed.tools import _token
+
+    return _token.default_token_path()
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="Live view of blackjack round events (Tk).")
     parser.add_argument("--url", default="ws://localhost:8765/", help="daemon WebSocket (default: %(default)s)")
+    parser.add_argument("--table", default="blackjack-x", help="table to watch (default: %(default)s)")
+    parser.add_argument("--dump", default=None, metavar="FILE",
+                        help="also write every message the window receives to FILE, one JSON object per line "
+                             "('-' for stdout)")
+    parser.add_argument("--token-file", default=None,
+                        help="bed token file (default: the one 'bed auth login' writes)")
     args = parser.parse_args(argv)
 
     if not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY") or sys.platform == "win32"
@@ -36,7 +62,15 @@ def main(argv=None) -> int:
 
     from casino.tk import roundview
 
-    window = roundview.build_daemon_window(args.url, title="Blackjack round")
+    token_path = args.token_file or _default_token_path()
+    token = roundview.read_token(token_path)
+    if not token:
+        print(f"round-view: no bed token at {token_path}; run 'bed auth login' first", file=sys.stderr)
+        return 2
+
+    sink = _json_sink(args.dump) if args.dump else None
+    window = roundview.build_daemon_window(args.url, title=f"Blackjack round: {args.table}",
+                                           token=token, table=args.table, sink=sink)
     window.mainloop()
     return 0
 

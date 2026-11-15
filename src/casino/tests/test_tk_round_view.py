@@ -173,6 +173,12 @@ def test_the_reader_echoes_connect_and_each_received_message(monkeypatch):
         async def __aexit__(self, *exc):
             return False
 
+        async def send(self, text):
+            return None
+
+        async def recv(self):
+            return json.dumps(self._messages.pop(0))
+
         def __aiter__(self):
             return self
 
@@ -183,9 +189,19 @@ def test_the_reader_echoes_connect_and_each_received_message(monkeypatch):
 
     import websockets
 
-    monkeypatch.setattr(websockets, "connect", lambda url: _Ws([{"type": "game_state", "phase": "player"}]))
+    # The reader handshakes first (reconnect, then watch_table), then receives state.
+    monkeypatch.setattr(websockets, "connect", lambda url: _Ws([
+        {"type": "reconnect_result", "ok": True, "moniker": "bob"},
+        {"type": "watching_table", "moniker": "blackjack-x"},
+        {"type": "game_state", "phase": "player"},
+    ]))
+
+    class _Sent:
+        async def send(self, text):
+            return None
+
     model = rv.WireRoundViewModel()
-    asyncio.run(rv.read_daemon("ws://x/", model, lambda: None))
+    asyncio.run(rv.read_daemon("ws://x/", model, lambda: None, token="T", table="blackjack-x"))
 
     texts = [m for m, _ in echoed]
     assert any("connecting to ws://x/" in t for t in texts)
@@ -193,3 +209,96 @@ def test_the_reader_echoes_connect_and_each_received_message(monkeypatch):
     assert any("rx game_state" in t for t in texts)
     assert any("disconnected" in t for t in texts)
     assert model.lines == []  # a player-only state with no cards yields no lines, but was received
+
+
+def test_a_rejected_token_is_echoed_not_left_blank(monkeypatch):
+    # The viewer reconnects with the saved token. A rejected token must say so, not leave the window blank.
+    from casino.tk import roundview as rv
+
+    echoed = []
+    monkeypatch.setattr(rv.io, "echo", lambda msg, level=None: echoed.append((msg, level)))
+    ok = rv.check_reconnect_reply({"ok": False, "code": "token_invalid", "message": "expired"})
+    assert ok is False
+    assert any("token_invalid" in m and lvl == "error" for m, lvl in echoed)
+
+
+def test_an_accepted_token_proceeds():
+    from casino.tk import roundview as rv
+
+    assert rv.check_reconnect_reply({"ok": True, "moniker": "bob"}) is True
+
+
+def test_the_handshake_sends_reconnect_then_watch_table_and_never_a_seat_action():
+    import asyncio
+    import json
+
+    from casino.tk import roundview as rv
+
+    sent = []
+
+    class _Ws:
+        def __init__(self):
+            self._replies = [
+                json.dumps({"type": "reconnect_result", "ok": True, "moniker": "bob"}),
+                json.dumps({"type": "watching_table", "moniker": "blackjack-x"}),
+            ]
+
+        async def send(self, text):
+            sent.append(json.loads(text))
+
+        async def recv(self):
+            return self._replies.pop(0)
+
+    ws = _Ws()
+    asyncio.run(rv.handshake(ws, token="TOKEN", table="blackjack-x"))
+    types = [m["type"] for m in sent]
+    assert types == ["reconnect", "watch_table"]
+    assert sent[1]["moniker"] == "blackjack-x"
+    # No seat or game action is ever sent by the viewer.
+    assert not {"join_table", "bet", "place_bet", "hit", "stand", "double", "split", "surrender"} & set(types)
+
+
+def test_a_sink_receives_every_message_the_window_gets(monkeypatch):
+    import asyncio
+    import json
+
+    import websockets
+
+    from casino.tk import roundview as rv
+
+    monkeypatch.setattr(rv.io, "echo", lambda msg, level=None: None)
+    received = []
+
+    class _Ws:
+        def __init__(self):
+            self._messages = [
+                {"type": "reconnect_result", "ok": True, "moniker": "bob"},
+                {"type": "watching_table", "moniker": "blackjack-x"},
+                {"type": "game_state", "phase": "player", "player_hand": ["2H", "3D"], "player_total": 5},
+            ]
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        async def send(self, text):
+            return None
+
+        async def recv(self):
+            return json.dumps(self._messages.pop(0))
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            if not self._messages:
+                raise StopAsyncIteration
+            return json.dumps(self._messages.pop(0))
+
+    monkeypatch.setattr(websockets, "connect", lambda url: _Ws())
+    model = rv.WireRoundViewModel()
+    asyncio.run(rv.read_daemon("ws://x/", model, lambda: None, token="T", table="blackjack-x",
+                               sink=received.append))
+    assert [m["type"] for m in received] == ["reconnect_result", "watching_table", "game_state"]

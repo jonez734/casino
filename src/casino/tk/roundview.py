@@ -129,7 +129,8 @@ class WireRoundViewModel:
             self.lines.append(f"Round net: {settled.get('net', 0)}")
 
 
-async def read_daemon(url: str, model: "WireRoundViewModel", on_update) -> None:
+async def read_daemon(url: str, model: "WireRoundViewModel", on_update, *, token: str = "",
+                      table: str = "", sink=None) -> None:
     """Read the daemon's messages from ``url`` and feed the model; call ``on_update`` after each one.
 
     Runs on its own asyncio loop (see start_daemon_reader). It only reads: nothing is sent to the daemon,
@@ -144,6 +145,8 @@ async def read_daemon(url: str, model: "WireRoundViewModel", on_update) -> None:
     try:
         async with websockets.connect(url) as ws:
             io.echo(f"round-view: connected to {url}", level="ok")
+            if not await handshake(ws, token=token, table=table, sink=sink):
+                return
             async for raw in ws:
                 try:
                     message = json.loads(raw)
@@ -152,6 +155,8 @@ async def read_daemon(url: str, model: "WireRoundViewModel", on_update) -> None:
                     continue
                 kind = message.get("type", "?")
                 io.echo(f"round-view: rx {kind} {_preview(message)}", level="debug")
+                if sink is not None:
+                    sink(message)
                 model.feed(message)
                 on_update()
     except Exception as exc:  # the window stays up; the operator sees why nothing is arriving
@@ -166,21 +171,23 @@ def _preview(message: dict) -> str:
     return f"[{keys}]" if keys else ""
 
 
-def start_daemon_reader(url: str, model: "WireRoundViewModel", on_update) -> "threading.Thread":
+def start_daemon_reader(url: str, model: "WireRoundViewModel", on_update, *, token: str = "",
+                        table: str = "", sink=None) -> "threading.Thread":
     """Run read_daemon on a background thread with its own loop. Returns the started thread."""
     import asyncio
     import threading
 
     def run() -> None:
         io.echo(f"round-view: starting reader thread for {url}", level="info")
-        asyncio.run(read_daemon(url, model, on_update))
+        asyncio.run(read_daemon(url, model, on_update, token=token, table=table, sink=sink))
 
     thread = threading.Thread(target=run, name="casino-round-view", daemon=True)
     thread.start()
     return thread
 
 
-def build_daemon_window(url: str, *, title: str = "Blackjack round") -> Any:
+def build_daemon_window(url: str, *, title: str = "Blackjack round", token: str = "", table: str = "",
+                        sink=None) -> Any:
     """A Tk window that shows the daemon's table state as it changes. Needs a display.
 
     The reader thread feeds the model; the window copies new lines into its text widget from its own loop
@@ -220,6 +227,57 @@ def build_daemon_window(url: str, *, title: str = "Blackjack round") -> Any:
         window.after(200, tick)
 
     window.after(200, tick)
-    start_daemon_reader(url, model, on_update)
+    start_daemon_reader(url, model, on_update, token=token, table=table, sink=sink)
     window.model = model
     return window
+
+
+def check_reconnect_reply(reply: dict) -> bool:
+    """True when the daemon accepted the saved token. Otherwise echo why, so the window is never silently blank."""
+    if reply.get("ok"):
+        io.echo(f"round-view: authenticated as {reply.get('moniker', '?')}", level="ok")
+        return True
+    code = reply.get("code") or "unknown"
+    message = reply.get("message") or ""
+    io.echo(f"round-view: token rejected ({code}){': ' + message if message else ''}; "
+            f"run 'bed auth login' to refresh the token", level="error")
+    return False
+
+
+async def handshake(ws: Any, *, token: str, table: str, sink=None) -> bool:
+    """Authenticate with the saved token, then watch ``table``. Returns False (after echoing why) on failure.
+
+    Sends only ``reconnect`` and ``watch_table``. ``watch_table`` subscribes this connection to the table's
+    events without taking a seat, so the viewer cannot bet, act, or join.
+    """
+    import json
+
+    async def send(message: dict) -> None:
+        io.echo(f"round-view: tx {message['type']}", level="debug")
+        await ws.send(json.dumps(message))
+
+    async def recv() -> dict:
+        reply = json.loads(await ws.recv())
+        io.echo(f"round-view: rx {reply.get('type', '?')}", level="debug")
+        if sink is not None:
+            sink(reply)
+        return reply
+
+    await send({"type": "reconnect", "token": token})
+    if not check_reconnect_reply(await recv()):
+        return False
+    await send({"type": "watch_table", "moniker": table})
+    reply = await recv()
+    if reply.get("type") == "error":
+        io.echo(f"round-view: could not watch {table}: {reply.get('message', reply.get('code', '?'))}",
+                level="error")
+        return False
+    io.echo(f"round-view: watching {table} (no seat taken)", level="ok")
+    return True
+
+
+def read_token(path: str) -> str:
+    """The bearer token in ``path``, or "" when there is none. Never echoes the token."""
+    from casino.auth import _read_token_file
+
+    return _read_token_file(path) if path else ""
