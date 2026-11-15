@@ -65,3 +65,21 @@ Status: open (2026-11-05). Everything below is committed locally in `casino/`, `
 - [ ] Mobile front end: the wire form (`bbsengine6.seam.wire`) is tested, but no client uses it yet.
 - [ ] `test_b1_login_through_casino_prompt_setpassword_path` passes alone and fails only in the full
   run (order-dependent). Not investigated.
+
+## Slice 6: a front end reads the round's events (plan)
+
+Finding (checked in the code): the TUI is a wire client. It renders `game_state` messages, and a
+settled round already reaches it as `round_settled` (outcomes, dealer total, net). The `hand_settled`
+events carry the same outcomes, so a TUI reading events would display nothing new, and the TUI has no
+event loop of its own.
+
+Decision: events are for a front end that does not receive the state. The first such consumer is a
+headless subscriber (a bot, a log, or a test client), not a change to the TUI. Work:
+
+- [ ] Server: a subscriber on the aggregate's shared `GameService` (`subscribe_events` / `read_events`)
+  drains round events in the router's loop, for logging only. No client message changes.
+- [ ] Test: a round played through the handlers yields `card_dealt`, `bet_placed`, `hand_settled` and
+  `round_expired` (when the clock expires) in order, from one subscriber.
+- [ ] Decide later, with the Tk or mobile front end: whether events go on the wire (a new message type,
+  which needs a client change) or stay server-side.
+
