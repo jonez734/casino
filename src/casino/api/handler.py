@@ -1065,6 +1065,7 @@ class GameServiceHandler(BaseService):
         instance_id: Optional[str] = None,
         clock: Any = None,
         pool: Any = None,
+        game_service: Any = None,
         channel_state: Any = None,
     ) -> None:
         # The table broadcast after a stand, double, or settle goes to the router's shared channel
@@ -1078,7 +1079,9 @@ class GameServiceHandler(BaseService):
             clock=clock,
             channel_state=channel_state,
         )
-        self.game_service = self.GameService(args, pool=pool)
+        # A caller may pass the one GameService the aggregate shares (see MessageRouter); standing alone the
+        # handler builds its own.
+        self.game_service = game_service if game_service is not None else self.GameService(args, pool=pool)
 
     async def handle_message(
         self, server: Any, websocket: Any, path: str, message: dict[str, Any]
@@ -1224,6 +1227,7 @@ class BetServiceHandler(BaseService):
         instance_id: Optional[str] = None,
         clock: Any = None,
         pool: Any = None,
+        game_service: Any = None,
         channel_state: Any = None,
     ) -> None:
         # The table broadcast after a bet goes to the router's shared channel state. Without it the
@@ -1237,7 +1241,9 @@ class BetServiceHandler(BaseService):
             clock=clock,
             channel_state=channel_state,
         )
-        self.game_service = self.GameService(args, pool=pool)
+        # A caller may pass the one GameService the aggregate shares (see MessageRouter); standing alone the
+        # handler builds its own.
+        self.game_service = game_service if game_service is not None else self.GameService(args, pool=pool)
 
     async def handle_message(
         self, server: Any, websocket: Any, path: str, message: dict[str, Any]
@@ -1885,11 +1891,14 @@ class MessageRouter:
             args, self.sessions, self.channel_state,
             poker_service_handler=self.poker_service_handler, **token_kwargs
         )
+        # One GameService for the aggregate: the bet and game handlers share its shoe, its last settled round,
+        # and its event domain.
+        shared_game = GameServiceHandler.GameService(args, pool=token_kwargs.get("pool"))
         self.game_service = GameServiceHandler(
-            args, self.sessions, channel_state=self.channel_state, **token_kwargs
+            args, self.sessions, channel_state=self.channel_state, game_service=shared_game, **token_kwargs
         )
         self.bet_service = BetServiceHandler(
-            args, self.sessions, channel_state=self.channel_state, **token_kwargs
+            args, self.sessions, channel_state=self.channel_state, game_service=shared_game, **token_kwargs
         )
         self.chat_service = ChatServiceHandler(args, self.sessions, **token_kwargs)
         self.slot_service = SlotServiceHandler(
