@@ -85,7 +85,12 @@ def _round_settled_payload(settled: dict[str, Any], moniker: Optional[str]) -> d
     (broadcast), where each seat's ``text`` is what every reader sees.
     """
     outcomes = settled.get("outcomes", [])
-    net = sum(o["net"] for o in outcomes if moniker is not None and o["player"] == moniker)
+    # A player's reply carries that player's net. A table broadcast carries the round total, so every
+    # client shows the same figure (it was 0 before, which read as a settlement error).
+    if moniker is None:
+        net = sum(o["net"] for o in outcomes)
+    else:
+        net = sum(o["net"] for o in outcomes if o["player"] == moniker)
     return {
         "outcomes": outcomes,
         "dealer_total": settled.get("dealer_total"),

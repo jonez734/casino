@@ -84,3 +84,32 @@ def test_client_shows_the_round_result_and_money_change():
     src = inspect.getsource(cc.CasinoClient.display_game_state)
     assert "round_settled" in src, "the client must show the settled round"
     assert "net" in src and "outcome" in src, "the client must show each outcome and the net change"
+
+
+def test_the_broadcast_round_net_is_the_sum_of_the_outcomes():
+    # A table broadcast (moniker None) must carry the round's total, the same as a reply does for a player.
+    from casino.api import handler as handler_mod
+
+    settled = {
+        "outcomes": [
+            {"player": "alice", "net": 10},
+            {"player": "bob", "net": -4},
+        ],
+        "dealer_total": 20,
+        "dealer_cards": ["JC", "4H", "6S"],
+    }
+    assert handler_mod._round_settled_payload(settled, None)["net"] == 6
+
+
+def test_a_player_reply_still_carries_that_players_net():
+    from casino.api import handler as handler_mod
+
+    settled = {
+        "outcomes": [
+            {"player": "alice", "net": 10},
+            {"player": "bob", "net": -4},
+        ],
+        "dealer_total": 20,
+        "dealer_cards": ["JC", "4H", "6S"],
+    }
+    assert handler_mod._round_settled_payload(settled, "bob")["net"] == -4
