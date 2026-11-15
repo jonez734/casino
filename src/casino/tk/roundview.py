@@ -95,3 +95,112 @@ def build_window(service: Any, *, title: str = "Blackjack round", table: str | N
     window.after(200, tick)
     window.model = model  # keep the model reachable for callers and tests
     return window
+
+
+class WireRoundViewModel:
+    """The lines the window shows, built from the daemon's game_state messages (a WebSocket client).
+
+    This is the viewer's real source: the daemon already sends the table's state to every client, so the
+    window needs no second game service and works across processes. Lines follow the TUI's wording.
+    """
+
+    def __init__(self) -> None:
+        self.lines: list[str] = []
+
+    def feed(self, message: dict) -> None:
+        if message.get("type") != "game_state":
+            return
+        hand = message.get("player_hand") or []
+        if hand:
+            self.lines.append(f"Your hand: {' '.join(hand)} [{message.get('player_total', 0)}]")
+        dealer = message.get("dealer_hand") or []
+        if dealer:
+            self.lines.append(f"Dealer: {' '.join(dealer)} [{message.get('dealer_total', 0)}]")
+        settled = message.get("round_settled")
+        if settled:
+            for o in settled.get("outcomes", []):
+                if o.get("text"):
+                    self.lines.append(f"Result ({o.get('player', '?')}): {o['text']}")
+                else:
+                    self.lines.append(
+                        f"Result ({o.get('player', '?')}): {o.get('result', '?')}, net {o.get('net', 0)}"
+                    )
+            self.lines.append(f"Round net: {settled.get('net', 0)}")
+
+
+async def read_daemon(url: str, model: "WireRoundViewModel", on_update) -> None:
+    """Read the daemon's messages from ``url`` and feed the model; call ``on_update`` after each one.
+
+    Runs on its own asyncio loop (see start_daemon_reader). It only reads: nothing is sent to the daemon,
+    so the viewer cannot change a table.
+    """
+    import json
+
+    import websockets
+
+    async with websockets.connect(url) as ws:
+        async for raw in ws:
+            try:
+                message = json.loads(raw)
+            except ValueError:
+                continue
+            model.feed(message)
+            on_update()
+
+
+def start_daemon_reader(url: str, model: "WireRoundViewModel", on_update) -> "threading.Thread":
+    """Run read_daemon on a background thread with its own loop. Returns the started thread."""
+    import asyncio
+    import threading
+
+    def run() -> None:
+        asyncio.run(read_daemon(url, model, on_update))
+
+    thread = threading.Thread(target=run, name="casino-round-view", daemon=True)
+    thread.start()
+    return thread
+
+
+def build_daemon_window(url: str, *, title: str = "Blackjack round") -> Any:
+    """A Tk window that shows the daemon's table state as it changes. Needs a display.
+
+    The reader thread feeds the model; the window copies new lines into its text widget from its own loop
+    (after), so Tk is never touched from the reader's thread.
+    """
+    import queue
+    import tkinter as tk
+    from tkinter import scrolledtext
+
+    model = WireRoundViewModel()
+    pending: "queue.Queue[None]" = queue.Queue()
+    window = tk.Tk()
+    window.title(title)
+    text = scrolledtext.ScrolledText(window, width=60, height=18, state="disabled")
+    text.pack(fill="both", expand=True)
+    shown = [0]
+
+    def on_update() -> None:
+        pending.put(None)  # called from the reader thread; only queues work for the Tk thread
+
+    def refresh() -> None:
+        if pending.empty():
+            return
+        while not pending.empty():
+            pending.get_nowait()
+        new = model.lines[shown[0]:]
+        shown[0] = len(model.lines)
+        if new:
+            text.configure(state="normal")
+            for line in new:
+                text.insert("end", line + "\n")
+            text.configure(state="disabled")
+            text.see("end")
+
+    def tick() -> None:
+        refresh()
+        window.after(200, tick)
+
+    window.after(200, tick)
+    start_daemon_reader(url, model, on_update)
+    window.model = model
+    return window

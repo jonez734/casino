@@ -122,3 +122,32 @@ def test_the_model_shows_only_the_watched_table():
     svc.publish("card_dealt", "t1", None, {"card": "2S"})
     svc.publish("card_dealt", "t2", None, {"card": "9D"})
     assert view.poll() == ["dealt 2S"]
+
+
+def test_a_game_state_message_from_the_daemon_becomes_lines():
+    # The viewer is a client of the daemon: it turns the game_state messages the daemon already sends
+    # into lines. Round results come from round_settled, the same as the TUI shows them.
+    model = roundview.WireRoundViewModel()
+    model.feed({
+        "type": "game_state",
+        "table_moniker": "blackjack-x",
+        "phase": "dealer",
+        "player_hand": ["10H", "7D"],
+        "player_total": 17,
+        "dealer_hand": ["10S", "9C"],
+        "dealer_total": 19,
+        "round_settled": {
+            "outcomes": [{"player": "bob", "result": "loss", "bet": 10, "net": -10, "text": "lost to dealer 19"}],
+            "net": -10,
+        },
+    })
+    assert "Your hand: 10H 7D [17]" in model.lines
+    assert "Dealer: 10S 9C [19]" in model.lines
+    assert "Result (bob): lost to dealer 19" in model.lines
+    assert "Round net: -10" in model.lines
+
+
+def test_a_non_state_message_is_ignored():
+    model = roundview.WireRoundViewModel()
+    model.feed({"type": "chat", "text": "hi"})
+    assert model.lines == []

@@ -3,10 +3,11 @@
 
 Usage (from the casino checkout, with the tk extra installed):
 
-    python3 scripts/round-view.py [--table MONIKER]
+    python3 scripts/round-view.py [--url ws://localhost:8765/]
 
-It needs a display (DISPLAY set, or run it from a desktop session). It builds the same GameService the
-daemon uses and shows the events it publishes in the window as they happen. Close the window to exit.
+It needs a display (DISPLAY set, or run it from a desktop session). It connects to a running casino daemon
+(bed's WebSocket, the same one the TUI uses) and shows that table's state as it changes. It only reads;
+it cannot change a table. Close the window to exit.
 """
 
 import argparse
@@ -19,7 +20,7 @@ sys.path.insert(0, os.path.join(HERE, "..", "src"))
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="Live view of blackjack round events (Tk).")
-    parser.add_argument("--table", default="blackjack-x", help="table moniker to watch (default: %(default)s)")
+    parser.add_argument("--url", default="ws://localhost:8765/", help="daemon WebSocket (default: %(default)s)")
     args = parser.parse_args(argv)
 
     if not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY") or sys.platform == "win32"
@@ -33,15 +34,9 @@ def main(argv=None) -> int:
         print("round-view: tkinter is not installed for this Python.", file=sys.stderr)
         return 2
 
-    from types import SimpleNamespace
-
-    from casino.services.game import GameService
     from casino.tk import roundview
 
-    # The service the daemon uses: built from the same args the router gets. Events are published by the
-    # service's own methods, so the window shows what a running daemon publishes in this process.
-    service = GameService(SimpleNamespace(), pool=None)
-    window = roundview.build_window(service, title=f"Blackjack round: {args.table}", table=args.table)
+    window = roundview.build_daemon_window(args.url, title="Blackjack round")
     window.mainloop()
     return 0
 
