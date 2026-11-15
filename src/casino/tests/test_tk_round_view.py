@@ -302,3 +302,28 @@ def test_a_sink_receives_every_message_the_window_gets(monkeypatch):
     asyncio.run(rv.read_daemon("ws://x/", model, lambda: None, token="T", table="blackjack-x",
                                sink=received.append))
     assert [m["type"] for m in received] == ["reconnect_result", "watching_table", "game_state"]
+
+
+def test_a_reconnect_result_with_success_is_accepted(monkeypatch):
+    # The daemon's reconnect_result carries "success", not "ok".
+    from casino.tk import roundview as rv
+
+    monkeypatch.setattr(rv.io, "echo", lambda msg, level=None: None)
+    assert rv.check_reconnect_reply({"type": "reconnect_result", "success": True, "moniker": "jam"}) is True
+
+
+def test_the_dump_never_writes_the_bearer_token(tmp_path):
+    import importlib.util
+    import pathlib
+
+    spec = importlib.util.spec_from_file_location(
+        "round_view_script", pathlib.Path(__file__).resolve().parents[3] / "scripts" / "round-view.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    out = tmp_path / "dump.jsonl"
+    sink = mod._json_sink(str(out))
+    sink({"type": "reconnect_result", "success": True, "token": "SECRET.TOKEN.VALUE", "moniker": "jam"})
+    sink.close()
+    text = out.read_text()
+    assert "SECRET.TOKEN.VALUE" not in text
+    assert '"moniker": "jam"' in text

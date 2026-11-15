@@ -234,7 +234,8 @@ def build_daemon_window(url: str, *, title: str = "Blackjack round", token: str 
 
 def check_reconnect_reply(reply: dict) -> bool:
     """True when the daemon accepted the saved token. Otherwise echo why, so the window is never silently blank."""
-    if reply.get("ok"):
+    # The daemon's reconnect_result reports "success"; an error reply carries a code. Accept either shape.
+    if reply.get("success") or reply.get("ok"):
         io.echo(f"round-view: authenticated as {reply.get('moniker', '?')}", level="ok")
         return True
     code = reply.get("code") or "unknown"

@@ -25,9 +25,12 @@ def _json_sink(target: str):
     out = sys.stdout if target == "-" else open(target, "a", encoding="utf-8", buffering=1)
 
     def write(message: dict) -> None:
-        out.write(json.dumps(message, default=str) + "\n")
+        # The bearer token is a credential: it is never written to the dump.
+        safe = {k: ("<redacted>" if k == "token" else v) for k, v in message.items()}
+        out.write(json.dumps(safe, default=str) + "\n")
         out.flush()
 
+    write.close = (lambda: None) if out is sys.stdout else out.close
     return write
 
 
