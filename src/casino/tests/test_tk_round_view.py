@@ -114,3 +114,11 @@ def test_the_window_builds_when_a_display_is_available():
     window = roundview.build_window(_Svc())
     assert window.model is not None
     window.destroy()
+
+
+def test_the_model_shows_only_the_watched_table():
+    svc = _Svc()
+    view = roundview.RoundViewModel(svc, table="t1")
+    svc.publish("card_dealt", "t1", None, {"card": "2S"})
+    svc.publish("card_dealt", "t2", None, {"card": "9D"})
+    assert view.poll() == ["dealt 2S"]

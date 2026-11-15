@@ -33,9 +33,10 @@ def _line(event) -> str:
 class RoundViewModel:
     """The lines the window shows, built from a subscription to a GameService's events."""
 
-    def __init__(self, service: Any) -> None:
+    def __init__(self, service: Any, *, table: str | None = None) -> None:
         self._service = service
         self._sub = service.subscribe_events()
+        self._table = table  # None shows every table
         self.lines: list[str] = []
 
     def _handle(self, event) -> None:
@@ -45,6 +46,8 @@ class RoundViewModel:
         """Read what is new since the last poll, add it to the window's lines, and return just the new lines."""
         new = []
         for event in self._service.read_events(self._sub):
+            if self._table is not None and event.scope != self._table:
+                continue
             line = _line(event)
             self.lines.append(line)
             new.append(line)
@@ -61,7 +64,7 @@ def start_polling(window: Any, model: RoundViewModel, *, interval_ms: int = 200)
     window.after(interval_ms, tick)
 
 
-def build_window(service: Any, *, title: str = "Blackjack round") -> Any:
+def build_window(service: Any, *, title: str = "Blackjack round", table: str | None = None) -> Any:
     """A tkinter window that shows the round's events as they arrive. Needs a display.
 
     Returns the window; call its ``mainloop()`` to run it. The window owns a RoundViewModel and polls it on
@@ -70,7 +73,7 @@ def build_window(service: Any, *, title: str = "Blackjack round") -> Any:
     import tkinter as tk
     from tkinter import scrolledtext
 
-    model = RoundViewModel(service)
+    model = RoundViewModel(service, table=table)
     window = tk.Tk()
     window.title(title)
     text = scrolledtext.ScrolledText(window, width=60, height=18, state="disabled")
