@@ -151,3 +151,45 @@ def test_a_non_state_message_is_ignored():
     model = roundview.WireRoundViewModel()
     model.feed({"type": "chat", "text": "hi"})
     assert model.lines == []
+
+
+def test_the_reader_echoes_connect_and_each_received_message(monkeypatch):
+    # The viewer echoes its progress: connecting, each message it receives (rx), and the disconnect.
+    import asyncio
+    import json
+
+    from casino.tk import roundview as rv
+
+    echoed = []
+    monkeypatch.setattr(rv.io, "echo", lambda msg, level=None: echoed.append((msg, level)))
+
+    class _Ws:
+        def __init__(self, messages):
+            self._messages = list(messages)
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            if not self._messages:
+                raise StopAsyncIteration
+            return json.dumps(self._messages.pop(0))
+
+    import websockets
+
+    monkeypatch.setattr(websockets, "connect", lambda url: _Ws([{"type": "game_state", "phase": "player"}]))
+    model = rv.WireRoundViewModel()
+    asyncio.run(rv.read_daemon("ws://x/", model, lambda: None))
+
+    texts = [m for m, _ in echoed]
+    assert any("connecting to ws://x/" in t for t in texts)
+    assert any("connected to ws://x/" in t for t in texts)
+    assert any("rx game_state" in t for t in texts)
+    assert any("disconnected" in t for t in texts)
+    assert model.lines == []  # a player-only state with no cards yields no lines, but was received

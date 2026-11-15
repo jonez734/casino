@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from bbsengine6 import io
 from bbsengine6.seam.kinds import LAGGED_KIND
 
 
@@ -132,20 +133,37 @@ async def read_daemon(url: str, model: "WireRoundViewModel", on_update) -> None:
     """Read the daemon's messages from ``url`` and feed the model; call ``on_update`` after each one.
 
     Runs on its own asyncio loop (see start_daemon_reader). It only reads: nothing is sent to the daemon,
-    so the viewer cannot change a table.
+    so the viewer cannot change a table. Each step is echoed (connect, rx, disconnect, error) so an
+    operator can see whether the viewer is receiving anything.
     """
     import json
 
     import websockets
 
-    async with websockets.connect(url) as ws:
-        async for raw in ws:
-            try:
-                message = json.loads(raw)
-            except ValueError:
-                continue
-            model.feed(message)
-            on_update()
+    io.echo(f"round-view: connecting to {url}", level="info")
+    try:
+        async with websockets.connect(url) as ws:
+            io.echo(f"round-view: connected to {url}", level="ok")
+            async for raw in ws:
+                try:
+                    message = json.loads(raw)
+                except ValueError:
+                    io.echo(f"round-view: rx non-json ({len(raw)} bytes)", level="warning")
+                    continue
+                kind = message.get("type", "?")
+                io.echo(f"round-view: rx {kind} {_preview(message)}", level="debug")
+                model.feed(message)
+                on_update()
+    except Exception as exc:  # the window stays up; the operator sees why nothing is arriving
+        io.echo(f"round-view: connection lost: {exc}", level="error")
+        return
+    io.echo("round-view: disconnected", level="info")
+
+
+def _preview(message: dict) -> str:
+    """A short, single-line view of a message for the log (never the full state)."""
+    keys = ", ".join(sorted(k for k in message if k != "type"))
+    return f"[{keys}]" if keys else ""
 
 
 def start_daemon_reader(url: str, model: "WireRoundViewModel", on_update) -> "threading.Thread":
@@ -154,6 +172,7 @@ def start_daemon_reader(url: str, model: "WireRoundViewModel", on_update) -> "th
     import threading
 
     def run() -> None:
+        io.echo(f"round-view: starting reader thread for {url}", level="info")
         asyncio.run(read_daemon(url, model, on_update))
 
     thread = threading.Thread(target=run, name="casino-round-view", daemon=True)
