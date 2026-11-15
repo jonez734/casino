@@ -48,6 +48,8 @@ from __future__ import annotations
 import argparse
 from typing import Any, Dict, Optional
 
+from bbsengine6 import io
+
 __all__ = ["access"]
 
 
@@ -122,7 +124,9 @@ def _seated_table(args: Any, moniker: str) -> Optional[str]:
         from casino.dal import table as dal_table
 
         return dal_table.seated_table(args, moniker)
-    except Exception:
+    except Exception as exc:
+        # A failed lookup is not "no seat": say why, so the denial can be traced to the database.
+        io.echo(f"[check_access] seat lookup failed for {moniker}: {exc}", level="warning")
         return None
 
 

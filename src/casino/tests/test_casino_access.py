@@ -507,3 +507,20 @@ def test_at_table_ops_with_no_target_and_no_seat_are_refused(op, monkeypatch):
     s = _session("alice", table_moniker=None)
     monkeypatch.setattr(access_mod, "_seated_table", lambda args, moniker: None)
     assert casino_access(None, op, session=s, message={}) is False
+
+
+def test_a_failed_seat_lookup_is_logged_not_silent(monkeypatch):
+    # A database error during the seat lookup must not look like "no seat": it is logged, so the denial can be
+    # traced to the lookup rather than to the member.
+    import casino.access as access_mod
+    import casino.dal.table as dal_table
+
+    seen = []
+    monkeypatch.setattr(access_mod.io, "echo", lambda msg, level=None: seen.append((msg, level)))
+
+    def boom(args, moniker, pool=None):
+        raise RuntimeError("permission denied for table map_cardtable_player")
+
+    monkeypatch.setattr(dal_table, "seated_table", boom)
+    assert access_mod._seated_table(None, "jam") is None
+    assert any("seat lookup failed" in m and "permission denied" in m for m, _ in seen)
