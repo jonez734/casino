@@ -524,3 +524,39 @@ def test_a_failed_seat_lookup_is_logged_not_silent(monkeypatch):
     monkeypatch.setattr(dal_table, "seated_table", boom)
     assert access_mod._seated_table(None, "jam") is None
     assert any("seat lookup failed" in m and "permission denied" in m for m, _ in seen)
+
+
+def test_seated_table_reads_a_dict_row_by_column_name(monkeypatch):
+    # The DAL's cursors return rows as dicts (the rest of the table DAL reads row["moniker"]). A tuple index
+    # raised KeyError here, the lookup returned None, and a seated member's bet was refused.
+    import casino.dal.table as dal_table
+
+    class _Cur:
+        def __init__(self):
+            self.executed = []
+
+        def execute(self, q):
+            self.executed.append(q)
+
+        def fetchone(self):
+            return {"cardtablemoniker": "blackjack-jam"}
+
+    class _Conn:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    monkeypatch.setattr(dal_table, "_connect_ctx", lambda args, pool: _Conn())
+    monkeypatch.setattr(dal_table.database, "cursor", lambda conn: _CurCtx())
+    monkeypatch.setattr(dal_table.database, "query", lambda sql, **kw: sql)
+
+    class _CurCtx:
+        def __enter__(self):
+            return _Cur()
+
+        def __exit__(self, *exc):
+            return False
+
+    assert dal_table.seated_table(None, "jam") == "blackjack-jam"

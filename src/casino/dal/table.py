@@ -718,5 +718,5 @@ def seated_table(args: Any, player_moniker: str, *, pool: Any = None) -> Optiona
             )
         )
         row = cur.fetchone()
-        return row[0] if row else None
+        return row["cardtablemoniker"] if row else None
 
