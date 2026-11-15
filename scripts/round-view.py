@@ -35,10 +35,17 @@ def _json_sink(target: str):
 
 
 def _default_token_path() -> str:
-    """The token path bed's auth tool uses (the same default the casino client reads)."""
+    """The viewer's token file for this terminal, so it does not share a token with another client.
+
+    It is named for the tty the viewer runs in. Log in to it once with
+    ``bed auth login --token-file <this path>``; the viewer reads the file, it does not write it.
+    """
+    import os
+
     from bed.tools import _token
 
-    return _token.default_token_path()
+    directory = os.path.dirname(_token.default_token_path())
+    return _token.token_path_for_tty(directory, fd=sys.stdin.fileno(), stem="round-view")
 
 
 def main(argv=None) -> int:
