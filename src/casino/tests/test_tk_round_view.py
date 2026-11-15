@@ -367,3 +367,22 @@ def test_the_table_broadcast_round_total_is_shown():
     })
     assert "Result (jam): you 17, dealer 20, bet 4, net -4" in model.lines
     assert "Round net: -4" in model.lines
+
+
+def test_a_player_joining_the_table_is_shown():
+    # A join changes the seats, not the hands. The window must show who sat down.
+    model = roundview.WireRoundViewModel()
+    model.feed({"type": "game_state", "phase": "waiting", "player_hand": [], "dealer_hand": [],
+                "seats": [{"player": "jam", "hand_id": 310, "acted": False}]})
+    assert "jam sat down" in model.lines
+
+
+def test_a_player_leaving_is_shown_once():
+    model = roundview.WireRoundViewModel()
+    model.feed({"type": "game_state", "phase": "waiting", "player_hand": [], "dealer_hand": [],
+                "seats": [{"player": "jam", "hand_id": 310, "acted": False}]})
+    model.feed({"type": "game_state", "phase": "waiting", "player_hand": [], "dealer_hand": [],
+                "seats": [{"player": None, "hand_id": 310, "acted": False}]})
+    model.feed({"type": "game_state", "phase": "waiting", "player_hand": [], "dealer_hand": [],
+                "seats": [{"player": None, "hand_id": 310, "acted": False}]})
+    assert model.lines.count("jam left the table") == 1

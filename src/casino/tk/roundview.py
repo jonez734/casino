@@ -107,10 +107,21 @@ class WireRoundViewModel:
 
     def __init__(self) -> None:
         self.lines: list[str] = []
+        self._seated: set[str] = set()
+
+    def _seat_changes(self, message: dict) -> None:
+        """Show a line when a player sits down or leaves; a seat that did not change adds nothing."""
+        now = {s["player"] for s in message.get("seats") or [] if s.get("player")}
+        for name in sorted(now - self._seated):
+            self.lines.append(f"{name} sat down")
+        for name in sorted(self._seated - now):
+            self.lines.append(f"{name} left the table")
+        self._seated = now
 
     def feed(self, message: dict) -> None:
         if message.get("type") != "game_state":
             return
+        self._seat_changes(message)
         hand = message.get("player_hand") or []
         if hand:
             self.lines.append(f"Your hand: {' '.join(hand)} [{message.get('player_total', 0)}]")
