@@ -270,8 +270,8 @@ async def handshake(ws: Any, *, token: str, table: str, sink=None) -> bool:
     await send({"type": "watch_table", "moniker": table})
     reply = await recv()
     if reply.get("type") == "error":
-        io.echo(f"round-view: could not watch {table}: {reply.get('message', reply.get('code', '?'))}",
-                level="error")
+        io.echo(f"round-view: could not watch {table}: {reply.get('message', reply.get('code', '?'))}. "
+                f"Pass the table you are seated at with --table <moniker>.", level="error")
         return False
     io.echo(f"round-view: watching {table} (no seat taken)", level="ok")
     return True

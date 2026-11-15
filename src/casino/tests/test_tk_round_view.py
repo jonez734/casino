@@ -327,3 +327,29 @@ def test_the_dump_never_writes_the_bearer_token(tmp_path):
     text = out.read_text()
     assert "SECRET.TOKEN.VALUE" not in text
     assert '"moniker": "jam"' in text
+
+
+def test_a_missing_table_is_echoed_with_the_next_step(monkeypatch):
+    import asyncio
+    import json
+
+    from casino.tk import roundview as rv
+
+    echoed = []
+    monkeypatch.setattr(rv.io, "echo", lambda msg, level=None: echoed.append((msg, level)))
+
+    class _Ws:
+        def __init__(self):
+            self._replies = [
+                json.dumps({"type": "reconnect_result", "success": True, "moniker": "jam"}),
+                json.dumps({"type": "error", "code": "invalid_request", "message": "Table not found"}),
+            ]
+
+        async def send(self, text):
+            return None
+
+        async def recv(self):
+            return self._replies.pop(0)
+
+    assert asyncio.run(rv.handshake(_Ws(), token="T", table="nope")) is False
+    assert any("Table not found" in m and "--table" in m for m, _ in echoed)
