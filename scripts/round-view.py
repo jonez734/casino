@@ -37,15 +37,23 @@ def _json_sink(target: str):
 def _default_token_path() -> str:
     """The viewer's token file for this terminal, so it does not share a token with another client.
 
-    It is named for the tty the viewer runs in. Log in to it once with
-    ``bed auth login --token-file <this path>``; the viewer reads the file, it does not write it.
+    The name is ``round-view.<tty>.token`` in bed's token directory. The tty naming is done here, not imported
+    from bed, so the viewer works against any installed bed. Log in to the file once with
+    ``bed auth login --token-file <this path>``; the viewer reads it and never writes it.
     """
     import os
 
     from bed.tools import _token
 
     directory = os.path.dirname(_token.default_token_path())
-    return _token.token_path_for_tty(directory, fd=sys.stdin.fileno(), stem="round-view")
+    try:
+        device = os.ttyname(sys.stdin.fileno())
+    except OSError:
+        device = ""
+    if not device:
+        return os.path.join(directory, "round-view.token")
+    name = device.replace("/dev/", "", 1).replace("/", "_")
+    return os.path.join(directory, f"round-view.{name}.token")
 
 
 def main(argv=None) -> int:
