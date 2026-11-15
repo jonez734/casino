@@ -66,3 +66,31 @@ def test_the_table_service_is_registered_for_table_info():
     start = src.index('server.register_service(\n            self.table_service,')
     block = src[start:src.index("server.register_service(self.game_service", start)]
     assert '"table_info"' in block, "table_info must be routed to the table service"
+
+
+def test_a_bet_with_no_table_resolves_the_members_seat():
+    # The TUI's bet names no table. The handler must take the table from the member's seat, the same as the
+    # access check does, instead of stopping with table_moniker=None.
+    import casino.access as access_mod
+
+    handler = handler_mod.BetServiceHandler.__new__(handler_mod.BetServiceHandler)
+    handler.args = None
+    original = access_mod._seated_table
+    access_mod._seated_table = lambda args, moniker: "blackjack-jam"
+    try:
+        assert handler._resolve_bet_table(None, "jam", None) == "blackjack-jam"
+    finally:
+        access_mod._seated_table = original
+
+
+def test_a_bet_with_no_table_and_no_seat_resolves_to_none():
+    import casino.access as access_mod
+
+    handler = handler_mod.BetServiceHandler.__new__(handler_mod.BetServiceHandler)
+    handler.args = None
+    original = access_mod._seated_table
+    access_mod._seated_table = lambda args, moniker: None
+    try:
+        assert handler._resolve_bet_table(None, "jam", None) is None
+    finally:
+        access_mod._seated_table = original

@@ -1290,6 +1290,12 @@ class BetServiceHandler(BaseService):
         except Exception:
             return id(websocket)
 
+    def _resolve_bet_table(self, args: Any, moniker: Optional[str], state: Any) -> Optional[str]:
+        """The table a bet is for when the message names none: the member's seat in the database."""
+        from casino import access as _access
+
+        return _access._seated_table(args, moniker or "")
+
     async def _handle_bet(
         self,
         websocket: Any,
@@ -1302,7 +1308,11 @@ class BetServiceHandler(BaseService):
 
         moniker = state.moniker
         session_id = self._legacy_session_id(websocket)
-        table_moniker = getattr(state, "table_moniker", None) or message.get("table_moniker")
+        table_moniker = (
+            getattr(state, "table_moniker", None)
+            or message.get("table_moniker")
+            or self._resolve_bet_table(self.args, moniker, state)
+        )
         io.echo(
             f"_handle_bet: session_id={session_id}, moniker={moniker}, table_moniker={table_moniker}",
             level="info",
