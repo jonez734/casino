@@ -55,3 +55,14 @@ def test_the_service_exposes_a_reader_for_front_ends():
     events = shared.read_events(sub)
     assert [e.kind for e in events] == ["round_expired"]
     assert shared.read_events(sub) == []
+
+
+def test_the_table_service_is_registered_for_table_info():
+    # table_info is the lookup a join sends before joining. Without this registration the router has
+    # no handler for it and the join reports "table not found".
+    import inspect
+
+    src = inspect.getsource(handler_mod.MessageRouter)
+    start = src.index('server.register_service(\n            self.table_service,')
+    block = src[start:src.index("server.register_service(self.game_service", start)]
+    assert '"table_info"' in block, "table_info must be routed to the table service"

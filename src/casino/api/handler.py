@@ -1978,6 +1978,7 @@ class MessageRouter:
             self.table_service,
             [
                 "list_tables",
+                "table_info",
                 "create_table",
                 "update_table",
                 "join_table",
