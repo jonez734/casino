@@ -2,7 +2,7 @@
 --
 -- Lets the zoid6 daemon's database role seat a player at a cash table. A join runs
 -- "INSERT INTO casino.map_cardtable_player" (dal/table.py), and the daemon connects as the
--- role named in bed.json (database.user, currently "bed"). Without this grant the insert is
+-- role named in zoid6.json (database.user, "zoid6"). Without this grant the insert is
 -- denied: "permission denied for table map_cardtable_player".
 --
 -- Confirm the role exists first:
