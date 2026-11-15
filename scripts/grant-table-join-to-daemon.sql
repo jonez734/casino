@@ -5,10 +5,8 @@
 -- role named in bed.json (database.user, currently "bed"). Without this grant the insert is
 -- denied: "permission denied for table map_cardtable_player".
 --
--- Before running, confirm the daemon's role. bed.json says "bed", but the daemon's environment is not
--- readable from a regular account, so check it on zoid6 (for example the role the daemon's DSN names):
---     sudo -u postgres psql zoid6 -c "\du bed"
--- If the daemon uses another role, change "bed" below to that role.
+-- Confirm the role exists first:
+--     sudo -u postgres psql zoid6 -c "\du zoid6"
 --
 -- Review, then run ONCE as the database owner (postgres or sysop), against the zoid6 database:
 --
@@ -16,9 +14,9 @@
 --
 -- It is idempotent: granting an existing privilege does nothing. It adds no role and no password.
 
--- The daemon's role must hold the table grants the join needs. Granting to "bed" directly keeps
--- the change to the one role the daemon uses; the existing term/sysop grants already cover people.
-GRANT SELECT, INSERT, UPDATE, DELETE ON casino.map_cardtable_player TO bed;
+-- The daemon's role must hold the table grants the join needs. Granting to zoid6 directly keeps the change
+-- to the one role the daemon uses; the existing term/sysop grants already cover people.
+GRANT SELECT, INSERT, UPDATE, DELETE ON casino.map_cardtable_player TO zoid6;
 
 -- Its sequence (if any) and the membership checks the join reads.
-GRANT SELECT ON casino.map_cardtable_player TO bed;
+GRANT SELECT ON casino.map_cardtable_player TO zoid6;
