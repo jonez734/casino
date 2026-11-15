@@ -100,6 +100,7 @@ def _round_settled_payload(settled: dict[str, Any], moniker: Optional[str]) -> d
 
 
 from casino.api.messages import send_table_state, table_state_message  # noqa: E402
+from bbsengine6.net import send_per_session, send_to_sessions  # noqa: E402
 from casino.api.results import to_action_result, to_wire  # noqa: E402
 
 
@@ -327,10 +328,9 @@ class BaseService:
 
     async def _send_to_watchers(self, server: Any, table_moniker: str, state: dict) -> None:
         """Send the public table state to each session watching the table (not to the seats)."""
-        if server is None or not table_moniker:
+        if not table_moniker:
             return
-        for session_id in self._get_observers(table_moniker):
-            await server.send_to_session(int(session_id), state)
+        await send_to_sessions(server, self._get_observers(table_moniker), state)
 
     async def _send_each_seat_its_state(self, server: Any, table_moniker: str) -> None:
         """Send every seated player their own game_state: their hand, on each of their sockets.
@@ -344,11 +344,14 @@ class BaseService:
         from casino.dal import table as dal_table_seats
 
         seated = dal_table_seats.seated_monikers(self.args, table_moniker, pool=self.game_service._pool)
+        # Each seat's view, on each of that seat's sockets (one player can be connected more than once).
+        per_session: dict = {}
         for moniker in seated:
             state = _state_dict(self.game_service.get_game_state(table_moniker, moniker, deal=False))
             state["type"] = "game_state"
             for session_id in self.sessions.sessions_for_moniker(moniker):
-                await server.send_to_session(int(session_id), state)
+                per_session[session_id] = state
+        await send_per_session(server, per_session)
 
     async def handle_message(
         self, server: Any, websocket: Any, path: str, message: dict[str, Any]
