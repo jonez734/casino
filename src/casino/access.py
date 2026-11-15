@@ -98,18 +98,37 @@ def _auth_is_sysop(kwargs: Dict[str, Any]) -> bool:
     return bool(getattr(session, "is_sysop", False))
 
 
-def _at_table(kwargs: Dict[str, Any], target: str) -> bool:
-    """True when the session's bound table matches ``target`` (or the
-    session is seated at any table when ``target`` is empty)."""
+def _member_holds_seat(args: Any, moniker: str, table: str) -> bool:
+    """True when the database has ``moniker`` seated (role player or dealer) at ``table``.
+
+    The seat is the authoritative record. A connection's binding is only set on the websocket that joined, and
+    a bet can arrive on a different websocket for the same member.
+    """
+    if not moniker or not table:
+        return False
+    try:
+        from casino.dal import table as dal_table
+
+        return bool(dal_table.is_seated(args, table, moniker))
+    except Exception:
+        return False
+
+
+def _at_table(kwargs: Dict[str, Any], target: str, args: Any = None) -> bool:
+    """True when the member is seated at ``target`` (or seated anywhere when ``target`` is empty).
+
+    The session's binding is checked first. When it does not name the table, the database's seat is the
+    fallback, so a bet on another connection is not refused for a seat the member really holds.
+    """
     session = _get_session(kwargs)
     if session is None:
         return False
     bound = getattr(session, "table_moniker", None)
-    if not bound:
-        return False
-    if not target:
+    if bound and (not target or _moniker_eq(bound, target)):
         return True
-    return _moniker_eq(bound, target)
+    if not target:
+        return False
+    return _member_holds_seat(args, getattr(session, "moniker", ""), target)
 
 
 def _is_owner(kwargs: Dict[str, Any], table_moniker: str) -> bool:
@@ -200,7 +219,7 @@ def access(args: argparse.Namespace, op: str, /, **kwargs: Any) -> bool:
         target = (_get_message(kwargs).get("table_moniker") or "").strip()
         if not auth_moniker:
             return False
-        return _at_table(kwargs, target)
+        return _at_table(kwargs, target, args)
 
     if op in ("chat_table", "chat_global", "emote"):
         return bool(auth_moniker)
@@ -209,7 +228,7 @@ def access(args: argparse.Namespace, op: str, /, **kwargs: Any) -> bool:
         target = (_get_message(kwargs).get("table_moniker") or "").strip()
         if not auth_moniker:
             return False
-        return _at_table(kwargs, target)
+        return _at_table(kwargs, target, args)
 
     if op == "slot_history":
         target = (_get_message(kwargs).get("moniker") or "").strip()
@@ -235,7 +254,7 @@ def access(args: argparse.Namespace, op: str, /, **kwargs: Any) -> bool:
         # quick_play creates a fresh table, so no seat-at check.
         if op.endswith("quick_play"):
             return True
-        return _at_table(kwargs, target)
+        return _at_table(kwargs, target, args)
 
     if op in ("poker_create_table", "poker_join_table", "poker_leave_table",
               "poker_get_state"):
@@ -249,7 +268,7 @@ def access(args: argparse.Namespace, op: str, /, **kwargs: Any) -> bool:
         target = (_get_message(kwargs).get("table_moniker") or "").strip()
         if not auth_moniker:
             return False
-        return _at_table(kwargs, target)
+        return _at_table(kwargs, target, args)
 
     if op == "whoami":
         # Any authenticated user can read their own casino.player record.

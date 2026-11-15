@@ -465,3 +465,25 @@ def test_fill_bots_non_owner_denied():
     s = _session("alice")
     msg = {"table_moniker": "t1", "owner": "bob"}
     assert casino_access(None, "fill_bots", session=s, message=msg) is False
+
+
+@pytest.mark.parametrize("op", ["bet", "hit", "stand", "double", "split", "surrender"])
+def test_at_table_ops_allowed_when_the_member_holds_the_seat_on_another_connection(op, monkeypatch):
+    # The join binds the table to the websocket that joined. A bet can arrive on a different websocket for the
+    # same member; the seat is in the database, so the member is seated and the bet is allowed.
+    import casino.access as access_mod
+
+    s = _session("alice", table_moniker=None)
+    monkeypatch.setattr(access_mod, "_member_holds_seat", lambda args, moniker, table: True)
+    msg = {"table_moniker": "t1"}
+    assert casino_access(None, op, session=s, message=msg) is True
+
+
+@pytest.mark.parametrize("op", ["bet", "hit", "stand", "double", "split", "surrender"])
+def test_at_table_ops_denied_when_the_database_has_no_seat(op, monkeypatch):
+    import casino.access as access_mod
+
+    s = _session("alice", table_moniker=None)
+    monkeypatch.setattr(access_mod, "_member_holds_seat", lambda args, moniker, table: False)
+    msg = {"table_moniker": "t1"}
+    assert casino_access(None, op, session=s, message=msg) is False

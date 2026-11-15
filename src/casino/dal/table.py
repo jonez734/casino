@@ -683,3 +683,22 @@ def ensure_poker_table_row(args: Any, moniker: str, *, min_bet: int, max_bet: in
                 moniker=moniker, min_bet=min_bet, max_bet=max_bet, owner=owner_moniker,
             )
         )
+
+
+def is_seated(args: Any, moniker: str, player_moniker: str, *, pool: Any = None) -> bool:
+    """True when ``player_moniker`` holds a seat (role player or dealer) at table ``moniker`` in the database.
+
+    The join writes the seat to casino.map_cardtable_player; this reads it back, so the seat is checked on
+    any connection, not only the websocket that joined.
+    """
+    with _connect_ctx(args, pool) as conn, database.cursor(conn) as cur:
+        cur.execute(
+            database.query(
+                "SELECT 1 FROM $casino.map_cardtable_player "
+                "WHERE cardtablemoniker = :moniker AND playermoniker = :player_moniker "
+                "AND role IN ('player', 'dealer') LIMIT 1",
+                moniker=moniker, player_moniker=player_moniker,
+            )
+        )
+        return cur.fetchone() is not None
+
