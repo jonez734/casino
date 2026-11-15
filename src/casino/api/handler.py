@@ -3,6 +3,7 @@
 
 import asyncio
 import json
+import logging
 from casino.dal import conn as casino_conn
 from datetime import datetime, timezone
 from typing import Any, Optional
@@ -1055,6 +1056,14 @@ class GameServiceHandler(BaseService):
 
     from casino.services.game import GameService
 
+    round_event_log = None  # set by MessageRouter; a standalone handler has none
+
+    def _drain_round_events(self) -> None:
+        """Log the round's pending events, if this handler has a log. Never raises into the action."""
+        log_ = getattr(self, "round_event_log", None)
+        if log_ is not None:
+            log_.drain()
+
     def __init__(
         self,
         args: Any,
@@ -1169,6 +1178,7 @@ class GameServiceHandler(BaseService):
             # The round ended: tell the player each hand's result and the money that moved.
             game_state["round_settled"] = _round_settled_payload(settled, moniker)
 
+        self._drain_round_events()
         # Broadcast game_state to all at the table (including spectators)
         if server and table_moniker:
             broadcast_state = _state_dict(self.game_service.get_game_state(table_moniker, ""))
@@ -1216,6 +1226,14 @@ class BetServiceHandler(BaseService):
     """Handle bet messages."""
 
     from casino.services.game import GameService
+
+    round_event_log = None  # set by MessageRouter; a standalone handler has none
+
+    def _drain_round_events(self) -> None:
+        """Log the round's pending events, if this handler has a log. Never raises into the action."""
+        log_ = getattr(self, "round_event_log", None)
+        if log_ is not None:
+            log_.drain()
 
     def __init__(
         self,
@@ -1327,6 +1345,7 @@ class BetServiceHandler(BaseService):
             except Exception as e:
                 io.echo(f"_handle_bet: per-player send failed: {e}", level="warning")
 
+            self._drain_round_events()
             # Broadcast game_state to all at the table (including spectators)
             if server and table_moniker:
                 broadcast_state = _state_dict(self.game_service.get_game_state(table_moniker, ""))
@@ -1782,6 +1801,9 @@ def _watching_check(sessions: Any):
     return is_watching
 
 
+_round_log = logging.getLogger("casino.round_events")
+
+
 class MessageRouter:
     """
     Main message handler that coordinates all services.
@@ -1894,12 +1916,18 @@ class MessageRouter:
         # One GameService for the aggregate: the bet and game handlers share its shoe, its last settled round,
         # and its event domain.
         shared_game = GameServiceHandler.GameService(args, pool=token_kwargs.get("pool"))
+        # A headless subscriber logs the round's events (slice 6). It reads only; nothing is sent to a client.
+        from casino.services.round_event_log import RoundEventLog
+
+        self.round_event_log = RoundEventLog(shared_game, _round_log)
         self.game_service = GameServiceHandler(
             args, self.sessions, channel_state=self.channel_state, game_service=shared_game, **token_kwargs
         )
         self.bet_service = BetServiceHandler(
             args, self.sessions, channel_state=self.channel_state, game_service=shared_game, **token_kwargs
         )
+        self.game_service.round_event_log = self.round_event_log
+        self.bet_service.round_event_log = self.round_event_log
         self.chat_service = ChatServiceHandler(args, self.sessions, **token_kwargs)
         self.slot_service = SlotServiceHandler(
             args, self.sessions, self.channel_state, **token_kwargs
