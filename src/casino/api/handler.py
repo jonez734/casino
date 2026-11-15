@@ -140,6 +140,10 @@ class CasinoSessionManager(SessionManager):
         session = self._sessions.get(session_id)
         return session.get("table_moniker") if session else None
 
+    def sessions_for_moniker(self, moniker: str) -> list[str]:
+        """The ids of every session bound to ``moniker``, as strings (the form bed's registry uses)."""
+        return [str(sid) for sid, s in self._sessions.items() if s.get("moniker") == moniker]
+
     def set_table_moniker(self, session_id: int, table_moniker: Optional[str]) -> None:
         io.echo(f"set_table_moniker: session_id={session_id}, table_moniker={table_moniker}", level="info")
         if session_id in self._sessions:
@@ -311,6 +315,41 @@ class BaseService:
         """
         return _check_access_pipeline(self, websocket, op, message)
 
+    def _get_observers(self, table_moniker: str) -> set:
+        sessions = self.sessions
+        getter = getattr(sessions, "get_table_observers", None)
+        if callable(getter):
+            try:
+                return getter(table_moniker)
+            except Exception:
+                return set()
+        return set()
+
+    async def _send_to_watchers(self, server: Any, table_moniker: str, state: dict) -> None:
+        """Send the public table state to each session watching the table (not to the seats)."""
+        if server is None or not table_moniker:
+            return
+        for session_id in self._get_observers(table_moniker):
+            await server.send_to_session(int(session_id), state)
+
+    async def _send_each_seat_its_state(self, server: Any, table_moniker: str) -> None:
+        """Send every seated player their own game_state: their hand, on each of their sockets.
+
+        The table broadcast carries no player's hand, so it cannot tell a seat its own cards. Each seat
+        gets its own view by session id; a seat with no live session is skipped. The seats come from the
+        game service's own database pool, so a handler needs no pool of its own.
+        """
+        if server is None or not table_moniker:
+            return
+        from casino.dal import table as dal_table_seats
+
+        seated = dal_table_seats.seated_monikers(self.args, table_moniker, pool=self.game_service._pool)
+        for moniker in seated:
+            state = _state_dict(self.game_service.get_game_state(table_moniker, moniker, deal=False))
+            state["type"] = "game_state"
+            for session_id in self.sessions.sessions_for_moniker(moniker):
+                await server.send_to_session(int(session_id), state)
+
     async def handle_message(
         self, server: Any, websocket: Any, path: str, message: dict[str, Any]
     ) -> Optional[dict[str, Any]]:
@@ -467,13 +506,14 @@ class TableServiceHandler(BaseService):
         self.game_service = game_service
 
     async def _broadcast_table_state(self, server: Any, table_moniker: str) -> None:
-        """Publish the table's game_state to everyone watching it (a join or leave changed its seats)."""
+        """A join or leave changed the seats: watchers get the public state, each seat gets its own view."""
         if server is None or self.game_service is None or not table_moniker:
             return
         # deal=False: a join or leave reads the table, it never deals (the bet and the actions do).
         state = _state_dict(self.game_service.get_game_state(table_moniker, "", deal=False))
         state["type"] = "game_state"
-        await self._publish_to_table(server, table_moniker, state, sender_moniker="")
+        await self._send_to_watchers(server, table_moniker, state)
+        await self._send_each_seat_its_state(server, table_moniker)
 
     async def handle_message(
         self, server: Any, websocket: Any, path: str, message: dict[str, Any]
@@ -1216,21 +1256,11 @@ class GameServiceHandler(BaseService):
                 f"players={player_count} observers={observer_count}",
                 level="info",
             )
-            await self._publish_to_table(
-                server, table_moniker, broadcast_state, sender_moniker=moniker
-            )
+            # The public state has no hands, so it goes to watchers only; each seat is sent its own view.
+            await self._send_to_watchers(server, table_moniker, broadcast_state)
+            await self._send_each_seat_its_state(server, table_moniker)
 
         return game_state
-
-    def _get_observers(self, table_moniker: str) -> set:
-        sessions = self.sessions
-        getter = getattr(sessions, "get_table_observers", None)
-        if callable(getter):
-            try:
-                return getter(table_moniker)
-            except Exception:
-                return set()
-        return set()
 
     def _get_player_count(self, table_moniker: str) -> int:
         sessions = self.sessions
@@ -1392,25 +1422,15 @@ class BetServiceHandler(BaseService):
                     f"players={player_count} observers={observer_count}",
                     level="info",
                 )
-                await self._publish_to_table(
-                    server, table_moniker, broadcast_state, sender_moniker=moniker
-                )
+                # The public state has no hands, so it goes to watchers only; each seat is sent its own view.
+                await self._send_to_watchers(server, table_moniker, broadcast_state)
+                await self._send_each_seat_its_state(server, table_moniker)
 
             return None
         else:
             error_msg = to_action_result(result).message
             io.echo(f"_handle_bet: FAILED: {moniker} bet {amount} at {table_moniker}: {error_msg}", level="warning")
             return {"type": "error", "code": "bet_failed", "message": error_msg}
-
-    def _get_observers(self, table_moniker: str) -> set:
-        sessions = self.sessions
-        getter = getattr(sessions, "get_table_observers", None)
-        if callable(getter):
-            try:
-                return getter(table_moniker)
-            except Exception:
-                return set()
-        return set()
 
     def _get_player_count(self, table_moniker: str) -> int:
         sessions = self.sessions

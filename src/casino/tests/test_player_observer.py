@@ -472,9 +472,10 @@ class TestPlayerAndObserver(unittest.IsolatedAsyncioTestCase):
             await self.player_client.send({"type": "stand"})
             messages = await self.player_client.receive_messages(max_count=10, timeout=5.0)
 
+            # Each seat is sent its own state; the stand's result is the one that settled the round.
             player_game_state = None
             for msg in messages:
-                if msg.get("type") == "game_state":
+                if msg.get("type") == "game_state" and msg.get("phase") == "settled":
                     player_game_state = msg
                     break
 
@@ -490,7 +491,7 @@ class TestPlayerAndObserver(unittest.IsolatedAsyncioTestCase):
             observer_messages = await self.observer_client.receive_messages(max_count=10, timeout=5.0)
             observer_game_state = None
             for msg in observer_messages:
-                if msg.get("type") == "game_state":
+                if msg.get("type") == "game_state" and msg.get("phase") == "settled":
                     observer_game_state = msg
                     break
 

@@ -42,38 +42,49 @@ def _waiting_state(table_moniker, seats):
             "player_hand": [], "dealer_hand": [], "insurance_available": False, "insurance_taken": 0}
 
 
-def test_join_broadcasts_game_state_to_the_table(monkeypatch):
+class _Sink:
+    """Stands in for the transport: records each per-session send."""
+
+    def __init__(self):
+        self.sent = []
+
+    async def send_to_session(self, session_id, message):
+        self.sent.append((session_id, message))
+
+
+def _join_handler(monkeypatch, watchers, seats_for):
     obj = _full_handler(monkeypatch, _StubTables())
-    server = _RecordingServer()
-    _capture_publish(monkeypatch, obj)
     obj.game_service = SimpleNamespace(
         get_game_state=lambda table, player, deal=True: GameState.from_dict(_waiting_state(table, [])),
+        _pool=None,
     )
-    obj._get_observers = lambda table: set()
-    obj._get_player_count = lambda table: 1
-    reply = asyncio.run(obj._handle_join_table(FakeSocket(1), {"moniker": "poker-a"}, server=server))
+    obj.args = SimpleNamespace()
+    obj.sessions = SimpleNamespace(
+        get_table_observers=lambda t: set(watchers),
+        sessions_for_moniker=lambda m: seats_for.get(m, []),
+    )
+    from casino.dal import table as dal_table
+
+    monkeypatch.setattr(dal_table, "seated_monikers", lambda *a, **k: list(seats_for))
+    return obj
+
+
+def test_join_sends_each_seat_its_view_and_watchers_the_public_state(monkeypatch):
+    obj = _join_handler(monkeypatch, watchers={"9"}, seats_for={"bob": ["1"]})
+    sink = _Sink()
+    reply = asyncio.run(obj._handle_join_table(FakeSocket(1), {"moniker": "poker-a"}, server=sink))
     assert reply["type"] == "joined_table"
-    assert len(server.published) == 1
-    table, message = server.published[0]
-    assert table == "poker-a"
-    assert message["type"] == "game_state"
+    sent_ids = [sid for sid, _ in sink.sent]
+    assert 9 in sent_ids, "the watcher gets the public state"
+    assert 1 in sent_ids, "the seated player gets their own view"
 
 
-def test_leave_broadcasts_game_state_to_the_table(monkeypatch):
-    obj = _full_handler(monkeypatch, _StubTables())
-    server = _RecordingServer()
-    _capture_publish(monkeypatch, obj)
-    obj.game_service = SimpleNamespace(
-        get_game_state=lambda table, player, deal=True: GameState.from_dict(_waiting_state(table, [])),
-    )
-    obj._get_observers = lambda table: set()
-    obj._get_player_count = lambda table: 0
-    reply = asyncio.run(obj._handle_leave_table(FakeSocket(1), {"moniker": "poker-a"}, server=server))
+def test_leave_sends_each_seat_its_view_and_watchers_the_public_state(monkeypatch):
+    obj = _join_handler(monkeypatch, watchers={"9"}, seats_for={"bob": ["1"]})
+    sink = _Sink()
+    reply = asyncio.run(obj._handle_leave_table(FakeSocket(1), {"moniker": "poker-a"}, server=sink))
     assert reply["type"] == "left_table"
-    assert len(server.published) == 1
-    table, message = server.published[0]
-    assert table == "poker-a"
-    assert message["type"] == "game_state"
+    assert 9 in [sid for sid, _ in sink.sent]
 
 
 def test_a_join_with_no_server_publishes_nothing(monkeypatch):
