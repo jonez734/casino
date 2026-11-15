@@ -126,7 +126,6 @@ class WireRoundViewModel:
                     self.lines.append(
                         f"Result ({o.get('player', '?')}): {o.get('result', '?')}, net {o.get('net', 0)}"
                     )
-            self.lines.append(f"Round net: {settled.get('net', 0)}")
 
 
 async def read_daemon(url: str, model: "WireRoundViewModel", on_update, *, token: str = "",

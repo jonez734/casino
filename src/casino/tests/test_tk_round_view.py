@@ -144,7 +144,7 @@ def test_a_game_state_message_from_the_daemon_becomes_lines():
     assert "Your hand: 10H 7D [17]" in model.lines
     assert "Dealer: 10S 9C [19]" in model.lines
     assert "Result (bob): lost to dealer 19" in model.lines
-    assert "Round net: -10" in model.lines
+    assert not any(line.startswith("Round net") for line in model.lines)
 
 
 def test_a_non_state_message_is_ignored():
@@ -353,3 +353,18 @@ def test_a_missing_table_is_echoed_with_the_next_step(monkeypatch):
 
     assert asyncio.run(rv.handshake(_Ws(), token="T", table="nope")) is False
     assert any("Table not found" in m and "--table" in m for m, _ in echoed)
+
+
+def test_the_table_broadcast_round_net_is_not_shown_as_a_total():
+    # A table broadcast carries net 0 at the top level (it is not summed per player); the per-hand lines carry
+    # the money. The viewer must not print a misleading round total from that field.
+    model = roundview.WireRoundViewModel()
+    model.feed({
+        "type": "game_state",
+        "round_settled": {
+            "outcomes": [{"player": "jam", "result": "loss", "bet": 4, "net": -4, "text": "you 17, dealer 20, bet 4, net -4"}],
+            "net": 0,
+        },
+    })
+    assert "Result (jam): you 17, dealer 20, bet 4, net -4" in model.lines
+    assert not any(line.startswith("Round net") for line in model.lines)
