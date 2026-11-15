@@ -123,6 +123,36 @@ class GameService:
             "action_deadline": deadline.isoformat() if deadline else None,
         }
 
+    def _close_stale_round(self, table_moniker: str) -> None:
+        """Close the table's open round before a new bet, when a hand in it belongs to a player who has left.
+
+        A round still shared by seated players is left open, so a second seat joins it. A stale round is
+        closed: a hand that never reached a stand, double, surrender, bust, or charlie is refunded in full and
+        marked standup (the round clock's ``remove`` path); the played-out hands are settled normally.
+        """
+        game = dal_game.get_active_game(self.args, table_moniker, pool=self._pool)
+        if not game:
+            return
+        from casino.services.round_clock import ACTED_STATUSES, STANDUP_STATUS
+
+        hands = dal_game.get_game_hands(self.args, game["id"], pool=self._pool)
+        seated = set(dal_table.seated_monikers(self.args, table_moniker, pool=self._pool))
+        if all(h.get("playermoniker") in seated or not h.get("playermoniker") for h in hands):
+            return  # every player in this round is still seated: the round is live
+
+        for hand in hands:
+            hand_id = hand.get("id")
+            if not hand_id or not hand.get("playermoniker"):
+                continue
+            if (hand.get("attrs") or {}).get("status") in ACTED_STATUSES:
+                continue
+            bet = dal_bet.get_bet_for_hand(self.args, hand_id, pool=self._pool)
+            if not bet or bet.get("status") != "pending":
+                continue
+            dal_bet.settle_bet(self.args, bet["id"], True, bet["amount"], pool=self._pool)
+            dal_game.update_hand_status(self.args, hand_id, STANDUP_STATUS, pool=self._pool)
+        self.settle_game(table_moniker)
+
     def place_bet(
         self,
         table_moniker: str,
@@ -145,6 +175,8 @@ class GameService:
                 "message": f"Bet cannot exceed {table['maximumbet']}",
             }
 
+        # An open round left over from earlier bets is closed first, so this bet deals a fresh round.
+        self._close_stale_round(table_moniker)
         game = dal_game.get_active_game(self.args, table_moniker, pool=self._pool)
         io.echo(f"place_bet: get_active_game returned: {game}", level="info")
         if not game:

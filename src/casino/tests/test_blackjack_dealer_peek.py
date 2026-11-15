@@ -58,6 +58,8 @@ def test_dealer_natural_settles_the_round_inside_place_bet():
 
     settle = MagicMock(return_value={"success": True, "outcomes": [], "dealer_total": 21})
     with patch.object(dal_game, "get_active_game", return_value=game), \
+         patch.object(dal_game, "get_game_hands", return_value=[]), \
+         patch.object(dal_table, "seated_monikers", return_value=[]), \
          patch.object(dal_table, "get_table", return_value={"minimumbet": 1, "maximumbet": 100}), \
          patch.object(game_mod.dal_bet, "place_bet", return_value={"id": 5}), \
          patch.object(dal_game, "create_hand", return_value={"id": 9}), \
@@ -84,6 +86,8 @@ def test_no_natural_leaves_the_round_open_for_play():
     game = {"id": 7, "status": "player"}
     settle = MagicMock()
     with patch.object(dal_game, "get_active_game", return_value=game), \
+         patch.object(dal_game, "get_game_hands", return_value=[]), \
+         patch.object(dal_table, "seated_monikers", return_value=[]), \
          patch.object(dal_table, "get_table", return_value={"minimumbet": 1, "maximumbet": 100}), \
          patch.object(game_mod.dal_bet, "place_bet", return_value={"id": 5}), \
          patch.object(dal_game, "create_hand", return_value={"id": 9}), \
@@ -109,6 +113,8 @@ def test_no_peek_when_the_upcard_cannot_make_a_natural():
     game = {"id": 7, "status": "player"}
     settle = MagicMock()
     with patch.object(dal_game, "get_active_game", return_value=game), \
+         patch.object(dal_game, "get_game_hands", return_value=[]), \
+         patch.object(dal_table, "seated_monikers", return_value=[]), \
          patch.object(dal_table, "get_table", return_value={"minimumbet": 1, "maximumbet": 100}), \
          patch.object(game_mod.dal_bet, "place_bet", return_value={"id": 5}), \
          patch.object(dal_game, "create_hand", return_value={"id": 9}), \
@@ -153,6 +159,8 @@ def test_insurance_pays_2_to_1_when_the_dealer_has_a_natural():
     bet = {"id": 100, "amount": Decimal("10"), "status": "pending"}
     settle_insurance = MagicMock()
     with patch.object(dal_game, "get_active_game", return_value=game), \
+         patch.object(dal_game, "get_game_hands", return_value=[]), \
+         patch.object(dal_table, "seated_monikers", return_value=[]), \
          patch.object(dal_game, "get_game_hands", return_value=[hand, dealer]), \
          patch.object(dal_game, "update_game_status"), \
          patch.object(dal_game, "update_game_attrs"), \

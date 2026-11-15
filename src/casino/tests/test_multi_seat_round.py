@@ -113,6 +113,8 @@ def test_a_second_seats_bet_joins_the_open_round_instead_of_starting_one():
     svc = _service()
     game = {"id": 7, "status": "player"}
     with patch.object(dal_game, "get_active_game", return_value=game), \
+         patch.object(dal_game, "get_game_hands", return_value=[]), \
+         patch.object(game_mod.dal_table, "seated_monikers", return_value=[]), \
          patch.object(game_mod.dal_table, "get_table", return_value={"minimumbet": 1, "maximumbet": 100}), \
          patch.object(game_mod.dal_bet, "place_bet", return_value={"id": 5}) as place, \
          patch.object(dal_game, "create_hand", return_value={"id": 9}), \
