@@ -231,6 +231,16 @@ class GameService:
             self.__dict__["domain"] = domain
         return domain
 
+    # --- the front-end reader ----------------------------------------------------------------------
+
+    def subscribe_events(self, *, debug: bool = False) -> int:
+        """A subscription to this service's round events. Each front end subscribes once and reads its own."""
+        return self._domain().subscribe(debug=debug)
+
+    def read_events(self, subscription: int) -> list:
+        """The events published since this subscription last read, in order. Reading advances only it."""
+        return self._domain().read(subscription)
+
     def _publish(self, kind: str, table_moniker: str, moniker: str | None, payload: dict[str, Any]) -> None:
         from bbsengine6.seam import events as _events
 
