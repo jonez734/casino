@@ -114,6 +114,18 @@ def _member_holds_seat(args: Any, moniker: str, table: str) -> bool:
         return False
 
 
+def _seated_table(args: Any, moniker: str) -> Optional[str]:
+    """The table ``moniker`` is seated at in the database, or None (and None when the lookup fails)."""
+    if not moniker:
+        return None
+    try:
+        from casino.dal import table as dal_table
+
+        return dal_table.seated_table(args, moniker)
+    except Exception:
+        return None
+
+
 def _at_table(kwargs: Dict[str, Any], target: str, args: Any = None) -> bool:
     """True when the member is seated at ``target`` (or seated anywhere when ``target`` is empty).
 
@@ -126,9 +138,12 @@ def _at_table(kwargs: Dict[str, Any], target: str, args: Any = None) -> bool:
     bound = getattr(session, "table_moniker", None)
     if bound and (not target or _moniker_eq(bound, target)):
         return True
+    moniker = getattr(session, "moniker", "")
     if not target:
-        return False
-    return _member_holds_seat(args, getattr(session, "moniker", ""), target)
+        # The message names no table (the TUI's bet does not): the member's seat names it.
+        seated = _seated_table(args, moniker)
+        return seated is not None
+    return _member_holds_seat(args, moniker, target)
 
 
 def _is_owner(kwargs: Dict[str, Any], table_moniker: str) -> bool:

@@ -702,3 +702,21 @@ def is_seated(args: Any, moniker: str, player_moniker: str, *, pool: Any = None)
         )
         return cur.fetchone() is not None
 
+
+def seated_table(args: Any, player_moniker: str, *, pool: Any = None) -> Optional[str]:
+    """The table ``player_moniker`` holds a seat at (role player or dealer), or None.
+
+    A member sits at one table at a time; when there is more than one row, the most recent join wins.
+    """
+    with _connect_ctx(args, pool) as conn, database.cursor(conn) as cur:
+        cur.execute(
+            database.query(
+                "SELECT cardtablemoniker FROM $casino.map_cardtable_player "
+                "WHERE playermoniker = :player_moniker AND role IN ('player', 'dealer') "
+                "ORDER BY joinedat DESC NULLS LAST LIMIT 1",
+                player_moniker=player_moniker,
+            )
+        )
+        row = cur.fetchone()
+        return row[0] if row else None
+

@@ -487,3 +487,23 @@ def test_at_table_ops_denied_when_the_database_has_no_seat(op, monkeypatch):
     monkeypatch.setattr(access_mod, "_member_holds_seat", lambda args, moniker, table: False)
     msg = {"table_moniker": "t1"}
     assert casino_access(None, op, session=s, message=msg) is False
+
+
+@pytest.mark.parametrize("op", ["bet", "hit", "stand", "double", "split", "surrender"])
+def test_at_table_ops_with_no_target_use_the_members_seat(op, monkeypatch):
+    # The TUI's bet message names no table. The member's seat, in the database, names the table they are at;
+    # with no target the policy must use it, not refuse.
+    import casino.access as access_mod
+
+    s = _session("alice", table_moniker=None)
+    monkeypatch.setattr(access_mod, "_seated_table", lambda args, moniker: "t1")
+    assert casino_access(None, op, session=s, message={}) is True
+
+
+@pytest.mark.parametrize("op", ["bet", "hit"])
+def test_at_table_ops_with_no_target_and_no_seat_are_refused(op, monkeypatch):
+    import casino.access as access_mod
+
+    s = _session("alice", table_moniker=None)
+    monkeypatch.setattr(access_mod, "_seated_table", lambda args, moniker: None)
+    assert casino_access(None, op, session=s, message={}) is False
