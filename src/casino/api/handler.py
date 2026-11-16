@@ -2110,6 +2110,11 @@ class MessageRouter:
             self.yahtzee_service_handler.finalize_on_disconnect(table_moniker)
             leaving_moniker = self.sessions.get_moniker(session_id)
             self.tictactoe_service_handler.finalize_on_disconnect(table_moniker, leaving_moniker)
+            # The seat is freed as a leave frees it, so a disconnect does not leave a player seated.
+            # The seat belongs to the player, so it is freed only when no other socket of theirs is still connected.
+            others = [sid for sid in self.sessions.sessions_for_moniker(leaving_moniker) if str(sid) != str(session_id)] if leaving_moniker else []
+            if leaving_moniker and not others:
+                self.table_service.table_service.leave_table(table_moniker, leaving_moniker)
         # Unsubscribe from all channels
         channel_unsubscribe_all(self.channel_state, session_id)
         self.sessions.unregister_session(session_id)
