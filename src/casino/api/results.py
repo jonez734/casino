@@ -34,6 +34,7 @@ REFUSAL_CODES: dict[str, str] = {
     "Insurance not available": "cannot_insure",
     "Insurance must be at least 1": "cannot_insure",
     "Insurance already taken": "cannot_insure",
+    "The deal failed; your bet was returned.": "deal_failed",
 }
 
 

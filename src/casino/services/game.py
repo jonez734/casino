@@ -193,15 +193,19 @@ class GameService:
         except ValueError as e:
             return {"success": False, "message": str(e)}
 
-        hand = dal_game.create_hand(self.args, game["id"], player_moniker, pool=self._pool)
-
-        cards = [self._draw_card(table_moniker), self._draw_card(table_moniker)]
-        dal_game.update_hand_cards(self.args, hand["id"], cards, pool=self._pool)
-
-        dal_bet.update_bet_hand_id(self.args, bet["id"], hand["id"], pool=self._pool)
-
-        currenthand = ", ".join(cards)
-        dal_bet.update_bet_currenthand(self.args, bet["id"], currenthand, pool=self._pool)
+        # The bet is committed before its hand exists (separate connections), so a failed deal refunds it:
+        # a bet with no hand must never stand.
+        try:
+            hand = dal_game.create_hand(self.args, game["id"], player_moniker, pool=self._pool)
+            cards = [self._draw_card(table_moniker), self._draw_card(table_moniker)]
+            dal_game.update_hand_cards(self.args, hand["id"], cards, pool=self._pool)
+            dal_bet.update_bet_hand_id(self.args, bet["id"], hand["id"], pool=self._pool)
+            currenthand = ", ".join(cards)
+            dal_bet.update_bet_currenthand(self.args, bet["id"], currenthand, pool=self._pool)
+        except Exception as e:
+            io.echo(f"place_bet: deal failed for bet {bet['id']}, refunding: {e}", level="error")
+            self._refund_bet(bet)
+            return {"success": False, "message": "The deal failed; your bet was returned."}
 
         # Deal the dealer's two cards with the first bet, then peek for a natural before any player
         # acts. A natural ends the round here: the player is never offered hit, double, split, or
