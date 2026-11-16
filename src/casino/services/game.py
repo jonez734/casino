@@ -149,7 +149,7 @@ class GameService:
             bet = dal_bet.get_bet_for_hand(self.args, hand_id, pool=self._pool)
             if not bet or bet.get("status") != "pending":
                 continue
-            dal_bet.settle_bet(self.args, bet["id"], True, bet["amount"], pool=self._pool)
+            self._refund_bet(bet)
             dal_game.update_hand_status(self.args, hand_id, STANDUP_STATUS, pool=self._pool)
         self.settle_game(table_moniker)
 
@@ -1145,6 +1145,12 @@ class GameService:
 
         raw = self.__dict__.setdefault("_last_settled", {}).pop(table_moniker, None)
         return None if raw is None else RoundSettlement.from_dict(raw)
+
+    def _refund_bet(self, bet: dict[str, Any]) -> None:
+        """Return a bet's full stake and record it as refunded (not won): the hand was removed, not played."""
+        dal_bet.settle_bet(
+            self.args, bet["id"], True, bet["amount"], pool=self._pool, status="refunded",
+        )
 
     def _settle_bet_for_outcome(self, bet: dict[str, Any], outcome: str, payout: int) -> None:
         """Record the bet's result. A push returns the stake, so it is recorded as ``push``, not ``won``."""

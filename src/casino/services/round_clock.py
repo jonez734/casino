@@ -17,6 +17,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 from bbsengine6 import database, io
+from casino.dal import bet as dal_bet
 
 PENALTIES = frozenset({"skip", "remove"})
 
@@ -78,6 +79,11 @@ def log_expiry(args: Any, table_moniker: str, game_id: int, hand_id: Any, penalt
         )
 
 
+def _refund_standup_bet(args: Any, bet: dict[str, Any], *, pool: Any = None) -> None:
+    """Return the stake of a hand the clock removed from the round, recorded as refunded (not won)."""
+    dal_bet.settle_bet(args, bet["id"], True, bet["amount"], pool=pool, status="refunded")
+
+
 def expire_round(game_service: Any, table_moniker: str, *, pool: Any = None) -> dict[str, Any]:
     """Apply the penalty to every unfinished hand in a round whose deadline has passed.
 
@@ -87,7 +93,6 @@ def expire_round(game_service: Any, table_moniker: str, *, pool: Any = None) -> 
     written to the round log. Returns a summary.
     """
     from casino.dal import game as dal_game
-    from casino.dal import bet as dal_bet
     from casino.dal import table as dal_table
 
     args = game_service.args
@@ -114,7 +119,7 @@ def expire_round(game_service: Any, table_moniker: str, *, pool: Any = None) -> 
             # Standup: refund the stake in full and take the seat out of this round only. The seat
             # stays at the table and is dealt in the next round. Nothing is counted as a win, loss,
             # push, or hand played; settle_game records the seat as "standup".
-            dal_bet.settle_bet(args, bet["id"], True, bet["amount"], pool=pool)
+            _refund_standup_bet(args, bet, pool=pool)
             dal_game.update_hand_status(args, hand_id, STANDUP_STATUS, pool=pool)
         # skip: nothing to change; the hand settles on its current cards with the round.
         log_expiry(args, table_moniker, game["id"], hand_id, penalty,

@@ -125,7 +125,7 @@ def test_expire_round_remove_returns_the_stake_and_marks_the_hand_standup():
          patch.object(dal_game_mod, "update_hand_status") as status, \
          patch.object(rc, "log_expiry") as log:
         out = rc.expire_round(svc, "t1")
-    settle.assert_called_once_with(svc.args, 99, True, 25, pool=None)
+    settle.assert_called_once_with(svc.args, 99, True, 25, pool=None, status="refunded")
     status.assert_called_once_with(svc.args, 11, "standup", pool=None)
     log.assert_called_once()
     assert out == {"success": True, "expired": 1, "penalty": "remove"}
