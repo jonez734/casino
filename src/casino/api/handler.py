@@ -600,7 +600,8 @@ class TableServiceHandler(BaseService):
         state, err = self._check_access(websocket, "show_hands", message)
         if err is not None:
             return err
-        table_moniker = self.sessions.get_table_moniker(self._legacy_session_id(websocket))
+        # The seat the join recorded, read the same way leave_table reads it.
+        table_moniker = self._get_seated(websocket)
         if not table_moniker:
             return {"type": "error", "code": "not_at_table", "message": "You are not seated at a table."}
         view = _state_dict(self.game_service.get_game_state(table_moniker, state.moniker, deal=False))

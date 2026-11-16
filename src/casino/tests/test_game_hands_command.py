@@ -25,8 +25,10 @@ def test_game_hands_sends_show_hands():
     client = CasinoClient(argparse.Namespace(bed_host="127.0.0.1", bed_port=8765, bed_path="/"))
     client._loop = asyncio.new_event_loop()
     try:
-        with patch.object(client, "send") as send:
-            send.return_value = asyncio.sleep(0)
+        async def _sent(message):
+            return None
+
+        with patch.object(client, "send", side_effect=_sent) as send:
             client._dispatch_game("hands", None)
         sent = send.call_args.args[0]
         assert sent == {"type": "show_hands"}
