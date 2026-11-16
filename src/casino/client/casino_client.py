@@ -747,15 +747,18 @@ class CasinoClient:
             cards_str = " ".join(dealer_hand)
             io.echo(f"Dealer:    {cards_str} [{dealer_total}]{{f6}}")
 
-        # A settled round: each of the player's hands with its result (win, loss, push), so the status shows.
-        if state.get("phase") == "settled":
-            for hand in state.get("hands", []):
-                result = hand.get("result")
-                if result:
-                    net = int(hand.get("net") or 0)
-                    sign = "+" if net > 0 else ""
-                    cards = " ".join(hand.get("cards") or [])
-                    io.echo(f"Hand {cards}: {result} ({sign}{net}){{f6}}")
+        # Each of the player's hands that has a result (a bust mid-round, or every hand once the round settles).
+        for hand in state.get("hands", []):
+            result = hand.get("result")
+            if not result:
+                continue
+            net = int(hand.get("net") or 0)
+            sign = "+" if net > 0 else ""
+            cards = " ".join(hand.get("cards") or [])
+            if result == "bust":
+                io.echo(f"Busted with {cards}: the hand is over, net {sign}{net}.{{f6}}")
+            else:
+                io.echo(f"Hand {cards}: {result} ({sign}{net}){{f6}}")
 
         settled = state.get("round_settled")
         if settled:

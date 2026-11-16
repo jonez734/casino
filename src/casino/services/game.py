@@ -430,6 +430,8 @@ class GameService:
             dal_game.update_hand_status(self.args, hand["id"], "charlie", pool=self._pool)
         elif status == "bust":
             dal_game.update_hand_status(self.args, hand["id"], "bust", pool=self._pool)
+            hand_bet = dal_bet.get_bet_for_hand(self.args, hand["id"], pool=self._pool)
+            self._record_bust(hand_id=hand["id"], bet_amount=int(hand_bet["amount"]) if hand_bet else 0)
 
         return success(
             {"cards": cards, "total": total, "status": status},
@@ -1331,6 +1333,15 @@ class GameService:
             "bet": int(bet["amount"]),
             "net": int(net_change),
         }
+
+    def _record_bust(self, hand_id: int, bet_amount: int) -> None:
+        """Store a bust's result on the hand at once, so the table shows the hand is over (settlement stores the same)."""
+        dal_game.merge_hand_result(
+            self.args, hand_id,
+            {"result": "bust", "reason": "player_bust", "net": -bet_amount,
+             "text": f"you busted, bet {bet_amount}, net -{bet_amount}"},
+            pool=self._pool,
+        )
 
     def _store_hand_result(self, hand_id: int, entry: dict[str, Any]) -> None:
         """Keep a settled hand's result on the hand, so a later look at the hands can show it."""
