@@ -159,6 +159,15 @@ class TestBlackjackTwoPlayersThreeGames(unittest.IsolatedAsyncioTestCase):
                 """
             )
 
+        # The bet draws on the player's bank account, so each player is funded there (the bank is the only money).
+        with database.connect(self.args, pool=self.pool) as conn, database.cursor(conn) as cur:
+            for moniker in (self.moniker_a, self.moniker_b):
+                cur.execute(
+                    "INSERT INTO bank.__account (moniker, balance) VALUES (%s, 100000) "
+                    "ON CONFLICT (moniker) DO UPDATE SET balance = 100000",
+                    (moniker,),
+                )
+
         for moniker in (self.moniker_a, self.moniker_b):
             with patch.object(con_member, "_edit") as mock_edit, \
                  patch("bbsengine6.io.inputboolean", return_value=True):
