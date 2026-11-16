@@ -16,6 +16,7 @@ call :func:`on_seat` / :func:`on_unseat` only after the seat row is written.
 from __future__ import annotations
 
 import logging
+import threading
 from typing import Any, Callable, Iterable, TypeVar
 
 from bbsengine6.message import service as _msg
@@ -82,11 +83,20 @@ def on_seat(table_moniker: str, player_moniker: str, role: str = "player") -> No
 
 
 def on_unseat(table_moniker: str, player_moniker: str) -> None:
-    """Remove a member from the table's group. The group is deleted when empty."""
-    _best_effort(
-        lambda: _msg.group_member_remove(table_group_name(table_moniker), player_moniker),
-        "remove member",
-    )
+    """Remove a member from the table's group, in the background.
+
+    The seat is already gone, and the group is derived from it, so the leave does not wait for the group's
+    database connection. A failure is logged by :func:`_best_effort` and corrected at the next reconcile.
+    """
+    threading.Thread(
+        target=_best_effort,
+        args=(
+            lambda: _msg.group_member_remove(table_group_name(table_moniker), player_moniker),
+            "remove member",
+        ),
+        name=f"tablegroup-unseat-{table_moniker}",
+        daemon=True,
+    ).start()
 
 
 def on_table_deleted(table_moniker: str) -> None:

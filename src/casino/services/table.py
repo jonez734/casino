@@ -3,7 +3,7 @@
 
 from typing import Any, Optional
 
-from casino import seats
+from casino import seats, tablegroups
 from casino.config import get_surrender_multiplier
 from casino.dal import table as dal_table
 
@@ -176,7 +176,6 @@ class TableService:
             self.args, moniker, player_moniker, pool=self._pool
         )
         if success:
-            from casino import tablegroups
             tablegroups.on_unseat(moniker, player_moniker)
 
         return {
