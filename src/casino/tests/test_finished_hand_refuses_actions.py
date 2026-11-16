@@ -38,6 +38,20 @@ def test_an_action_on_a_busted_hand_is_refused_clearly(action):
     assert result.message == "Your hand is finished."
 
 
+def test_the_open_hand_refusal_names_the_cards_and_the_way_out():
+    svc = _svc()
+    open_hand = {"id": 323, "playermoniker": "jam", "cards": ["10H", "JH"], "attrs": {}}
+    with patch.object(dal_game, "get_active_game", return_value={"id": 162}), \
+         patch.object(dal_game, "get_player_hands", return_value=[open_hand]), \
+         patch.object(svc, "_close_stale_round"), \
+         patch.object(game_mod.dal_table, "get_table", return_value={"minimumbet": 1, "maximumbet": 100}):
+        result = svc.place_bet("blackjack-jam", "jam", 5)
+    assert result["success"] is False
+    assert "10H JH" in result["message"], "the refusal shows the open hand's cards"
+    assert "game hands" in result["message"], "the refusal says how to see the hand"
+    assert "game stand" in result["message"], "the refusal says how to finish the hand"
+
+
 def test_a_bet_is_refused_while_a_hand_is_still_open():
     svc = _svc()
     open_hand = {"id": 323, "playermoniker": "jam", "cards": ["10H", "JH"], "attrs": {}}

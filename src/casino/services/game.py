@@ -214,9 +214,15 @@ class GameService:
         self._close_stale_round(table_moniker)
         game = dal_game.get_active_game(self.args, table_moniker, pool=self._pool)
         io.echo(f"place_bet: get_active_game returned: {game}", level="info")
-        if game and self._open_hand(game["id"], player_moniker):
+        open_hand = self._open_hand(game["id"], player_moniker) if game else None
+        if open_hand is not None:
             # One round does not stack hands: a new bet waits until the player's hand in play is finished.
-            return {"success": False, "message": "You cannot bet while your hand is still in play."}
+            # The message names that hand and the two ways forward, so the player knows what to do.
+            cards = " ".join(open_hand.get("cards") or []) or "no cards yet"
+            return {"success": False, "message": (
+                f"You cannot bet while your hand ({cards}) is still in play. "
+                "Use 'game hands' to see it, and 'game stand' to finish it."
+            )}
         if not game:
             game_data = self.start_game(table_moniker)
             if not game_data["success"]:

@@ -59,3 +59,20 @@ def test_each_game_answers_the_types_it_is_registered_for():
         answered = _literals(ast.parse(path.read_text(encoding="utf-8")))
         missing = sorted(mine - answered)
         assert not missing, f"{game} registers {missing} but its api_handler does not answer them"
+
+
+def test_every_table_message_handled_is_registered_with_the_table_service():
+    # The reverse of the check above: a table message with a branch in the router must be registered with the
+    # table service, or the transport never routes it there ("No handler for message type").
+    tree = ast.parse(HANDLER.read_text(encoding="utf-8"))
+    table_types = {"list_tables", "table_info", "create_table", "update_table", "join_table", "leave_table",
+                   "add_bot", "remove_bot", "fill_bots", "watch_table", "stop_watching", "show_hands"}
+    handled = {t for t in table_types if t in _literals(tree)}
+    registered = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and getattr(node.func, "attr", "") == "register_service" \
+                and node.args and isinstance(node.args[0], ast.Attribute) and node.args[0].attr == "table_service" \
+                and len(node.args) >= 2 and isinstance(node.args[1], ast.List):
+            registered.update(e.value for e in node.args[1].elts if isinstance(e, ast.Constant))
+    unregistered = sorted(handled - registered)
+    assert not unregistered, f"handled but not registered with the table service: {unregistered}"

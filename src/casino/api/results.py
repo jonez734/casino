@@ -36,7 +36,6 @@ REFUSAL_CODES: dict[str, str] = {
     "Insurance already taken": "cannot_insure",
     "The deal failed; your bet was returned.": "deal_failed",
     "Your hand is finished.": "hand_finished",
-    "You cannot bet while your hand is still in play.": "hand_open",
 }
 
 
@@ -45,6 +44,8 @@ REFUSAL_PATTERNS: list[tuple[str, str]] = [
     (r"^Bet must be at least \d+$", "invalid_bet"),
     (r"^Bet cannot exceed \d+$", "invalid_bet"),
     (r"^Insurance cannot exceed \d+$", "cannot_insure"),
+    # The open-hand refusal names that hand's cards, so it is matched by its fixed text, not an exact string.
+    (r"^You cannot bet while your hand \(.*\) is still in play\. ", "hand_open"),
 ]
 
 # A refusal the adapter does not recognise (an exception's text, for example) gets this generic code,

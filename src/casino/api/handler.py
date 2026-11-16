@@ -2058,6 +2058,7 @@ class MessageRouter:
                 "fill_bots",
                 "watch_table",
                 "stop_watching",
+                "show_hands",
             ],
         )
         server.register_service(self.game_service, ["hit", "stand", "double", "split", "surrender"])

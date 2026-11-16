@@ -20,7 +20,6 @@ SERVICE = Path(__file__).resolve().parents[1] / "services" / "game.py"
 MESSAGE_CODES = {
     "The deal failed; your bet was returned.": "deal_failed",
     "Your hand is finished.": "hand_finished",
-    "You cannot bet while your hand is still in play.": "hand_open",
     "No active game": "no_active_game",
     "No hand found": "hand_not_found",
     "Hand not found": "hand_not_found",
@@ -68,6 +67,7 @@ def test_every_literal_refusal_in_the_service_is_mapped():
         ("Bet must be at least 5", "invalid_bet"),
         ("Bet cannot exceed 500", "invalid_bet"),
         ("Insurance cannot exceed 25", "cannot_insure"),
+        ("You cannot bet while your hand (10H JH) is still in play. Use 'game hands' to see it, and 'game stand' to finish it.", "hand_open"),
     ],
 )
 def test_dynamic_refusal_messages_map_by_pattern(message, code):
