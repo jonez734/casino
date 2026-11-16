@@ -53,3 +53,17 @@ def test_show_hands_finds_the_seat_the_join_recorded():
     reply = asyncio.run(obj._handle_show_hands(SimpleNamespace(id=1), {"type": "show_hands"}))
     assert reply["type"] == "game_state"
     assert reply["player_hand"] == ["8D", "QC"]
+
+
+def test_show_hands_uses_the_database_seat_when_the_session_has_none():
+    # The session copy of the seat can be empty while the database still seats the player (the journal showed
+    # seated=None for a seated player). The seat is read from the database, as the access check reads it.
+    state = {"table_moniker": "blackjack-jam", "phase": "playing", "player_hand": ["8D", "QC"], "hands": []}
+    obj = _router(state, seated_table=None)
+    obj._get_seated = lambda websocket: None
+    from casino import access as access_mod
+    from unittest.mock import patch
+    with patch.object(access_mod, "_seated_table", return_value="blackjack-jam"):
+        reply = asyncio.run(obj._handle_show_hands(SimpleNamespace(id=1), {"type": "show_hands"}))
+    assert reply["type"] == "game_state"
+    assert reply["player_hand"] == ["8D", "QC"]

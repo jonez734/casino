@@ -600,8 +600,11 @@ class TableServiceHandler(BaseService):
         state, err = self._check_access(websocket, "show_hands", message)
         if err is not None:
             return err
-        # The seat the join recorded, read the same way leave_table reads it.
-        table_moniker = self._get_seated(websocket)
+        # The seat the join recorded in the session, or the database seat when the session has none (the session
+        # copy can be empty while the player is still seated; the access check reads the database the same way).
+        from casino import access as _access
+
+        table_moniker = self._get_seated(websocket) or _access._seated_table(self.args, state.moniker)
         io.echo(
             f"_handle_show_hands: moniker={state.moniker} ws_id={getattr(websocket, 'id', None)} "
             f"seated={table_moniker}",
