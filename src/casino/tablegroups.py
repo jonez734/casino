@@ -17,6 +17,8 @@ from __future__ import annotations
 
 import logging
 import threading
+
+from bbsengine6 import database
 from typing import Any, Callable, Iterable, TypeVar
 
 from bbsengine6.message import service as _msg
@@ -88,15 +90,17 @@ def on_unseat(table_moniker: str, player_moniker: str) -> None:
     The seat is already gone, and the group is derived from it, so the leave does not wait for the group's
     database connection. A failure is logged by :func:`_best_effort` and corrected at the next reconcile.
     """
-    threading.Thread(
-        target=_best_effort,
-        args=(
+    role = database.get_current_role()
+
+    def remove() -> None:
+        # A new thread does not inherit the request's role; carry it over so the removal connects as the request would.
+        database.set_current_role(role)
+        _best_effort(
             lambda: _msg.group_member_remove(table_group_name(table_moniker), player_moniker),
             "remove member",
-        ),
-        name=f"tablegroup-unseat-{table_moniker}",
-        daemon=True,
-    ).start()
+        )
+
+    threading.Thread(target=remove, name=f"tablegroup-unseat-{table_moniker}", daemon=True).start()
 
 
 def on_table_deleted(table_moniker: str) -> None:
