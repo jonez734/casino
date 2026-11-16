@@ -36,6 +36,15 @@ def _sub(letter: str, label: str, module_path: str | None = None, **kw) -> MenuO
     return MenuOption(letter, label, module_path, **kw)
 
 
+def _bet_parser():
+    """The ``bet`` subcommand's parser: one optional amount (``bet 10``); with none, bet prompts for it."""
+    import argparse
+
+    parser = argparse.ArgumentParser(prog="bet", add_help=False)
+    parser.add_argument("amount", nargs="?", type=int, default=None)
+    return parser
+
+
 # Blackjack and bet are game subcommands, reached by top-level aliases.
 _GAME_SUBS = {
     "hit": _sub("hit", "Hit     (take another card)", _GAME, op="hit",
@@ -47,7 +56,8 @@ _GAME_SUBS = {
     "split": _sub("split", "Split   (split a pair)", _GAME, op="split",
                   requires_seated=True, allowed_game_types=_BLACKJACK),
     "bet": _sub("bet", "Bet     (place a wager)", _GAME, op="bet",
-                requires_seated=True, allowed_game_types=_BLACKJACK_POKER),
+                requires_seated=True, allowed_game_types=_BLACKJACK_POKER,
+                parser=_bet_parser()),
 }
 
 _TTT_SUBS = {

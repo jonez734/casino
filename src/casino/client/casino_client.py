@@ -1552,7 +1552,7 @@ class CasinoClient:
         if key == "table":
             self._dispatch_table(sub, choice.args)
         elif key == "game":
-            self._dispatch_game(sub)
+            self._dispatch_game(sub, choice.args)
         elif key == "check":
             self._poker_action("poker_check")
         elif key == "call":
@@ -1647,13 +1647,14 @@ class CasinoClient:
         io.echo(label)
         handler()
 
-    def _dispatch_game(self, sub) -> None:
+    def _dispatch_game(self, sub, args=None) -> None:
         if sub == "bet":
             io.echo("Bet")
             if self.current_table_game_type == "poker":
                 self._poker_action("poker_bet")
             else:
-                self.cmd_bet()
+                # ``game bet 10`` carries 10 in args; a bare ``game bet`` has none and prompts.
+                self.cmd_bet(amount=getattr(args, "amount", None))
         elif sub in ("hit", "stand", "double", "split"):
             io.echo(sub.capitalize())
             self._loop.run_until_complete(self.send({"type": sub}))
