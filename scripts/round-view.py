@@ -34,26 +34,11 @@ def _json_sink(target: str):
     return write
 
 
-def _default_token_path() -> str:
-    """The viewer's token file for this terminal, so it does not share a token with another client.
-
-    The name is ``round-view.<tty>.token`` in bed's token directory. The tty naming is done here, not imported
-    from bed, so the viewer works against any installed bed. Log in to the file once with
-    ``bed auth login --token-file <this path>``; the viewer reads it and never writes it.
-    """
-    import os
-
+def _token_directory() -> str:
+    """Bed's token directory (the viewer's token files live beside bed's own)."""
     from bed.tools import _token
 
-    directory = os.path.dirname(_token.default_token_path())
-    try:
-        device = os.ttyname(sys.stdin.fileno())
-    except OSError:
-        device = ""
-    if not device:
-        return os.path.join(directory, "round-view.token")
-    name = device.replace("/dev/", "", 1).replace("/", "_")
-    return os.path.join(directory, f"round-view.{name}.token")
+    return os.path.dirname(_token.default_token_path())
 
 
 def main(argv=None) -> int:
@@ -63,8 +48,8 @@ def main(argv=None) -> int:
     parser.add_argument("--dump", default=None, metavar="FILE",
                         help="also write every message the window receives to FILE, one JSON object per line "
                              "('-' for stdout)")
-    parser.add_argument("--token-file", default=None,
-                        help="bed token file (default: the one 'bed auth login' writes)")
+    parser.add_argument("--moniker", default="",
+                        help="the player to log in as (prompted for when omitted)")
     args = parser.parse_args(argv)
 
     if not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY") or sys.platform == "win32"
@@ -80,10 +65,14 @@ def main(argv=None) -> int:
 
     from casino.tk import roundview
 
-    token_path = args.token_file or _default_token_path()
-    token = roundview.read_token(token_path)
+    from casino.tk import viewer_login
+
+    token = viewer_login.ensure_token(
+        _token_directory(), args.moniker,
+        is_usable=lambda t: roundview.token_is_usable(args.url, t, args.table),
+    )
     if not token:
-        print(f"round-view: no bed token at {token_path}; run 'bed auth login' first", file=sys.stderr)
+        print("round-view: could not log in", file=sys.stderr)
         return 2
 
     sink = _json_sink(args.dump) if args.dump else None

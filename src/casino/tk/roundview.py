@@ -7,6 +7,8 @@ poll on a Tk window's own loop (``after``), so domain code never runs on another
 
 from __future__ import annotations
 
+import asyncio
+import json
 from typing import Any
 
 from bbsengine6 import io
@@ -251,9 +253,28 @@ def check_reconnect_reply(reply: dict) -> bool:
         return True
     code = reply.get("code") or "unknown"
     message = reply.get("message") or ""
-    io.echo(f"round-view: token rejected ({code}){': ' + message if message else ''}; "
-            f"run 'bed auth login' to refresh the token", level="error")
+    io.echo(f"round-view: token rejected ({code}){': ' + message if message else ''}", level="error")
     return False
+
+
+async def _probe(url: str, token: str) -> bool:
+    """Ask the daemon whether ``token`` is accepted, on a short connection. Reads nothing but the reply."""
+    import websockets
+
+    async with websockets.connect(url) as ws:
+        await ws.send(json.dumps({"type": "reconnect", "token": token}))
+        reply = json.loads(await ws.recv())
+    return bool(reply.get("success") or reply.get("ok"))
+
+
+def token_is_usable(url: str, token: str, table: str = "") -> bool:
+    """True when the daemon accepts ``token``. Never writes a token, and never echoes it."""
+    if not token:
+        return False
+    try:
+        return asyncio.run(_probe(url, token))
+    except Exception:
+        return False
 
 
 async def handshake(ws: Any, *, token: str, table: str, sink=None) -> bool:
