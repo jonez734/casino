@@ -31,6 +31,25 @@ def _refused(message: str) -> ActionResult:
 ACTION_ORDER = ("hit", "stand", "double", "split", "surrender")
 
 
+def hand_flags(*, cards: list[str], status: Optional[str], split_count: int, surrender_allowed: bool) -> dict[str, bool]:
+    """Which actions a hand can take now. A finished hand (busted, stood, surrendered, ...) takes none.
+
+    The hand's status decides whether it is still in play; the card count and split count then decide which
+    actions an open hand may take. Used for the state the client shows, so the offer matches what the actions allow.
+    """
+    from casino.services.round_clock import ACTED_STATUSES
+
+    open_hand = status not in ACTED_STATUSES
+    two_cards = len(cards) == 2
+    return {
+        "can_hit": open_hand,
+        "can_stand": open_hand,
+        "can_double": open_hand and two_cards,
+        "can_split": open_hand and two_cards and split_count < 3,
+        "can_surrender": open_hand and surrender_allowed and two_cards and status != "hit",
+    }
+
+
 def available_actions_for(hands: list[dict[str, Any]], *, bet_allowed: bool) -> list[str]:
     """The actions the player can take now, from the flags on their hands and whether a bet is allowed.
 
@@ -923,15 +942,14 @@ class GameService:
 
             hand_bet = dal_bet.get_bet_for_hand(self.args, hand_id, pool=self._pool) if hand_id else None
 
-            can_split = len(cards) == 2 and split_count < 3
-            can_double = len(cards) == 2
-            can_hit = status not in ("bust", "standing", "split_1", "split_2", "done", "surrendered")
-            can_stand = status not in ("bust", "standing", "split_1", "split_2", "done", "surrendered")
-            can_surrender = (
-                surrender_allowed and
-                len(cards) == 2 and
-                status not in ("bust", "standing", "split_1", "split_2", "done", "surrendered", "hit")
+            flags = hand_flags(
+                cards=cards, status=status, split_count=split_count, surrender_allowed=surrender_allowed,
             )
+            can_split = flags["can_split"]
+            can_double = flags["can_double"]
+            can_hit = flags["can_hit"]
+            can_stand = flags["can_stand"]
+            can_surrender = flags["can_surrender"]
 
             player_hands.append({
                 "hand_id": hand_id,

@@ -41,3 +41,20 @@ def test_a_busted_hand_offers_no_action():
     busted = _hand(status="bust", can_hit=False, can_stand=False, can_double=False, can_split=False,
                    can_surrender=False)
     assert game_mod.available_actions_for([busted], bet_allowed=False) == []
+
+
+def test_a_finished_hand_offers_no_double_or_split():
+    # A stood hand with two cards still had can_double and can_split set (they checked only the card count), so
+    # the client offered actions on a settled round.
+    from casino.services.round_clock import ACTED_STATUSES
+
+    assert "standing" in ACTED_STATUSES
+    assert game_mod.hand_flags(cards=["8D", "QC"], status="standing", split_count=0, surrender_allowed=True) == {
+        "can_hit": False, "can_stand": False, "can_double": False, "can_split": False, "can_surrender": False,
+    }
+
+
+def test_an_open_two_card_hand_offers_its_actions():
+    flags = game_mod.hand_flags(cards=["8D", "QC"], status=None, split_count=0, surrender_allowed=True)
+    assert flags == {"can_hit": True, "can_stand": True, "can_double": True, "can_split": True,
+                     "can_surrender": True}
