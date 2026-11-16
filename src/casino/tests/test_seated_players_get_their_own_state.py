@@ -62,24 +62,24 @@ def _handler(sessions, seated):
 
 
 def test_each_seated_player_gets_their_own_hand():
-    sessions = _Sessions({"alice": ["1"], "bob": ["2"]})
+    sessions = _Sessions({"alice": ["conn-1"], "bob": ["conn-2"]})
     obj = _handler(sessions, ["alice", "bob"])
 
     asyncio.run(obj._send_each_seat_its_state(obj.transport, "blackjack-a"))
 
     sent = dict(obj.transport.sent)
-    assert sent[1]["player_hand"] == ["9H", "3C"]
-    assert sent[2]["player_hand"] == ["KD", "2S"]
+    assert sent["conn-1"]["player_hand"] == ["9H", "3C"]
+    assert sent["conn-2"]["player_hand"] == ["KD", "2S"]
     assert all(m["type"] == "game_state" for m in sent.values())
 
 
 def test_a_seated_player_with_no_live_session_is_skipped():
-    sessions = _Sessions({"alice": ["1"]})
+    sessions = _Sessions({"alice": ["conn-1"]})
     obj = _handler(sessions, ["alice", "bob"])
 
     asyncio.run(obj._send_each_seat_its_state(obj.transport, "blackjack-a"))
 
-    assert [sid for sid, _ in obj.transport.sent] == [1]
+    assert [sid for sid, _ in obj.transport.sent] == ["conn-1"]
 
 
 def test_a_bet_sends_each_seated_player_their_own_hand(monkeypatch):
@@ -88,7 +88,7 @@ def test_a_bet_sends_each_seated_player_their_own_hand(monkeypatch):
 
     class _Bet(h.BetServiceHandler):
         def __init__(self):
-            self.sessions = _Sessions({"alice": ["1"], "bob": ["2"]})
+            self.sessions = _Sessions({"alice": ["conn-1"], "bob": ["conn-2"]})
             self.game_service = _Game()
             self.args = SimpleNamespace()
 
@@ -100,8 +100,8 @@ def test_a_bet_sends_each_seated_player_their_own_hand(monkeypatch):
     asyncio.run(bet._send_each_seat_its_state(server, "blackjack-a"))
 
     sent = dict(server.sent)
-    assert sent[1]["player_hand"] == ["9H", "3C"]
-    assert sent[2]["player_hand"] == ["KD", "2S"]
+    assert sent["conn-1"]["player_hand"] == ["9H", "3C"]
+    assert sent["conn-2"]["player_hand"] == ["KD", "2S"]
 
 
 def test_handle_bet_sends_the_seats_their_own_state(monkeypatch):
@@ -111,7 +111,7 @@ def test_handle_bet_sends_the_seats_their_own_state(monkeypatch):
 
     class _Bettor(h.BetServiceHandler):
         def __init__(self):
-            self.sessions = _Sessions({"alice": ["1"], "bob": ["2"]})
+            self.sessions = _Sessions({"alice": ["conn-1"], "bob": ["conn-2"]})
             self.game_service = _BettingGame()
             self.args = SimpleNamespace()
             self._pool = None
@@ -159,7 +159,7 @@ def test_handle_bet_sends_the_seats_their_own_state(monkeypatch):
     asyncio.run(bettor._handle_bet(_Socket(), {"type": "bet", "amount": 10}, server=server))
 
     sent = dict(server.sent)
-    assert sent[2]["player_hand"] == ["KD", "2S"], f"bob (seated, not the bettor) got {sent.get(2)}"
+    assert sent["conn-2"]["player_hand"] == ["KD", "2S"], f"bob (seated, not the bettor) got {sent.get("conn-2")}"
 
 
 def test_the_public_state_goes_to_watchers_not_to_the_table_channel(monkeypatch):
@@ -168,11 +168,11 @@ def test_the_public_state_goes_to_watchers_not_to_the_table_channel(monkeypatch)
 
     class _Watchers(_Sessions):
         def get_table_observers(self, table):
-            return {"9"}
+            return {"conn-9"}
 
     class _Bettor(h.BetServiceHandler):
         def __init__(self):
-            self.sessions = _Watchers({"alice": ["1"], "bob": ["2"]})
+            self.sessions = _Watchers({"alice": ["conn-1"], "bob": ["conn-2"]})
             self.game_service = _BettingGame()
             self.args = SimpleNamespace()
             self._pool = None
@@ -218,5 +218,5 @@ def test_the_public_state_goes_to_watchers_not_to_the_table_channel(monkeypatch)
     asyncio.run(bettor._handle_bet(_Socket(), {"type": "bet", "amount": 10}, server=server))
 
     assert bettor.published_to_channel == [], "the public state must not go to the whole table channel"
-    watcher_states = [m for sid, m in server.sent if sid == 9]
+    watcher_states = [m for sid, m in server.sent if sid == "conn-9"]
     assert watcher_states and watcher_states[0]["type"] == "game_state"

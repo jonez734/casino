@@ -74,8 +74,8 @@ class TestMessageHandler(unittest.IsolatedAsyncioTestCase):
 
         sm = SessionManager()
 
-        # Register session
-        sm.register_session(1, "testuser")
+        # Register session (with the connection id the transport routes on)
+        sm.register_session(1, "testuser", connection_id="conn-1")
         self.assertEqual(sm.get_moniker(1), "testuser")
 
         # Set table
@@ -84,7 +84,7 @@ class TestMessageHandler(unittest.IsolatedAsyncioTestCase):
 
         # Add spectator
         sm.add_spectator(5, 1)
-        self.assertIn(1, sm.get_table_observers(5))
+        self.assertIn("conn-1", sm.get_table_observers(5))
 
         # Unregister
         sm.unregister_session(1)

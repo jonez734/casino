@@ -70,21 +70,21 @@ def _join_handler(monkeypatch, watchers, seats_for):
 
 
 def test_join_sends_each_seat_its_view_and_watchers_the_public_state(monkeypatch):
-    obj = _join_handler(monkeypatch, watchers={"9"}, seats_for={"bob": ["1"]})
+    obj = _join_handler(monkeypatch, watchers={"conn-9"}, seats_for={"bob": ["conn-1"]})
     sink = _Sink()
     reply = asyncio.run(obj._handle_join_table(FakeSocket(1), {"moniker": "poker-a"}, server=sink))
     assert reply["type"] == "joined_table"
     sent_ids = [sid for sid, _ in sink.sent]
-    assert 9 in sent_ids, "the watcher gets the public state"
-    assert 1 in sent_ids, "the seated player gets their own view"
+    assert "conn-9" in sent_ids, "the watcher gets the public state"
+    assert "conn-1" in sent_ids, "the seated player gets their own view"
 
 
 def test_leave_sends_each_seat_its_view_and_watchers_the_public_state(monkeypatch):
-    obj = _join_handler(monkeypatch, watchers={"9"}, seats_for={"bob": ["1"]})
+    obj = _join_handler(monkeypatch, watchers={"conn-9"}, seats_for={"bob": ["conn-1"]})
     sink = _Sink()
     reply = asyncio.run(obj._handle_leave_table(FakeSocket(1), {"moniker": "poker-a"}, server=sink))
     assert reply["type"] == "left_table"
-    assert 9 in [sid for sid, _ in sink.sent]
+    assert "conn-9" in [sid for sid, _ in sink.sent]
 
 
 def test_a_join_with_no_server_publishes_nothing(monkeypatch):

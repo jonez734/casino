@@ -126,10 +126,13 @@ class CasinoSessionManager(SessionManager):
         super().__init__()
         self._spectators: dict[str, set] = {}
 
-    def register_session(self, session_id: int, moniker: str, is_sysop: bool = False) -> None:
+    def register_session(self, session_id: int, moniker: str, is_sysop: bool = False,
+                         connection_id: Optional[str] = None) -> None:
         super().register_session(session_id, moniker, is_sysop)
         self._sessions[session_id]["table_moniker"] = None
         self._sessions[session_id]["spectator_of"] = set()
+        # The connection's websocket id: the key the transport routes a message on.
+        self._sessions[session_id]["connection_id"] = connection_id
 
     def unregister_session(self, session_id: int) -> None:
         if session_id in self._sessions:
@@ -142,8 +145,9 @@ class CasinoSessionManager(SessionManager):
         return session.get("table_moniker") if session else None
 
     def sessions_for_moniker(self, moniker: str) -> list[str]:
-        """The ids of every session bound to ``moniker``, as strings (the form bed's registry uses)."""
-        return [str(sid) for sid, s in self._sessions.items() if s.get("moniker") == moniker]
+        """The connection ids (websocket ids) of every session bound to ``moniker``, as bed's registry returns them."""
+        return [s["connection_id"] for s in self._sessions.values()
+                if s.get("moniker") == moniker and s.get("connection_id")]
 
     def set_table_moniker(self, session_id: int, table_moniker: Optional[str]) -> None:
         io.echo(f"set_table_moniker: session_id={session_id}, table_moniker={table_moniker}", level="info")
@@ -163,7 +167,13 @@ class CasinoSessionManager(SessionManager):
         self._purge_spectator(table_moniker, session_id)
 
     def get_table_observers(self, table_moniker: str) -> set:
-        return self._spectators.get(table_moniker, set())
+        """The connection ids of the live sessions spectating ``table_moniker`` (the ids the transport routes on)."""
+        out = set()
+        for session_id in self._spectators.get(table_moniker, set()):
+            session = self._sessions.get(session_id)
+            if session and session.get("connection_id"):
+                out.add(session["connection_id"])
+        return out
 
     def is_watching(self, table_moniker: str, moniker: str) -> bool:
         """True when a live session for ``moniker`` is spectating ``table_moniker``."""
@@ -421,7 +431,13 @@ class AuthService(BaseService):
             else:
                 session_id = id(websocket)
             is_sysop = member.issysop(self.args, moniker=moniker) is True
-            self.sessions.register_session(session_id, moniker, is_sysop=is_sysop)
+            # A manager that records connection ids (CasinoSessionManager) is given the connection; a plain one is not.
+            if isinstance(self.sessions, CasinoSessionManager):
+                self.sessions.register_session(
+                    session_id, moniker, is_sysop=is_sysop, connection_id=str(websocket.id),
+                )
+            else:
+                self.sessions.register_session(session_id, moniker, is_sysop=is_sysop)
             # A reconnect while seated: the session store still holds the table, so tell the client
             # its seat now. A session with no seat gets nothing extra.
             await self._push_resumed_seat(websocket, session_id)
@@ -1858,8 +1874,8 @@ class SlotServiceHandler(BaseService):
 def _watching_check(sessions: Any):
     """Return ``is_watching(table_moniker, moniker)`` built from whatever session store is wired.
 
-    zoid6 passes bed's ``SessionRegistry``, which exposes ``get_table_observers`` (session ids)
-    and ``get_by_session`` (the session's moniker and spectator set). The casino session manager
+    zoid6 passes bed's ``SessionRegistry``, which exposes ``get_table_observers`` (connection ids)
+    and ``get_by_websocket`` (the session bound to a connection, with its moniker). The casino session manager
     may also provide ``is_watching`` directly; that is used when present.
     """
     direct = getattr(sessions, "is_watching", None)
@@ -1868,11 +1884,12 @@ def _watching_check(sessions: Any):
 
     def is_watching(table_moniker: str, moniker: str) -> bool:
         get_observers = getattr(sessions, "get_table_observers", None)
-        get_by_session = getattr(sessions, "get_by_session", None)
-        if not callable(get_observers) or not callable(get_by_session):
+        get_by_websocket = getattr(sessions, "get_by_websocket", None)
+        if not callable(get_observers) or not callable(get_by_websocket):
             return False
-        for session_id in get_observers(table_moniker) or ():
-            state = get_by_session(str(session_id))
+        # The observers are connection ids, so each is looked up by its websocket.
+        for connection_id in get_observers(table_moniker) or ():
+            state = get_by_websocket(str(connection_id))
             if state is not None and getattr(state, "moniker", None) == moniker:
                 return True
         return False

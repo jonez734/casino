@@ -27,7 +27,7 @@ class TestCasinoSessionManager(unittest.TestCase):
 
     def test_register_session_initializes_table_and_spectator(self):
         """register_session seeds table_moniker=None and spectator_of=set()."""
-        self.sm.register_session(1, "alice", is_sysop=False)
+        self.sm.register_session(1, "alice", is_sysop=False, connection_id=f"conn-1")
         session = self.sm.get_session(1)
         self.assertEqual(session["moniker"], "alice")
         self.assertFalse(session["is_sysop"])
@@ -35,7 +35,7 @@ class TestCasinoSessionManager(unittest.TestCase):
         self.assertEqual(session["spectator_of"], set())
 
     def test_register_session_keeps_sysop_flag(self):
-        self.sm.register_session(1, "root", is_sysop=True)
+        self.sm.register_session(1, "root", is_sysop=True, connection_id=f"conn-1")
         self.assertTrue(self.sm.get_session(1)["is_sysop"])
         self.assertTrue(self.sm.get_is_sysop(1))
 
@@ -43,19 +43,19 @@ class TestCasinoSessionManager(unittest.TestCase):
         self.assertIsNone(self.sm.get_table_moniker(999))
 
     def test_get_table_moniker_for_seated_player(self):
-        self.sm.register_session(1, "alice")
+        self.sm.register_session(1, "alice", connection_id=f"conn-1")
         self.sm.set_table_moniker(1, "room-1")
         self.assertEqual(self.sm.get_table_moniker(1), "room-1")
 
     def test_set_table_moniker_replaces(self):
         """A player can only sit at one table at a time."""
-        self.sm.register_session(1, "alice")
+        self.sm.register_session(1, "alice", connection_id=f"conn-1")
         self.sm.set_table_moniker(1, "room-1")
         self.sm.set_table_moniker(1, "room-2")
         self.assertEqual(self.sm.get_table_moniker(1), "room-2")
 
     def test_set_table_moniker_to_none_clears(self):
-        self.sm.register_session(1, "alice")
+        self.sm.register_session(1, "alice", connection_id=f"conn-1")
         self.sm.set_table_moniker(1, "room-1")
         self.sm.set_table_moniker(1, None)
         self.assertIsNone(self.sm.get_table_moniker(1))
@@ -66,37 +66,37 @@ class TestCasinoSessionManager(unittest.TestCase):
         self.assertIsNone(self.sm.get_table_moniker(999))
 
     def test_add_spectator_adds_to_session_and_index(self):
-        self.sm.register_session(1, "alice")
+        self.sm.register_session(1, "alice", connection_id=f"conn-1")
         self.sm.add_spectator("room-1", 1)
         self.assertEqual(self.sm.get_session(1)["spectator_of"], {"room-1"})
-        self.assertEqual(self.sm.get_table_observers("room-1"), {1})
+        self.assertEqual(self.sm.get_table_observers("room-1"), {"conn-1"})
 
     def test_add_spectator_multi_table(self):
         """A session can spectate multiple tables concurrently."""
-        self.sm.register_session(1, "alice")
+        self.sm.register_session(1, "alice", connection_id=f"conn-1")
         self.sm.add_spectator("room-1", 1)
         self.sm.add_spectator("room-2", 1)
         self.assertEqual(
             self.sm.get_session(1)["spectator_of"], {"room-1", "room-2"}
         )
-        self.assertEqual(self.sm.get_table_observers("room-1"), {1})
-        self.assertEqual(self.sm.get_table_observers("room-2"), {1})
+        self.assertEqual(self.sm.get_table_observers("room-1"), {"conn-1"})
+        self.assertEqual(self.sm.get_table_observers("room-2"), {"conn-1"})
 
     def test_add_spectator_multi_session(self):
-        self.sm.register_session(1, "alice")
-        self.sm.register_session(2, "bob")
+        self.sm.register_session(1, "alice", connection_id=f"conn-1")
+        self.sm.register_session(2, "bob", connection_id=f"conn-2")
         self.sm.add_spectator("room-1", 1)
         self.sm.add_spectator("room-1", 2)
-        self.assertEqual(self.sm.get_table_observers("room-1"), {1, 2})
+        self.assertEqual(self.sm.get_table_observers("room-1"), {"conn-1", "conn-2"})
 
     def test_add_spectator_idempotent(self):
-        self.sm.register_session(1, "alice")
+        self.sm.register_session(1, "alice", connection_id=f"conn-1")
         self.sm.add_spectator("room-1", 1)
         self.sm.add_spectator("room-1", 1)
-        self.assertEqual(self.sm.get_table_observers("room-1"), {1})
+        self.assertEqual(self.sm.get_table_observers("room-1"), {"conn-1"})
 
     def test_remove_spectator_clears_index_and_session(self):
-        self.sm.register_session(1, "alice")
+        self.sm.register_session(1, "alice", connection_id=f"conn-1")
         self.sm.add_spectator("room-1", 1)
         self.sm.remove_spectator("room-1", 1)
         self.assertEqual(self.sm.get_session(1)["spectator_of"], set())
@@ -104,25 +104,25 @@ class TestCasinoSessionManager(unittest.TestCase):
 
     def test_remove_spectator_keeps_other_tables(self):
         """Removing one watched table leaves other watches intact."""
-        self.sm.register_session(1, "alice")
+        self.sm.register_session(1, "alice", connection_id=f"conn-1")
         self.sm.add_spectator("room-1", 1)
         self.sm.add_spectator("room-2", 1)
         self.sm.remove_spectator("room-1", 1)
         self.assertEqual(self.sm.get_session(1)["spectator_of"], {"room-2"})
-        self.assertEqual(self.sm.get_table_observers("room-2"), {1})
+        self.assertEqual(self.sm.get_table_observers("room-2"), {"conn-1"})
 
     def test_remove_spectator_idempotent(self):
         """Removing a non-watched table is a no-op (does not crash)."""
-        self.sm.register_session(1, "alice")
+        self.sm.register_session(1, "alice", connection_id=f"conn-1")
         self.sm.remove_spectator("room-1", 1)
         self.assertEqual(self.sm.get_session(1)["spectator_of"], set())
         self.assertEqual(self.sm.get_table_observers("room-1"), set())
 
     def test_get_table_player_count_counts_seated_only(self):
         """Spectators do not count toward player count."""
-        self.sm.register_session(1, "alice")
-        self.sm.register_session(2, "bob")
-        self.sm.register_session(3, "carol")
+        self.sm.register_session(1, "alice", connection_id=f"conn-1")
+        self.sm.register_session(2, "bob", connection_id=f"conn-2")
+        self.sm.register_session(3, "carol", connection_id=f"conn-3")
         self.sm.set_table_moniker(1, "room-1")
         self.sm.set_table_moniker(2, "room-1")
         self.sm.add_spectator("room-1", 3)
@@ -133,7 +133,7 @@ class TestCasinoSessionManager(unittest.TestCase):
 
     def test_unregister_session_purges_spectator_index(self):
         """Disconnecting a spectator removes them from every watched table."""
-        self.sm.register_session(1, "alice")
+        self.sm.register_session(1, "alice", connection_id=f"conn-1")
         self.sm.add_spectator("room-1", 1)
         self.sm.add_spectator("room-2", 1)
         self.sm.unregister_session(1)
@@ -143,12 +143,12 @@ class TestCasinoSessionManager(unittest.TestCase):
 
     def test_unregister_session_preserves_other_spectators(self):
         """Disconnecting one spectator must not evict another."""
-        self.sm.register_session(1, "alice")
-        self.sm.register_session(2, "bob")
+        self.sm.register_session(1, "alice", connection_id=f"conn-1")
+        self.sm.register_session(2, "bob", connection_id=f"conn-2")
         self.sm.add_spectator("room-1", 1)
         self.sm.add_spectator("room-1", 2)
         self.sm.unregister_session(1)
-        self.assertEqual(self.sm.get_table_observers("room-1"), {2})
+        self.assertEqual(self.sm.get_table_observers("room-1"), {"conn-2"})
 
     def test_unregister_unknown_session_is_noop(self):
         self.sm.unregister_session(999)
