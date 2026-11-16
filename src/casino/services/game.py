@@ -1107,9 +1107,7 @@ class GameService:
                 player_cards, dealer_cards, player_status=hand_status,
             )
             payout, net_change = self._payout_for(outcome, original_bet)
-            dal_bet.settle_bet(
-                self.args, bet["id"], payout > 0, payout, pool=self._pool,
-            )
+            self._settle_bet_for_outcome(bet, outcome, payout)
 
             self._count_stats(player_moniker, game_type, outcome)
 
@@ -1147,6 +1145,16 @@ class GameService:
 
         raw = self.__dict__.setdefault("_last_settled", {}).pop(table_moniker, None)
         return None if raw is None else RoundSettlement.from_dict(raw)
+
+    def _settle_bet_for_outcome(self, bet: dict[str, Any], outcome: str, payout: int) -> None:
+        """Record the bet's result. A push returns the stake, so it is recorded as ``push``, not ``won``."""
+        if outcome == "push":
+            status = "push"
+        else:
+            status = "won" if payout > 0 else "lost"
+        dal_bet.settle_bet(
+            self.args, bet["id"], payout > 0, payout, pool=self._pool, status=status,
+        )
 
     def _payout_for(self, outcome: str, original_bet: int) -> tuple[int, int]:
         """``(payout, net)`` for a settled outcome. Payout is what returns to the player."""

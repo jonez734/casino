@@ -133,6 +133,7 @@ def settle_bet(
     payout: int,
     *,
     pool: Any = None,
+    status: Optional[str] = None,
 ) -> None:
     """
     Settle a bet (win or loss).
@@ -156,11 +157,12 @@ def settle_bet(
 
         player_moniker = row["playermoniker"]
 
-        status = "won" if won else "lost"
+        # ``status`` names a push (or any other outcome) explicitly; otherwise it is won or lost.
+        recorded = status or ("won" if won else "lost")
         cur.execute(
             database.query(
                 "UPDATE $casino.__betlog SET status = :status WHERE id = :bet_id",
-                status=status, bet_id=bet_id
+                status=recorded, bet_id=bet_id
             )
         )
 
