@@ -906,6 +906,18 @@ class GameService:
             message=f"Doubled - got {new_card}",
         )
 
+    def _state_balance(self, player_moniker: str) -> Optional[int]:
+        """The player's balance for their state, or None when it cannot be read (a state read never fails on it).
+
+        The bet is what needs the money and refuses explicitly; the state only informs the display.
+        """
+        if not player_moniker:
+            return None
+        try:
+            return dal_player.get_player_balance(self.args, player_moniker)
+        except ValueError:
+            return None
+
     def get_game_state(self, table_moniker: str, player_moniker: str, *, deal: bool = True) -> "GameState | dict[str, Any]":
         """The table state the client renders. A GameState; {"error": ...} when the table is unknown."""
         from casino.api.payloads import GameState
@@ -922,6 +934,7 @@ class GameService:
             seated = dal_table.seated_monikers(self.args, table_moniker, pool=self._pool)
             return GameState.from_dict({
                 "table_moniker": table_moniker,
+                "balance": self._state_balance(player_moniker),
                 "phase": "waiting",
                 "hands": [],
                 "seats": [{"player": m, "hand_id": None, "status": None, "acted": False} for m in seated],
@@ -1017,6 +1030,7 @@ class GameService:
         bet_allowed = self._open_hand(game["id"], player_moniker) is None
         return GameState.from_dict({
             "table_moniker": table_moniker,
+            "balance": self._state_balance(player_moniker),
             "game_id": int(game["id"]),
             "phase": game["status"],
             "hands": player_hands,

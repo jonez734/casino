@@ -8,6 +8,14 @@ import pytest
 
 from casino.api.payloads import GameState, PlacedBet, RoundSettlement
 
+
+@pytest.fixture(autouse=True)
+def _fixed_balance(monkeypatch):
+    """Game state now carries the player's balance; these tests are about the round, so the balance is fixed."""
+    from casino.dal import player as _dal_player
+
+    monkeypatch.setattr(_dal_player, "get_player_balance", lambda *a, **k: 0)
+
 pytestmark = pytest.mark.unit
 
 

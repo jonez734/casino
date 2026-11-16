@@ -400,6 +400,7 @@ class CasinoClient:
             )
 
         elif msg_type == "game_state":
+            self._apply_game_state_balance(msg)
             await self.display_game_state(msg)
 
         elif msg_type == "chat_message":
@@ -717,6 +718,12 @@ class CasinoClient:
         else:
             parts = ", ".join(f"{m} ${shares.get(m, 0)}" for m in winners)
             io.echo(f"Split pot ({result.get('hand_name')}): {parts}.")
+
+    def _apply_game_state_balance(self, state: dict) -> None:
+        """Take this player's balance from their own game state, so the header shows what the server debited."""
+        balance = state.get("balance")
+        if balance is not None:
+            self.balance = int(balance)
 
     async def display_game_state(self, state: dict) -> None:
         """Display game state to user."""

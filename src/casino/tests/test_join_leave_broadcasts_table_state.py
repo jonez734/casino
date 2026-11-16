@@ -110,6 +110,8 @@ def test_the_waiting_state_lists_the_seated_players(monkeypatch):
     service.args = SimpleNamespace()
     service._pool = None
     monkeypatch.setattr(dal_table, "get_table", lambda *a, **k: {"moniker": "t", "attrs": {}})
+    from casino.dal import player as dal_player
+    monkeypatch.setattr(dal_player, "get_player_balance", lambda *a, **k: 0)
     monkeypatch.setattr(dal_game, "get_current_game", lambda *a, **k: None)
     monkeypatch.setattr(dal_table, "seated_monikers", lambda *a, **k: ["jam"])
 

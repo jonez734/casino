@@ -16,6 +16,14 @@ from casino.dal import table as dal_table
 from casino.services import game as game_mod
 
 
+@pytest.fixture(autouse=True)
+def _fixed_balance(monkeypatch):
+    """Game state now carries the player's balance; these tests are about the round, so the balance is fixed."""
+    from casino.dal import player as _dal_player
+
+    monkeypatch.setattr(_dal_player, "get_player_balance", lambda *a, **k: 0)
+
+
 def _service():
     svc = game_mod.GameService.__new__(game_mod.GameService)
     svc.args = SimpleNamespace()
