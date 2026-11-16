@@ -96,6 +96,9 @@ class CasinoClient:
         self.is_sysop: bool = False
         self.owns_tables: bool = False
         self.last_available_actions: list[str] = []
+        # A table leave waits for the server's answer: pending until a reply, then "left" or "refused".
+        self._leave_pending: bool = False
+        self._leave_outcome: str | None = None
         self._receive_task: asyncio.Task | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
         self._bearer_token: str | None = None
@@ -378,6 +381,8 @@ class CasinoClient:
             # The server also pushes casino_table_state on leave; clearing here keeps the client
             # correct even if that push is missed.
             self._apply_table_state({"moniker": None, "game_type": None, "seated": False})
+            if self._leave_pending:
+                self._leave_outcome = "left"
 
         elif msg_type == "joined_table":
             moniker = msg.get("moniker", "")
@@ -408,7 +413,14 @@ class CasinoClient:
             self._render_poker(msg_type, msg)
 
         elif msg_type == "error":
-            io.echo(f"Error: {msg.get('message')}")
+            # A refused leave keeps the seat: say so, and never print a missing message as "None".
+            if self._leave_pending:
+                self._leave_outcome = "refused"
+                text = msg.get("message") or "the server refused the leave"
+                io.echo(f"{{errorcolor}}Could not leave the table: {text}{{/all}}", level="error")
+                return
+            text = msg.get("message") or msg.get("code") or "the server refused the request"
+            io.echo(f"Error: {text}")
 
         elif msg_type == "subscribed":
             io.echo(f"Subscribed: {msg.get('channel')}")
@@ -1008,22 +1020,35 @@ class CasinoClient:
         self.current_table_moniker = moniker
 
     def cmd_leave_table(self) -> None:
-        """Handle leave_table command."""
-        self._loop.run_until_complete(
-            self.send(
-                {
-                    "type": "leave_table",
-                    "moniker": self.current_table_moniker,
-                }
-            )
-        )
-        self.current_table_moniker = None
-        self.current_table_game_type = None
-        self.current_table_deadline = None
+        """Handle leave_table command.
 
-    def cmd_bet(self) -> None:
-        """Handle bet command."""
-        amount = io.inputinteger("{var:promptcolor}Bet amount: {var:inputcolor}")
+        The seat is cleared only when the server confirms the leave (``left_table``). A refusal (``error``)
+        keeps the client seated and is reported by the error handler, so the client never shows no table while
+        the server still holds the seat. Waits a bounded time for the reply, as join does.
+        """
+        moniker = self.current_table_moniker
+        self._leave_pending = True
+        self._leave_outcome = None
+        self._loop.run_until_complete(
+            self.send({"type": "leave_table", "moniker": moniker})
+        )
+        for _ in range(20):
+            if self._leave_outcome is not None:
+                break
+            self._loop.run_until_complete(asyncio.sleep(0.05))
+        self._leave_pending = False
+        if self._leave_outcome is None:
+            io.echo("{errorcolor}No reply to leave; you may still be seated. Try again.{/all}", level="error")
+            return
+        if self._leave_outcome == "left":
+            self.current_table_moniker = None
+            self.current_table_game_type = None
+            self.current_table_deadline = None
+
+    def cmd_bet(self, amount: int | None = None) -> None:
+        """Handle bet command. ``amount`` is the bet when given; otherwise the player is prompted for it."""
+        if amount is None:
+            amount = io.inputinteger("{var:promptcolor}Bet amount: {var:inputcolor}")
 
         self._loop.run_until_complete(
             self.send(
