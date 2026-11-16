@@ -44,7 +44,7 @@ def test_hit_success_carries_its_payload_in_data():
     table = {"attrs": {}}
     with patch.object(game_mod.dal_game, "get_active_game", return_value=game), \
          patch.object(svc, "_round_expired", return_value=False), \
-         patch.object(game_mod.dal_game, "get_player_hand", return_value=hand), \
+         patch.object(game_mod.dal_game, "get_player_hands", return_value=[hand]), \
          patch.object(svc, "_draw_card", return_value="7S"), \
          patch.object(game_mod.dal_game, "update_hand_cards"), \
          patch.object(game_mod.dal_game, "update_hand_status"), \
@@ -78,7 +78,7 @@ def test_stand_success_carries_total_and_status_in_data():
     hand = {"id": 3, "cards": ["10H", "7D"], "playermoniker": "alice"}
     with patch.object(game_mod.dal_game, "get_active_game", return_value=game), \
          patch.object(svc, "_round_expired", return_value=False), \
-         patch.object(game_mod.dal_game, "get_player_hand", return_value=hand), \
+         patch.object(game_mod.dal_game, "get_player_hands", return_value=[hand]), \
          patch.object(game_mod.dal_game, "update_hand_status"), \
          patch.object(svc, "_all_hands_acted", return_value=False):
         r = svc.stand("t1", "alice")

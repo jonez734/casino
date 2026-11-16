@@ -36,7 +36,7 @@ def test_surrender_accepts_a_decimal_bet_amount():
         settled["amount"] = amount
 
     with patch.object(dal_game, "get_active_game", return_value=game), \
-         patch.object(dal_game, "get_player_hand", return_value=hand), \
+         patch.object(dal_game, "get_player_hands", return_value=[hand]), \
          patch.object(dal_game, "update_hand_attrs"), \
          patch.object(dal_game, "update_game_attrs"), \
          patch.object(dal_table, "get_table", return_value={"attrs": {}}), \

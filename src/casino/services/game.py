@@ -123,6 +123,19 @@ class GameService:
             "action_deadline": deadline.isoformat() if deadline else None,
         }
 
+    def _open_hand(self, game_id: int, player_moniker: str) -> Optional[dict[str, Any]]:
+        """The player's hand that is still in play: not busted, stood, surrendered, or otherwise finished.
+
+        A player can hold several hands in one game (one per bet). The action acts on the open one, so a
+        finished hand is never drawn onto.
+        """
+        from casino.services.round_clock import ACTED_STATUSES
+
+        for hand in dal_game.get_player_hands(self.args, game_id, player_moniker, pool=self._pool):
+            if (hand.get("attrs") or {}).get("status") not in ACTED_STATUSES:
+                return hand
+        return None
+
     def _close_stale_round(self, table_moniker: str) -> None:
         """Close the table's open round before a new bet, when a hand in it belongs to a player who has left.
 
@@ -325,7 +338,7 @@ class GameService:
         if self._round_expired(table_moniker, game):
             return _refused("The round clock expired")
 
-        hand = dal_game.get_player_hand(self.args, game["id"], player_moniker, pool=self._pool)
+        hand = self._open_hand(game["id"], player_moniker)
         if not hand:
             return _refused("No hand found")
 
@@ -374,7 +387,7 @@ class GameService:
         if self._round_expired(table_moniker, game):
             return _refused("The round clock expired")
 
-        hand = dal_game.get_player_hand(self.args, game["id"], player_moniker, pool=self._pool)
+        hand = self._open_hand(game["id"], player_moniker)
         if not hand:
             return _refused("No hand found")
 
@@ -409,7 +422,7 @@ class GameService:
         if not surrender_rule:
             return _refused("Surrender not allowed at this table")
 
-        hand = dal_game.get_player_hand(self.args, game["id"], player_moniker, pool=self._pool)
+        hand = self._open_hand(game["id"], player_moniker)
         if not hand:
             return _refused("No hand found")
 
@@ -475,7 +488,7 @@ class GameService:
         if not surrender_rule:
             return {"success": True, "can_surrender": False}
 
-        hand = dal_game.get_player_hand(self.args, game["id"], player_moniker, pool=self._pool)
+        hand = self._open_hand(game["id"], player_moniker)
         if not hand:
             return {"success": True, "can_surrender": False}
 

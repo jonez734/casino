@@ -54,7 +54,7 @@ def test_stand_does_not_settle_while_another_seat_is_open():
     hand = {"id": 1, "cards": ["AH", "KD"], "attrs": {}}
     with patch.object(dal_game, "get_active_game", return_value=game), \
          patch.object(svc, "_round_expired", return_value=False), \
-         patch.object(dal_game, "get_player_hand", return_value=hand), \
+         patch.object(dal_game, "get_player_hands", return_value=[hand]), \
          patch.object(dal_game, "get_game_hands", return_value=_hands(None, None)), \
          patch.object(dal_game, "update_hand_status") as mark, \
          patch.object(svc, "settle_game") as settle:
@@ -80,7 +80,7 @@ def test_stand_settles_once_the_last_seat_acts():
 
     with patch.object(dal_game, "get_active_game", return_value=game), \
          patch.object(svc, "_round_expired", return_value=False), \
-         patch.object(dal_game, "get_player_hand", return_value=hand), \
+         patch.object(dal_game, "get_player_hands", return_value=[hand]), \
          patch.object(dal_game, "get_game_hands", side_effect=lambda *a, **k: hands), \
          patch.object(dal_game, "update_hand_status", side_effect=lambda a, hid, st, pool=None: fake_update(a, hid, {"status": st})), \
          patch.object(svc, "settle_game") as settle:
@@ -98,7 +98,7 @@ def test_stand_merges_its_status_and_keeps_other_hand_attrs():
     hand = {"id": 1, "cards": ["AH", "KD"], "attrs": {"split_count": 1}}
     with patch.object(dal_game, "get_active_game", return_value=game), \
          patch.object(svc, "_round_expired", return_value=False), \
-         patch.object(dal_game, "get_player_hand", return_value=hand), \
+         patch.object(dal_game, "get_player_hands", return_value=[hand]), \
          patch.object(dal_game, "get_game_hands", return_value=_hands("standing")), \
          patch.object(dal_game, "update_hand_status") as set_status, \
          patch.object(dal_game, "update_hand_attrs") as replace_attrs, \

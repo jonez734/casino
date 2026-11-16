@@ -79,7 +79,7 @@ def test_expired_round_refuses_hit_before_any_card_is_drawn():
     with patch.object(gamemod.dal_game, "get_active_game", return_value=game), \
          patch.object(gamemod.dal_game, "get_action_deadline", return_value=NOW - timedelta(seconds=1)), \
          patch.object(rc, "expire_round", return_value={"success": True}) as expire, \
-         patch.object(gamemod.dal_game, "get_player_hand") as get_hand:
+         patch.object(gamemod.dal_game, "get_player_hands", return_value=[]) as get_hand:
         out = svc.hit("t1", "alice")
     assert out.ok is False and out.code == "round_expired"
     assert out.message == "The round clock expired"
@@ -179,7 +179,7 @@ def test_a_round_left_from_before_a_restart_is_resumed_not_penalised():
          patch.object(gamemod.dal_game, "get_action_deadline", return_value=NOW - timedelta(hours=3)), \
          patch.object(gamemod.dal_game, "set_action_deadline") as set_deadline, \
          patch.object(dal_table_mod, "get_table", return_value={"turn_seconds": 60}), \
-         patch.object(gamemod.dal_game, "get_player_hand", return_value=None), \
+         patch.object(gamemod.dal_game, "get_player_hands", return_value=[]), \
          patch.object(rc, "expire_round") as expire:
         svc.hit("t1", "alice")
     expire.assert_not_called()
@@ -196,7 +196,7 @@ def test_a_resumed_round_with_the_clock_off_stays_off():
          patch.object(gamemod.dal_game, "get_action_deadline", return_value=NOW - timedelta(hours=3)), \
          patch.object(gamemod.dal_game, "set_action_deadline") as set_deadline, \
          patch.object(dal_table_mod, "get_table", return_value={"turn_seconds": 0}), \
-         patch.object(gamemod.dal_game, "get_player_hand", return_value=None), \
+         patch.object(gamemod.dal_game, "get_player_hands", return_value=[]), \
          patch.object(rc, "expire_round") as expire:
         svc.hit("t1", "alice")
     expire.assert_not_called()
