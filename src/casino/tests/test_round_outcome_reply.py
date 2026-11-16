@@ -48,6 +48,7 @@ def test_settle_game_returns_each_hands_outcome_and_net():
          patch.object(dal_bet, "get_bet_for_hand", side_effect=lambda a, hid, pool=None: bets.get(hid)), \
          patch.object(dal_bet, "get_insurance", return_value=0), \
          patch.object(dal_bet, "settle_bet"), \
+         patch.object(dal_game, "merge_hand_result"), \
          patch.object(game_mod.dal_player, "increment_stat"), \
          patch.object(svc, "_run_dealer_turn", return_value=["10H", "7D"]):
         result = svc.settle_game("blackjack-x")

@@ -172,6 +172,7 @@ def test_insurance_pays_2_to_1_when_the_dealer_has_a_natural():
          patch.object(dal_bet, "get_bet_for_hand", return_value=bet), \
          patch.object(dal_bet, "get_insurance", return_value=Decimal("5")), \
          patch.object(dal_bet, "settle_bet"), \
+         patch.object(dal_game, "merge_hand_result"), \
          patch.object(dal_bet, "settle_insurance", settle_insurance), \
          patch.object(g.dal_player, "increment_stat"), \
          patch.object(svc, "_run_dealer_turn", return_value=["AS", "QC"]):

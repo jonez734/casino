@@ -105,7 +105,7 @@ def test_settling_a_round_publishes_each_outcome_from_the_real_settlement():
          patch.object(dal_game, "reveal_dealer_hole_card", return_value=None), \
          patch.object(dal_table, "get_table", return_value={"attrs": {}}), \
          patch.object(dal_bet, "get_bet_for_hand", side_effect=lambda a, hid, pool=None: bets.get(hid)), \
-         patch.object(dal_bet, "get_insurance", return_value=0), patch.object(dal_bet, "settle_bet"), \
+         patch.object(dal_bet, "get_insurance", return_value=0), patch.object(dal_bet, "settle_bet"), patch.object(dal_game, "merge_hand_result"), \
          patch.object(gm.dal_player, "increment_stat"), \
          patch.object(svc, "_run_dealer_turn", return_value=["10H", "7D"]):
         svc.settle_game("blackjack-x")

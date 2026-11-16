@@ -50,6 +50,27 @@ def hand_flags(*, cards: list[str], status: Optional[str], split_count: int, sur
     }
 
 
+def describe_hands_result(state: "GameState") -> list[str]:
+    """The round's result for ``game hands``: each of the player's hands with its outcome, and the dealer's result.
+
+    A hand carries ``result`` once the round has settled; an open round has none yet, so only its cards show.
+    """
+    data = state.to_dict()
+    lines = []
+    for hand in data.get("hands", []):
+        cards = " ".join(hand.get("cards") or [])
+        result = hand.get("result")
+        if result:
+            net = int(hand.get("net", 0))
+            sign = "+" if net > 0 else ""
+            lines.append(f"Hand {cards}: {result} ({sign}{net})")
+        else:
+            lines.append(f"Hand {cards}: in play")
+    if data.get("phase") == "settled" and data.get("dealer_hand"):
+        lines.append(f"Dealer: {' '.join(data['dealer_hand'])} [{data.get('dealer_total', 0)}]")
+    return lines
+
+
 def available_actions_for(hands: list[dict[str, Any]], *, bet_allowed: bool) -> list[str]:
     """The actions the player can take now, from the flags on their hands and whether a bet is allowed.
 
@@ -951,12 +972,17 @@ class GameService:
             can_stand = flags["can_stand"]
             can_surrender = flags["can_surrender"]
 
+            # A settled hand carries its stored result (outcome, reason, net), so game hands can show it.
+            stored = (attrs.get("result") or {})
             player_hands.append({
                 "hand_id": hand_id,
                 "cards": cards,
                 "total": self._hand_value(cards),
                 "status": status,
                 "bet": int(hand_bet["amount"]) if hand_bet else 0,
+                "result": stored.get("result"),
+                "reason": stored.get("reason"),
+                "net": stored.get("net"),
                 "can_split": can_split,
                 "can_double": can_double,
                 "can_hit": can_hit,
@@ -1210,6 +1236,9 @@ class GameService:
                     dal_bet.settle_insurance(self.args, bet["id"], False, 0, pool=self._pool)
 
         dal_game.update_game_status(self.args, game["id"], "settled", pool=self._pool)
+        # Keep every seat's result on its hand, so a later look at the hands (game hands) can show it.
+        for entry in outcomes:
+            self._store_hand_result(entry["hand_id"], entry)
 
         settled = {
             "success": True,
@@ -1312,6 +1341,14 @@ class GameService:
             "bet": int(bet["amount"]),
             "net": int(net_change),
         }
+
+    def _store_hand_result(self, hand_id: int, entry: dict[str, Any]) -> None:
+        """Keep a settled hand's result on the hand, so a later look at the hands can show it."""
+        dal_game.merge_hand_result(
+            self.args, hand_id,
+            {"result": entry["result"], "reason": entry["reason"], "net": entry["net"], "text": entry["text"]},
+            pool=self._pool,
+        )
 
     def _record_settled(self, game_id: int, outcome: str, bet: dict[str, Any], net_change: int) -> None:
         """Keep the last settled outcome on the round row, as before."""

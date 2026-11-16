@@ -134,6 +134,7 @@ def _run_settle(svc, hands, bets, dealer_cards, *, insurance=0):
          patch.object(dal_bet, "get_bet_for_hand", side_effect=lambda a, hid, pool=None: bets.get(hid)), \
          patch.object(dal_bet, "get_insurance", return_value=insurance), \
          patch.object(dal_bet, "settle_bet", settle_bet), \
+         patch.object(dal_game, "merge_hand_result"), \
          patch.object(game_mod.dal_player, "increment_stat", increment), \
          patch.object(svc, "_run_dealer_turn", return_value=dealer_cards), \
          patch.object(game_mod, "get_surrender_multiplier", return_value=Decimal("0.5")):

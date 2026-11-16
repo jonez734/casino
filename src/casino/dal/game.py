@@ -221,6 +221,21 @@ def update_hand_status(args: Any, hand_id: int, status: str, *, pool: Any = None
         )
 
 
+def merge_hand_result(args: Any, hand_id: int, result: dict[str, Any], *, pool: Any = None) -> None:
+    """Merge a settled hand's result into its attrs, keeping the rest (its status and split count).
+
+    Args:
+        pool: Optional connection pool (CONN_POOL_PATTERN)
+    """
+    with _connect_ctx(args, pool) as conn, database.cursor(conn) as cur:
+        cur.execute(
+            database.query(
+                "UPDATE $casino.__hand SET attrs = attrs || :result WHERE id = :hand_id",
+                result=Jsonb({"result": result}), hand_id=hand_id
+            )
+        )
+
+
 def update_hand_attrs(args: Any, hand_id: int, attrs: dict[str, Any], *, pool: Any = None) -> None:
     """Update hand attributes.
 
