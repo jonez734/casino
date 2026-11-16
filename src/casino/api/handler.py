@@ -527,6 +527,8 @@ class TableServiceHandler(BaseService):
             return await self._handle_list_tables(websocket, message)
         elif msg_type == "table_info":
             return await self._handle_table_info(websocket, message)
+        elif msg_type == "show_hands":
+            return await self._handle_show_hands(websocket, message)
         elif msg_type == "create_table":
             return await self._handle_create_table(websocket, message)
         elif msg_type == "join_table":
@@ -590,6 +592,20 @@ class TableServiceHandler(BaseService):
         if game_type in (None, "", "poker") and self.poker_service_handler is not None:
             tables.extend(self.poker_service_handler.list_tables())
         return {"type": "table_list", "tables": tables}
+
+    async def _handle_show_hands(
+        self, websocket: Any, message: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Reply with the requesting player's own game state (their hands). Never deals a card."""
+        state, err = self._check_access(websocket, "show_hands", message)
+        if err is not None:
+            return err
+        table_moniker = self.sessions.get_table_moniker(self._legacy_session_id(websocket))
+        if not table_moniker:
+            return {"type": "error", "code": "not_at_table", "message": "You are not seated at a table."}
+        view = _state_dict(self.game_service.get_game_state(table_moniker, state.moniker, deal=False))
+        view["type"] = "game_state"
+        return view
 
     async def _handle_table_info(
         self, websocket: Any, message: dict[str, Any]

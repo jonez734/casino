@@ -55,6 +55,8 @@ _GAME_SUBS = {
                    requires_seated=True, allowed_game_types=_BLACKJACK),
     "split": _sub("split", "Split   (split a pair)", _GAME, op="split",
                   requires_seated=True, allowed_game_types=_BLACKJACK),
+    "hands": _sub("hands", "Hands   (show your hands again)", _GAME, op="show_hands",
+                  requires_seated=True, allowed_game_types=_BLACKJACK),
     "bet": _sub("bet", "Bet     (place a wager)", _GAME, op="bet",
                 requires_seated=True, allowed_game_types=_BLACKJACK_POKER,
                 parser=_bet_parser()),

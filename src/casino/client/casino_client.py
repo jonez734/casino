@@ -1658,6 +1658,9 @@ class CasinoClient:
         elif sub in ("hit", "stand", "double", "split"):
             io.echo(sub.capitalize())
             self._loop.run_until_complete(self.send({"type": sub}))
+        elif sub == "hands":
+            # The reply is this player's own game_state, rendered like the one after a bet.
+            self._loop.run_until_complete(self.send({"type": "show_hands"}))
 
     def _poker_action(self, msg_type: str) -> None:
         self._loop.run_until_complete(self.send({"type": msg_type}))

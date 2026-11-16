@@ -16,6 +16,7 @@
 #   "update_table"    -- mutate a table (owner or sysop)
 #   "join_table"      -- take a seat at a table
 #   "leave_table"     -- leave the seat at a table
+#   "show_hands"      -- see the caller's own hands at their table (any authenticated player)
 #   "watch_table"     -- spectate a table
 #   "stop_watching"   -- stop spectating a table
 #   "kick_player"     -- remove a player from a table (owner/sysop)
@@ -232,6 +233,10 @@ def access(args: argparse.Namespace, op: str, /, **kwargs: Any) -> bool:
         return _is_owner(kwargs, target)
 
     if op in ("join_table", "leave_table", "watch_table", "stop_watching"):
+        return bool(auth_moniker)
+
+    # A player's own hands: the request reads the caller's seat, so only being logged in is needed.
+    if op == "show_hands":
         return bool(auth_moniker)
 
     if op in ("bet", "hit", "stand", "double", "split", "surrender"):
