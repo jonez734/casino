@@ -486,12 +486,12 @@ class TictactoeService:
             with connect_cm as conn, database.cursor(conn) as cur:
                 cur.execute(
                     database.query(
-                        "SELECT credits FROM $engine.__member WHERE moniker = :m",
+                        "SELECT balance FROM bank.__account WHERE moniker = :m",
                         m=game.players[0],
                     )
                 )
                 row = cur.fetchone()
-                return int(row["credits"]) if row else 0
+                return int(row["balance"]) if row else 0
         except Exception:
             return 0
 

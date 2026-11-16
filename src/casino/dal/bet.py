@@ -25,6 +25,64 @@ def _connect_ctx(args: Any, pool: Any):
     return casino_conn.connect(args, pool=pool)
 
 
+
+def _resolve_bank_moniker(args: Any, name: str, *, pool: Any = None) -> str:
+    """The bank account a name settles into: a table resolves to its mapped account (casino.__bank_table), a
+    member's own name is already its account. A table with no mapping resolves to its own name (no account)."""
+    with _connect_ctx(args, pool) as conn, database.cursor(conn) as cur:
+        cur.execute(
+            database.query(
+                "SELECT a.moniker FROM $casino.__bank_table t JOIN bank.__account a ON a.id = t.bank_account_id "
+                "WHERE t.table_moniker = :name",
+                name=name,
+            )
+        )
+        row = cur.fetchone()
+    return row["moniker"] if row else name
+
+
+def _bank_move(args: Any, from_moniker: str, to_moniker: str, amount: int, kind: str, *, pool: Any = None,
+               member_moniker: str = "", description: str = "") -> None:
+    """Move ``amount`` from one bank account to another and record it. Raises ValueError if the source cannot pay.
+
+    The debit is guarded in the same statement (``balance >= amount``), so the source can never overdraw, and the two
+    balance changes and their transaction rows commit together.
+    """
+    from_moniker = _resolve_bank_moniker(args, from_moniker, pool=pool)
+    to_moniker = _resolve_bank_moniker(args, to_moniker, pool=pool)
+    with _connect_ctx(args, pool) as conn, database.cursor(conn) as cur:
+        cur.execute(
+            database.query(
+                "UPDATE bank.__account SET balance = balance - :amount "
+                "WHERE moniker = :from_moniker AND balance >= :amount RETURNING id",
+                amount=amount, from_moniker=from_moniker,
+            )
+        )
+        if cur.fetchone() is None:
+            raise ValueError("Insufficient funds")
+        cur.execute(
+            database.query(
+                "UPDATE bank.__account SET balance = balance + :amount WHERE moniker = :to_moniker",
+                amount=amount, to_moniker=to_moniker,
+            )
+        )
+        cur.execute(
+            database.query(
+                "INSERT INTO bank.__transaction (accountid, amount, transactiontype, description, membermoniker) "
+                "SELECT id, :amount, :kind_debit, :description, :member FROM bank.__account WHERE moniker = :from_moniker",
+                amount=amount, kind_debit=f"{kind}_debit", description=description, member=member_moniker,
+                from_moniker=from_moniker,
+            )
+        )
+        cur.execute(
+            database.query(
+                "INSERT INTO bank.__transaction (accountid, amount, transactiontype, description, membermoniker) "
+                "SELECT id, :amount, :kind_credit, :description, :member FROM bank.__account WHERE moniker = :to_moniker",
+                amount=amount, kind_credit=f"{kind}_credit", description=description, member=member_moniker,
+                to_moniker=to_moniker,
+            )
+        )
+
 def place_bet(
     args: Any,
     player_moniker: str,
@@ -52,36 +110,10 @@ def place_bet(
     Returns:
         Bet dict with id, amount, etc.
     """
-    from casino.dal import player as _player
-
-    # A member with no recorded credits takes its bank account's balance first (never overwriting a recorded value).
-    _player.mirror_credits_from_bank(args, player_moniker, pool=pool)
+    # The stake moves from the player's bank account to the table's: the bank is the only money.
+    _bank_move(args, player_moniker, table_moniker, amount, "bet", pool=pool,
+               member_moniker=player_moniker, description=f"bet at {table_moniker}")
     with _connect_ctx(args, pool) as conn, database.cursor(conn) as cur:
-            cur.execute(
-                database.query(
-                    "SELECT credits FROM $engine.__member WHERE moniker = :player_moniker",
-                    player_moniker=player_moniker
-                )
-            )
-            row = cur.fetchone()
-            if not row:
-                raise ValueError("Player not found")
-
-            if row["credits"] is None:
-                # No recorded credits is not a zero balance: report it, do not refuse the bet as insufficient.
-                raise ValueError(f"no credits recorded for {player_moniker}")
-            balance = int(row["credits"])
-            if balance < amount:
-                raise ValueError("Insufficient funds")
-
-            cur.execute(
-                database.query(
-                    "UPDATE $engine.__member SET credits = credits - :amount WHERE moniker = :player_moniker",
-                    amount=amount, player_moniker=player_moniker
-                )
-            )
-            if cur.rowcount == 0:
-                raise ValueError("Failed to deduct credits")
 
             # Check which columns exist
             cur.execute(
@@ -154,7 +186,7 @@ def settle_bet(
     with _connect_ctx(args, pool) as conn, database.cursor(conn) as cur:
         cur.execute(
             database.query(
-                "SELECT playermoniker, amount FROM $casino.__betlog WHERE id = :bet_id",
+                "SELECT playermoniker, amount, cardtablemoniker FROM $casino.__betlog WHERE id = :bet_id",
                 bet_id=bet_id
             )
         )
@@ -163,6 +195,7 @@ def settle_bet(
             return
 
         player_moniker = row["playermoniker"]
+        table_moniker = row["cardtablemoniker"]
 
         # ``status`` names a push (or any other outcome) explicitly; otherwise it is won or lost.
         recorded = status or ("won" if won else "lost")
@@ -173,13 +206,11 @@ def settle_bet(
             )
         )
 
-        if won and payout > 0:
-            cur.execute(
-                database.query(
-                    "UPDATE $engine.__member SET credits = credits + :payout WHERE moniker = :player_moniker",
-                    payout=payout, player_moniker=player_moniker
-                )
-            )
+        payout_to_move = payout if (won and payout > 0) else 0
+    # The payout comes back out of the table's bank account to the player (the stake was already moved there).
+    if payout_to_move > 0:
+        _bank_move(args, table_moniker, player_moniker, payout_to_move, "payout", pool=pool,
+                   member_moniker=player_moniker, description=f"payout from {table_moniker}")
 
 
 def set_insurance(args: Any, bet_id: int, amount: int, *, pool: Any = None) -> None:
@@ -228,18 +259,14 @@ def settle_insurance(args: Any, bet_id: int, won: bool, payout: int, *, pool: An
     with _connect_ctx(args, pool) as conn, database.cursor(conn) as cur:
         cur.execute(
             database.query(
-                "SELECT playermoniker FROM $casino.__betlog WHERE id = :bet_id",
+                "SELECT playermoniker, cardtablemoniker FROM $casino.__betlog WHERE id = :bet_id",
                 bet_id=bet_id
             )
         )
         row = cur.fetchone()
-        if row:
-            cur.execute(
-                database.query(
-                    "UPDATE $engine.__member SET credits = credits + :payout WHERE moniker = :player_moniker",
-                    payout=payout, player_moniker=row["playermoniker"]
-                )
-            )
+    if row:
+        _bank_move(args, row["cardtablemoniker"], row["playermoniker"], payout, "insurance", pool=pool,
+                   member_moniker=row["playermoniker"], description=f"insurance from {row['cardtablemoniker']}")
 
 
 def update_bet_notes(args: Any, bet_id: int, notes: str, *, pool: Any = None) -> None:

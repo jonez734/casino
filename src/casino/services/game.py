@@ -691,15 +691,9 @@ class GameService:
 
         bet_amount = player_bet["amount"]
 
-        from bbsengine6 import database
-        connect_cm = casino_conn.connect(self.args, pool=self._pool) if self._pool is not None else casino_conn.connect(self.args)
-        with connect_cm as conn, database.cursor(conn) as cur:
-            cur.execute(
-                database.query(
-                    "UPDATE $engine.__member SET credits = credits - :amount WHERE moniker = :player_moniker",
-                    amount=bet_amount, player_moniker=player_moniker
-                )
-            )
+        # The split stake moves from the player's bank account to the table's, as the first bet did.
+        dal_bet._bank_move(self.args, player_moniker, table_moniker, bet_amount, "split", pool=self._pool,
+                           member_moniker=player_moniker, description=f"split at {table_moniker}")
 
         attrs = hand.get("attrs") or {}
         split_count = attrs.get("split_count", 0)
@@ -813,20 +807,8 @@ class GameService:
         )
 
     def _get_player_balance(self, player_moniker: str) -> int:
-        """Get player's credit balance."""
-        from bbsengine6 import database
-        connect_cm = casino_conn.connect(self.args, pool=self._pool) if self._pool is not None else casino_conn.connect(self.args)
-        with connect_cm as conn, database.cursor(conn) as cur:
-            cur.execute(
-                database.query(
-                    "SELECT credits FROM $engine.__member WHERE moniker = :player_moniker",
-                    player_moniker=player_moniker
-                )
-            )
-            row = cur.fetchone()
-            if not row:
-                return 0
-            return int(row["credits"])
+        """A player's balance: their bank account (the only money)."""
+        return dal_player.get_player_balance(self.args, player_moniker)
 
     def double(self, table_moniker: str, player_moniker: str, hand_id: Optional[int] = None) -> ActionResult:
         """Double down - double bet and get exactly one more card. Returns an ActionResult."""
@@ -868,15 +850,9 @@ class GameService:
 
         bet_amount = player_bet["amount"]
 
-        from bbsengine6 import database
-        connect_cm = casino_conn.connect(self.args, pool=self._pool) if self._pool is not None else casino_conn.connect(self.args)
-        with connect_cm as conn, database.cursor(conn) as cur:
-            cur.execute(
-                database.query(
-                    "UPDATE $engine.__member SET credits = credits - :amount WHERE moniker = :player_moniker",
-                    amount=bet_amount, player_moniker=player_moniker
-                )
-            )
+        # The double stake moves from the player's bank account to the table's, as the first bet did.
+        dal_bet._bank_move(self.args, player_moniker, table_moniker, bet_amount, "double", pool=self._pool,
+                           member_moniker=player_moniker, description=f"double at {table_moniker}")
 
         dal_bet.double_bet(self.args, player_bet["id"], bet_amount * 2, pool=self._pool)
 

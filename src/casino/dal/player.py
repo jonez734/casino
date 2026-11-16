@@ -117,20 +117,18 @@ def set_player_attrs(args: Any, moniker: str, attrs: dict[str, Any], *, pool: An
 
 
 def get_player_balance(args: Any, moniker: str) -> int:
-    """Get player's casino balance (from member.credits)."""
+    """A player's balance: their bank account. The bank is the only money; member.credits is not read."""
     with casino_conn.connect(args) as conn, database.cursor(conn) as cur:
         cur.execute(
             database.query(
-                "SELECT credits FROM $engine.__member WHERE moniker = :moniker",
+                "SELECT balance FROM bank.__account WHERE moniker = :moniker",
                 moniker=moniker
             )
         )
         row = cur.fetchone()
         if not row:
-            raise ValueError(f"no member {moniker}")
-        if row["credits"] is None:
-            raise ValueError(f"no credits recorded for {moniker}")
-        return int(row["credits"])
+            raise ValueError(f"no bank account for {moniker}")
+        return int(row["balance"])
 
 
 def update_player_lastplayed(args: Any, moniker: str) -> None:
@@ -299,21 +297,3 @@ def set_max_stat(args: Any, moniker: str, stat_name: str, value: int) -> None:
                 moniker=moniker, stat_name=stat_name, value=value
             )
         )
-
-
-def mirror_credits_from_bank(args: Any, moniker: str, *, pool: Any = None) -> int:
-    """Set a member's credits from their bank account, only where no credits are recorded yet.
-
-    A recorded credits value is never overwritten. Returns the number of member rows set (0 or 1).
-    """
-    with casino_conn.connect(args, pool=pool) as conn, database.cursor(conn) as cur:
-        cur.execute(
-            database.query(
-                "UPDATE $engine.__member m SET credits = a.balance "
-                "FROM bank.__account a "
-                "WHERE m.moniker = :moniker AND a.moniker = m.moniker::citext "
-                "AND m.credits IS NULL",
-                moniker=moniker,
-            )
-        )
-        return cur.rowcount
