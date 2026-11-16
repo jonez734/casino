@@ -100,6 +100,7 @@ def test_double_refused_by_can_double_keeps_its_code():
     svc = _service()
     game = {"id": 9, "status": "player", "tablemoniker": "t1"}
     with patch.object(game_mod.dal_game, "get_active_game", return_value=game), \
+         patch.object(game_mod.dal_game, "get_player_hands", return_value=[{"id": 3, "cards": ["2H", "5D"], "playermoniker": "alice", "attrs": {}}]), \
          patch.object(svc, "_round_expired", return_value=False), \
          patch.object(svc, "can_double", return_value=res_refusal("Can only double with exactly 2 cards")):
         r = svc.double("t1", "alice")
@@ -119,6 +120,7 @@ def test_split_refused_by_can_split_keeps_its_code():
     svc = _service()
     game = {"id": 9, "status": "player", "tablemoniker": "t1"}
     with patch.object(game_mod.dal_game, "get_active_game", return_value=game), \
+         patch.object(game_mod.dal_game, "get_player_hands", return_value=[{"id": 3, "cards": ["2H", "5D"], "playermoniker": "alice", "attrs": {}}]), \
          patch.object(svc, "_round_expired", return_value=False), \
          patch.object(svc, "can_split", return_value=res_refusal("Cards must have same rank to split")):
         r = svc.split("t1", "alice")
@@ -138,6 +140,7 @@ def test_surrender_not_allowed_at_this_table_is_cannot_surrender():
     svc = _service()
     game = {"id": 9, "status": "player", "tablemoniker": "t1"}
     with patch.object(game_mod.dal_game, "get_active_game", return_value=game), \
+         patch.object(game_mod.dal_game, "get_player_hands", return_value=[{"id": 3, "cards": ["2H", "5D"], "playermoniker": "alice", "attrs": {}}]), \
          patch.object(svc, "_round_expired", return_value=False), \
          patch.object(game_mod.dal_table, "get_table", return_value={"attrs": {"surrender": None}}):
         r = svc.surrender("t1", "alice")

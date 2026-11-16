@@ -32,6 +32,7 @@ def test_a_failed_hand_creation_refunds_the_bet_and_reports_the_error():
     refund = MagicMock()
     with patch.object(dal_table, "get_table", return_value={"minimumbet": 1, "maximumbet": 100}), \
          patch.object(svc, "_close_stale_round"), \
+         patch.object(dal_game, "get_player_hands", return_value=[]), \
          patch.object(dal_game, "get_active_game", return_value={"id": 162}), \
          patch.object(dal_bet, "place_bet", return_value={"id": 164, "amount": 10}), \
          patch.object(dal_game, "create_hand", side_effect=RuntimeError("deal failed")), \
@@ -46,6 +47,7 @@ def test_a_successful_deal_is_not_refunded():
     refund = MagicMock()
     with patch.object(dal_table, "get_table", return_value={"minimumbet": 1, "maximumbet": 100}), \
          patch.object(svc, "_close_stale_round"), \
+         patch.object(dal_game, "get_player_hands", return_value=[]), \
          patch.object(dal_game, "get_active_game", return_value={"id": 162}), \
          patch.object(dal_bet, "place_bet", return_value={"id": 164, "amount": 10}), \
          patch.object(dal_game, "create_hand", return_value={"id": 9}), \

@@ -19,6 +19,8 @@ SERVICE = Path(__file__).resolve().parents[1] / "services" / "game.py"
 # Refusal message (exact text, as the service returns it) -> casino code.
 MESSAGE_CODES = {
     "The deal failed; your bet was returned.": "deal_failed",
+    "Your hand is finished.": "hand_finished",
+    "You cannot bet while your hand is still in play.": "hand_open",
     "No active game": "no_active_game",
     "No hand found": "hand_not_found",
     "Hand not found": "hand_not_found",

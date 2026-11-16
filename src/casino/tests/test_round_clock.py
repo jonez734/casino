@@ -94,6 +94,7 @@ def test_every_action_is_refused_after_the_clock_runs_out(action):
     game = {"id": 7}
     with patch.object(gamemod.dal_game, "get_active_game", return_value=game), \
          patch.object(gamemod.dal_game, "get_action_deadline", return_value=NOW - timedelta(seconds=1)), \
+         patch.object(gamemod.dal_game, "get_player_hands", return_value=[]), \
          patch.object(rc, "expire_round", return_value={"success": True}):
         out = getattr(svc, action)("t1", "alice")
     assert out.ok is False and out.code == "round_expired"

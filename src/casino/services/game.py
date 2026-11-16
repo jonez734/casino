@@ -28,6 +28,21 @@ def _refused(message: str) -> ActionResult:
     return _results.refusal_from_message(message)
 
 
+ACTION_ORDER = ("hit", "stand", "double", "split", "surrender")
+
+
+def available_actions_for(hands: list[dict[str, Any]], *, bet_allowed: bool) -> list[str]:
+    """The actions the player can take now, from the flags on their hands and whether a bet is allowed.
+
+    A hand's flags already say what it can do (its status and card count); an action is offered when any
+    of the player's hands allows it. A bet is offered only when no hand is in play.
+    """
+    actions = [a for a in ACTION_ORDER if any(h.get(f"can_{a}") for h in hands)]
+    if bet_allowed:
+        actions.insert(0, "bet")
+    return actions
+
+
 class GameService:
     """Service for game management and blackjack logic."""
 
@@ -136,6 +151,13 @@ class GameService:
                 return hand
         return None
 
+    def _finished_hand_refusal(self, game_id: int, player_moniker: str) -> Optional[ActionResult]:
+        """A refusal when the player has hands here and none is still in play; None otherwise."""
+        hands = dal_game.get_player_hands(self.args, game_id, player_moniker, pool=self._pool)
+        if hands:
+            return _refused("Your hand is finished.")
+        return None
+
     def _close_stale_round(self, table_moniker: str) -> None:
         """Close the table's open round before a new bet, when a hand in it belongs to a player who has left.
 
@@ -192,6 +214,9 @@ class GameService:
         self._close_stale_round(table_moniker)
         game = dal_game.get_active_game(self.args, table_moniker, pool=self._pool)
         io.echo(f"place_bet: get_active_game returned: {game}", level="info")
+        if game and self._open_hand(game["id"], player_moniker):
+            # One round does not stack hands: a new bet waits until the player's hand in play is finished.
+            return {"success": False, "message": "You cannot bet while your hand is still in play."}
         if not game:
             game_data = self.start_game(table_moniker)
             if not game_data["success"]:
@@ -340,7 +365,7 @@ class GameService:
 
         hand = self._open_hand(game["id"], player_moniker)
         if not hand:
-            return _refused("No hand found")
+            return self._finished_hand_refusal(game["id"], player_moniker) or _refused("No hand found")
 
         cards = list(hand["cards"])
         cards.append(self._draw_card(table_moniker))
@@ -389,7 +414,7 @@ class GameService:
 
         hand = self._open_hand(game["id"], player_moniker)
         if not hand:
-            return _refused("No hand found")
+            return self._finished_hand_refusal(game["id"], player_moniker) or _refused("No hand found")
 
         total = self._hand_value(list(hand["cards"]))
 
@@ -402,6 +427,11 @@ class GameService:
 
     def surrender(self, table_moniker: str, player_moniker: str) -> ActionResult:
         """Surrender the hand for half its bet. Returns an ActionResult; data has what was returned."""
+        game = dal_game.get_active_game(self.args, table_moniker, pool=self._pool)
+        if game and not self._open_hand(game["id"], player_moniker):
+            refusal = self._finished_hand_refusal(game["id"], player_moniker)
+            if refusal is not None:
+                return refusal
         """Player surrenders - forfeit 50% of bet."""
         from casino.dal import bet as dal_bet
 
@@ -424,7 +454,7 @@ class GameService:
 
         hand = self._open_hand(game["id"], player_moniker)
         if not hand:
-            return _refused("No hand found")
+            return self._finished_hand_refusal(game["id"], player_moniker) or _refused("No hand found")
 
         cards = list(hand["cards"]) if hand["cards"] else []
         if len(cards) != 2:
@@ -579,6 +609,11 @@ class GameService:
 
     def split(self, table_moniker: str, player_moniker: str, hand_id: Optional[int] = None) -> ActionResult:
         """Split a pair into two hands. Returns an ActionResult; data has the two hands."""
+        game = dal_game.get_active_game(self.args, table_moniker, pool=self._pool)
+        if game and not self._open_hand(game["id"], player_moniker):
+            refusal = self._finished_hand_refusal(game["id"], player_moniker)
+            if refusal is not None:
+                return refusal
         """Split player's hand into two hands."""
         game = dal_game.get_active_game(self.args, table_moniker, pool=self._pool)
         if game and self._round_expired(table_moniker, game):
@@ -749,6 +784,11 @@ class GameService:
 
     def double(self, table_moniker: str, player_moniker: str, hand_id: Optional[int] = None) -> ActionResult:
         """Double down - double bet and get exactly one more card. Returns an ActionResult."""
+        game = dal_game.get_active_game(self.args, table_moniker, pool=self._pool)
+        if game and not self._open_hand(game["id"], player_moniker):
+            refusal = self._finished_hand_refusal(game["id"], player_moniker)
+            if refusal is not None:
+                return refusal
         game = dal_game.get_active_game(self.args, table_moniker, pool=self._pool)
         if game and self._round_expired(table_moniker, game):
             return _refused("The round clock expired")
@@ -922,11 +962,15 @@ class GameService:
             for h in dal_game.get_game_hands(self.args, game["id"], pool=self._pool)
         ]
 
+        # The actions this player can take now (the client's prompt and tab completion are built from it).
+        # A bet is offered only when none of their hands is still in play: the same test place_bet applies.
+        bet_allowed = self._open_hand(game["id"], player_moniker) is None
         return GameState.from_dict({
             "table_moniker": table_moniker,
             "game_id": int(game["id"]),
             "phase": game["status"],
             "hands": player_hands,
+            "available_actions": available_actions_for(player_hands, bet_allowed=bet_allowed),
             "seats": seats_view,
             "player_hand": player_hand_cards,
             "player_total": player_total,

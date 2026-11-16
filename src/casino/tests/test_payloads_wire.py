@@ -115,6 +115,7 @@ def test_place_bet_success_is_a_typed_placed_bet():
     with patch.object(game_mod.dal_table, "get_table", return_value={"minimumbet": 1, "maximumbet": 100}), \
          patch.object(game_mod.dal_game, "get_active_game", return_value=game), \
          patch.object(game_mod.dal_game, "get_game_hands", return_value=[]), \
+         patch.object(game_mod.dal_game, "get_player_hands", return_value=[]), \
          patch.object(game_mod.dal_table, "seated_monikers", return_value=[]), \
          patch.object(game_mod.dal_bet, "place_bet", return_value={"id": 5}), \
          patch.object(game_mod.dal_game, "create_hand", return_value={"id": 3}), \
