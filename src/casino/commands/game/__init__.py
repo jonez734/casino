@@ -47,7 +47,11 @@ def version(args, **kw) -> str:
 
 
 def buildargs(args, **kw):
-    return _common.build_parser("game", subcommands=SUBCOMMANDS)
+    def extra(parser):
+        # ``game bet 5``: the amount is optional; with none, bet prompts for it.
+        parser.add_argument("amount", nargs="?", type=int, default=None, help="bet amount (bet only)")
+
+    return _common.build_parser("game", subcommands=SUBCOMMANDS, extra=extra)
 
 
 def main(args, **kw) -> bool:

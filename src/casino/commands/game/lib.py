@@ -38,8 +38,8 @@ _SUBCMD_TO_OP: Dict[str, str] = {
 }
 
 
-def bet(args, client=None, **kwargs) -> bool:
-    """Place a bet."""
+def bet(args, client=None, amount=None, **kwargs) -> bool:
+    """Place a bet: ``game bet 5`` bets 5; with no amount it prompts for one."""
     client = client or get_client()
     if client is None:
         io.echo("Not connected. Use Connect first.", level="error")
@@ -51,7 +51,7 @@ def bet(args, client=None, **kwargs) -> bool:
         table_moniker=getattr(client, "current_table_moniker", None),
     ):
         return False
-    client.cmd_bet()
+    client.cmd_bet(amount=amount)
     client._loop.run_until_complete(asyncio.sleep(0.1))
     return True
 
