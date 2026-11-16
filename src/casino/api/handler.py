@@ -944,7 +944,12 @@ class TableServiceHandler(BaseService):
                 _tc.unsubscribe_table(self.channel_state, self._legacy_session_id(websocket), table_moniker)
             _tc.sync_announcers(self.args, table_moniker, owner=state.moniker)
             await send_table_state(websocket, moniker=None, game_type=None, seated=False)
-            await self._broadcast_table_state(server, table_moniker)
+            # Best effort: the seat is already gone and the client waits for left_table, so a failed broadcast
+            # is logged, never allowed to replace the reply.
+            try:
+                await self._broadcast_table_state(server, table_moniker)
+            except Exception as exc:
+                io.echo(f"_handle_leave_table: table broadcast failed: {exc}", level="error")
 
         return {
             "type": "left_table",
