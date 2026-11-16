@@ -52,6 +52,10 @@ def place_bet(
     Returns:
         Bet dict with id, amount, etc.
     """
+    from casino.dal import player as _player
+
+    # A member with no recorded credits takes its bank account's balance first (never overwriting a recorded value).
+    _player.mirror_credits_from_bank(args, player_moniker, pool=pool)
     with _connect_ctx(args, pool) as conn, database.cursor(conn) as cur:
             cur.execute(
                 database.query(
@@ -63,7 +67,10 @@ def place_bet(
             if not row:
                 raise ValueError("Player not found")
 
-            balance = 0 if row["credits"] is None else int(row["credits"])
+            if row["credits"] is None:
+                # No recorded credits is not a zero balance: report it, do not refuse the bet as insufficient.
+                raise ValueError(f"no credits recorded for {player_moniker}")
+            balance = int(row["credits"])
             if balance < amount:
                 raise ValueError("Insufficient funds")
 
