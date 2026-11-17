@@ -89,6 +89,8 @@ def _round_settled_payload(settled: dict[str, Any], moniker: Optional[str]) -> d
     # client shows the same figure (it was 0 before, which read as a settlement error).
     if moniker is None:
         net = sum(o["net"] for o in outcomes)
+        # Watchers and the other seats read each hand named, not "you" (the text is for the player it concerns).
+        outcomes = [{**o, "text": o.get("others_text") or o.get("text")} for o in outcomes]
     else:
         net = sum(o["net"] for o in outcomes if o["player"] == moniker)
     return {

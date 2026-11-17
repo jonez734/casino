@@ -87,6 +87,15 @@ def dealer_peek_natural(dealer_cards: list[str]) -> bool:
     return is_natural(dealer_cards)
 
 
+def describe_for_others(player: str, reason: str, *, player_cards: list[str], dealer_cards: list[str],
+                        bet: int, net: int, returned: Optional[int] = None) -> str:
+    """The same ending as :func:`describe`, written about ``player`` by name (for everyone who is not that player)."""
+    line = describe(reason, player_cards=player_cards, dealer_cards=dealer_cards, bet=bet, net=net, returned=returned)
+    if line.startswith("you "):
+        return f"{player} {line[4:]}"
+    return line
+
+
 def describe(
     reason: str,
     *,

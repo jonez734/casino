@@ -9,7 +9,7 @@ from typing import Any, Optional
 from bbsengine6 import io
 
 from casino.blackjack import Hand
-from casino.blackjack.settle import classify_hand, describe, dealer_peek_applies, dealer_peek_natural
+from casino.blackjack.settle import classify_hand, describe, describe_for_others, dealer_peek_applies, dealer_peek_natural
 from casino.config import get_surrender_multiplier
 from casino.dal import bet as dal_bet
 from casino.dal import game as dal_game
@@ -1340,6 +1340,15 @@ class GameService:
             "reason": reason,
             "text": describe(
                 reason,
+                player_cards=player_cards,
+                dealer_cards=dealer_cards,
+                bet=int(bet["amount"]),
+                net=int(net_change),
+                returned=returned,
+            ),
+            # The same ending, named for anyone who is not this player (a watcher reads "alice busted", not "you").
+            "others_text": describe_for_others(
+                player_moniker, reason,
                 player_cards=player_cards,
                 dealer_cards=dealer_cards,
                 bet=int(bet["amount"]),
