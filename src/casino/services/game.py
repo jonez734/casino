@@ -28,6 +28,19 @@ def _refused(message: str) -> ActionResult:
     return _results.refusal_from_message(message)
 
 
+def shown_hand(hands: list[dict[str, Any]]) -> Optional[dict[str, Any]]:
+    """The hand shown as "Your hand": the first one still in play, else the last one (the most recent result).
+
+    A player can hold a finished hand and then an open one in the same round; the open one is what they act on.
+    """
+    from casino.services.round_clock import ACTED_STATUSES
+
+    for h in hands:
+        if h.get("status") not in ACTED_STATUSES and h.get("result") is None:
+            return h
+    return hands[-1] if hands else None
+
+
 ACTION_ORDER = ("hit", "stand", "double", "split", "surrender")
 
 
@@ -990,8 +1003,9 @@ class GameService:
 
         dealer_hand_for_client = self._hide_hole_card(dealer_cards, game["id"])
 
-        player_hand_cards = player_hands[0]["cards"] if player_hands else []
-        player_total = player_hands[0]["total"] if player_hands else 0
+        shown = shown_hand(player_hands)
+        player_hand_cards = shown["cards"] if shown else []
+        player_total = shown["total"] if shown else 0
 
         # Every seat in the round, so each player can see who is still deciding. The per-player
         # "hands" above stay this player's own hands.
