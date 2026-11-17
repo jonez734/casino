@@ -386,3 +386,30 @@ def test_a_player_leaving_is_shown_once():
     model.feed({"type": "game_state", "phase": "waiting", "player_hand": [], "dealer_hand": [],
                 "seats": [{"player": None, "hand_id": 310, "acted": False}]})
     assert model.lines.count("jam left the table") == 1
+
+
+def test_a_bust_is_shown_when_it_happens_not_only_at_settlement():
+    # A player's bust is a hand result that exists mid-round; the window must say the hand is over at once.
+    model = roundview.WireRoundViewModel()
+    model.feed({
+        "type": "game_state", "phase": "playing",
+        "player_hand": ["10S", "5D", "JD"], "player_total": 25,
+        "dealer_hand": ["QC", "hidden"], "dealer_total": 10,
+        "hands": [{"cards": ["10S", "5D", "JD"], "result": "bust", "net": -10}],
+    })
+    text = "\n".join(model.lines)
+    assert "Busted" in text
+    assert "-10" in text
+
+
+def test_a_bust_is_announced_once_not_on_every_update():
+    model = roundview.WireRoundViewModel()
+    busted = {
+        "type": "game_state", "phase": "playing",
+        "player_hand": ["10S", "5D", "JD"], "player_total": 25,
+        "dealer_hand": ["QC", "hidden"], "dealer_total": 10,
+        "hands": [{"cards": ["10S", "5D", "JD"], "result": "bust", "net": -10}],
+    }
+    model.feed(busted)
+    model.feed(busted)
+    assert sum("Busted" in line for line in model.lines) == 1

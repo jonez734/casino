@@ -109,6 +109,7 @@ class WireRoundViewModel:
 
     def __init__(self) -> None:
         self.lines: list[str] = []
+        self._announced_busts: set[str] = set()
         self._seated: set[str] = set()
 
     def _seat_changes(self, message: dict) -> None:
@@ -130,6 +131,14 @@ class WireRoundViewModel:
         dealer = message.get("dealer_hand") or []
         if dealer:
             self.lines.append(f"Dealer: {' '.join(dealer)} [{message.get('dealer_total', 0)}]")
+        # A hand with a result that is not yet settled (a bust mid-round) is over now: say so, with what it lost.
+        for h in message.get("hands", []):
+            result = h.get("result")
+            cards = " ".join(h.get("cards") or [])
+            if result == "bust" and cards not in self._announced_busts:
+                self._announced_busts.add(cards)
+                net = int(h.get("net") or 0)
+                self.lines.append(f"Busted with {cards}: the hand is over, net {net}.")
         settled = message.get("round_settled")
         if settled:
             for o in settled.get("outcomes", []):
