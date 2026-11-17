@@ -31,15 +31,16 @@ def _refused(message: str) -> ActionResult:
 ACTION_ORDER = ("hit", "stand", "double", "split", "surrender")
 
 
-def hand_flags(*, cards: list[str], status: Optional[str], split_count: int, surrender_allowed: bool) -> dict[str, bool]:
-    """Which actions a hand can take now. A finished hand (busted, stood, surrendered, ...) takes none.
+def hand_flags(*, cards: list[str], status: Optional[str], split_count: int, surrender_allowed: bool,
+               result: Optional[str] = None) -> dict[str, bool]:
+    """Which actions a hand can take now. A finished hand (busted, stood, surrendered, settled, ...) takes none.
 
-    The hand's status decides whether it is still in play; the card count and split count then decide which
-    actions an open hand may take. Used for the state the client shows, so the offer matches what the actions allow.
+    A hand is finished when its status says so, or when it has a stored result (a dealer natural settles a hand and
+    sets a result but no status). Otherwise the card count and split count decide which actions an open hand may take.
     """
     from casino.services.round_clock import ACTED_STATUSES
 
-    open_hand = status not in ACTED_STATUSES
+    open_hand = status not in ACTED_STATUSES and result is None
     two_cards = len(cards) == 2
     return {
         "can_hit": open_hand,
@@ -956,6 +957,7 @@ class GameService:
 
             flags = hand_flags(
                 cards=cards, status=status, split_count=split_count, surrender_allowed=surrender_allowed,
+                result=(attrs.get("result") or {}).get("result"),
             )
             can_split = flags["can_split"]
             can_double = flags["can_double"]
