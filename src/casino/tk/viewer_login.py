@@ -50,21 +50,21 @@ def _read(path: str) -> str:
     return _read_token_file(path)
 
 
-def ensure_token(directory: str, moniker: str, *, is_usable, fd: int = 0) -> str:
-    """Return a usable token for ``moniker``, logging in and writing the file when there is none.
+def ensure_token(directory: str, moniker: str, *, is_usable, fd: int = 0) -> tuple[str, str]:
+    """Return ``(moniker, token)`` for a usable login, logging in and writing the file when there is none.
 
-    ``is_usable(token)`` asks the daemon (or the caller) whether a token is still accepted. ``moniker`` may be empty,
-    in which case it is prompted for; the file name follows the moniker that was logged in.
+    ``is_usable(token)`` asks the daemon whether a stored token is still accepted. ``moniker`` may be empty, in which
+    case it is prompted for. On failure the token is "" and nothing is written.
     """
     if moniker:
         path = token_name.token_file_path(directory, moniker, fd=fd)
         stored = _read(path)
         if stored and is_usable(stored):
-            return stored
+            return moniker.strip().lower(), stored
     name, password = _prompt(moniker)
     path = token_name.token_file_path(directory, name, fd=fd)
     token = _login(name, password)
     if not token:
-        return ""
+        return name.strip().lower(), ""
     _write(path, token)
-    return token
+    return name.strip().lower(), token

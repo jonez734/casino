@@ -41,10 +41,16 @@ def _token_directory() -> str:
     return os.path.dirname(_token.default_token_path())
 
 
+def default_table(moniker: str) -> str:
+    """The table a player's round view watches when none is given: their own blackjack table."""
+    return f"blackjack-{moniker.strip().lower()}" if moniker and moniker.strip() else ""
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="Live view of blackjack round events (Tk).")
     parser.add_argument("--url", default="ws://localhost:8765/", help="daemon WebSocket (default: %(default)s)")
-    parser.add_argument("--table", default="blackjack-x", help="table to watch (default: %(default)s)")
+    parser.add_argument("--table", default="",
+                        help="table to watch (default: the player's blackjack table, blackjack-<moniker>)")
     parser.add_argument("--dump", default=None, metavar="FILE",
                         help="also write every message the window receives to FILE, one JSON object per line "
                              "('-' for stdout)")
@@ -67,13 +73,15 @@ def main(argv=None) -> int:
 
     from casino.tk import viewer_login
 
-    token = viewer_login.ensure_token(
+    moniker, token = viewer_login.ensure_token(
         _token_directory(), args.moniker,
-        is_usable=lambda t: roundview.token_is_usable(args.url, t, args.table),
+        is_usable=lambda t: roundview.token_is_usable(args.url, t),
     )
     if not token:
         print("round-view: could not log in", file=sys.stderr)
         return 2
+    if not args.table:
+        args.table = default_table(moniker)
 
     sink = _json_sink(args.dump) if args.dump else None
     window = roundview.build_daemon_window(args.url, title=f"Blackjack round: {args.table}",

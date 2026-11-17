@@ -18,7 +18,7 @@ def test_a_stored_token_skips_the_prompt(tmp_path):
         fh.write("tok-existing")
     os.chmod(path, 0o600)
     with patch.object(viewer_login, "_prompt") as prompt:
-        token = viewer_login.ensure_token(str(tmp_path), "jam", is_usable=lambda t: True)
+        _, token = viewer_login.ensure_token(str(tmp_path), "jam", is_usable=lambda t: True)
     prompt.assert_not_called()
     assert token == "tok-existing"
 
@@ -26,7 +26,7 @@ def test_a_stored_token_skips_the_prompt(tmp_path):
 def test_no_file_prompts_and_writes_the_token_it_was_given(tmp_path):
     with patch.object(viewer_login, "_prompt", return_value=("jam", "pw")) as prompt, \
          patch.object(viewer_login, "_login", return_value="tok-new") as login:
-        token = viewer_login.ensure_token(str(tmp_path), "jam", is_usable=lambda t: True)
+        _, token = viewer_login.ensure_token(str(tmp_path), "jam", is_usable=lambda t: True)
     prompt.assert_called_once()
     login.assert_called_once_with("jam", "pw")
     assert token == "tok-new"
@@ -43,7 +43,7 @@ def test_a_rejected_token_prompts_again_and_overwrites(tmp_path):
     os.chmod(path, 0o600)  # as the real writer leaves it: owner-only
     with patch.object(viewer_login, "_prompt", return_value=("jam", "pw")), \
          patch.object(viewer_login, "_login", return_value="tok-fresh"):
-        token = viewer_login.ensure_token(str(tmp_path), "jam", is_usable=lambda t: t == "tok-fresh")
+        _, token = viewer_login.ensure_token(str(tmp_path), "jam", is_usable=lambda t: t == "tok-fresh")
     assert token == "tok-fresh"
     with open(path) as fh:
         assert fh.read().strip() == "tok-fresh"
@@ -52,7 +52,7 @@ def test_a_rejected_token_prompts_again_and_overwrites(tmp_path):
 def test_a_failed_login_writes_nothing(tmp_path):
     with patch.object(viewer_login, "_prompt", return_value=("jam", "wrong")), \
          patch.object(viewer_login, "_login", return_value=""):
-        token = viewer_login.ensure_token(str(tmp_path), "jam", is_usable=lambda t: False)
+        _, token = viewer_login.ensure_token(str(tmp_path), "jam", is_usable=lambda t: False)
     assert token == ""
     assert not os.path.exists(token_name.token_file_path(str(tmp_path), "jam"))
 
