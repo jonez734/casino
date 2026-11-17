@@ -87,7 +87,7 @@ def build_window(service: Any, *, title: str = "Blackjack round", table: str | N
         if new:
             text.configure(state="normal")
             for line in new:
-                text.insert("end", line + "\n")
+                text.insert("end", stamp_line(line) + "\n")
             text.configure(state="disabled")
             text.see("end")
 
@@ -208,6 +208,14 @@ def start_daemon_reader(url: str, model: "WireRoundViewModel", on_update, *, tok
     return thread
 
 
+def stamp_line(line: str, *, clock=None) -> str:
+    """A line with the time it is shown in front, as ``HH:MM:SS  <line>``. ``clock`` is injectable for tests."""
+    import datetime
+
+    now = (clock or datetime.datetime.now)()
+    return f"{now.strftime('%H:%M:%S')}  {line}"
+
+
 def build_daemon_window(url: str, *, title: str = "Blackjack round", token: str = "", table: str = "",
                         sink=None) -> Any:
     """A Tk window that shows the daemon's table state as it changes. Needs a display.
@@ -240,7 +248,7 @@ def build_daemon_window(url: str, *, title: str = "Blackjack round", token: str 
         if new:
             text.configure(state="normal")
             for line in new:
-                text.insert("end", line + "\n")
+                text.insert("end", stamp_line(line) + "\n")
             text.configure(state="disabled")
             text.see("end")
 
