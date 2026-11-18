@@ -69,6 +69,8 @@ def _ensure_client_screen() -> None:
 class CasinoClient:
     """Terminal client for casino system."""
 
+    # The sign-in hook. ``auth_prompt`` is the deprecated name; a subclass that sets it still works (see cmd_auth).
+    authenticate: Callable | None = None
     auth_prompt: Callable | None = None
     _VALID_GAME_TYPES: frozenset[str] = frozenset(
         {"blackjack", "poker", "slots", "yahtzee", "tictactoe"}
@@ -783,16 +785,16 @@ class CasinoClient:
     async def cmd_auth(self) -> bool:
         """Handle auth command.
 
-        Resolves the auth prompt at call time:
-            1. self.auth_prompt (class or instance attribute), or
-            2. casino.auth.auth_prompt (the module-level default).
+        Resolves the sign-in hook at call time:
+            1. self.authenticate (class or instance attribute), then the deprecated self.auth_prompt, or
+            2. casino.auth.authenticate (the module-level default).
 
         Returns:
-            True if the prompt completed, False if the user aborted.
+            True if the player signed in, False if the user aborted.
         """
         from .. import auth
-        prompt = self.auth_prompt or auth.auth_prompt
-        return await prompt(self.args, self)
+        hook = self.authenticate or self.auth_prompt or auth.authenticate
+        return await hook(self.args, self)
 
     def cmd_list_tables(self) -> None:
         """Handle list_tables command."""

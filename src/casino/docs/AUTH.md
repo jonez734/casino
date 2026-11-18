@@ -110,28 +110,25 @@ rotated token is also written back to the token file by
 `_connect_with_token` (mode 0600) so the next `casino` invocation
 does not retry a now-revoked token.
 
-### B. Prompt-driven path (the `bed auth`-delegated path)
+### B. Prompt-driven path (the shared sign-in)
 
-When no token file is present, `casino.auth.auth_prompt` drives
-the login:
+When no usable token file is present, `casino.auth.authenticate` drives the
+sign-in. The prompt, the login and the token store are bed's shared
+`bed.tools.authenticate.authenticate`, the same call every zoid6 front end
+makes (see `bed/specs/auth.md`, section 11.3a):
 
-1. The `moniker:` / `password:` prompts come from
-   `bed.tools.auth._collect_credentials` -- the same helper
-   `bed auth login` uses -- so the prompt UX is byte-identical
-   to `bed auth login` (`{var:promptcolor}moniker: {var:inputcolor}`
-   and `{var:promptcolor}password: {var:inputcolor}` with
-   `{var:inputcolor}` ending each prompt).
-2. The actual login round-trip happens on a one-shot
-   `bed.client.BedConnection` via `BedAuthServiceClient.login`.
-   The casino WebSocket is NOT used for this round-trip, so
-   the `moniker` / `password` strings never appear on the
-   operator's primary session socket.
-3. The freshly-minted bearer token is persisted to the default
-   token file via `bed.tools.auth._persist_token` (the same
-   helper `bed auth login` uses), so the next `casino`
-   invocation finds it and short-circuits via path A.
-4. The token is then bound to the casino WebSocket via the
-   same `auth reconnect` envelope path A uses:
+1. The moniker and password are read by `bed.tools.presentation.prompt_credentials`:
+   the boxed frame, the masked password, a blank field asked again, Ctrl-D to cancel.
+2. The login is a `LoginRequest` (scope `auth`) answered by bed's seam login handler
+   (`bed.api.login.handle_login`). It runs on a one-shot connection, so the moniker and
+   password never appear on the casino WebSocket. A blank is refused before any check.
+3. The freshly-minted token is stored for this player and terminal with
+   `bed.tools.store.store_token` (mode 0600), named by `bed.tools.token_name`
+   (`round-view.<moniker>.<tty-or-notty>.<hash>.token`), so the next `casino` run
+   finds it and short-circuits via path A.
+4. Casino then binds the token to its WebSocket with the same `auth reconnect`
+   envelope path A uses (the only step casino owns in this flow), and sets the
+   client's moniker, balance and bearer token.
 
 ```json
 C→S {"type":"reconnect","token":"…"}

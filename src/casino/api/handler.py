@@ -418,7 +418,7 @@ class AuthService(BaseService):
         password = message.get("password", "")
 
         if not moniker:
-            return {"type": "error", "code": "invalid_credentials", "message": "Moniker and password required"}
+            return {"type": "error", "code": _SeamCode.INVALID_CREDENTIALS.value, "message": "Moniker and password required"}
 
         result = self.player_service.authenticate(moniker, password)
 

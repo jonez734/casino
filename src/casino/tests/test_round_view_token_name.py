@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
-from casino.tk import token_name
+from bed.tools import token_name
 
 
 pytestmark = pytest.mark.unit

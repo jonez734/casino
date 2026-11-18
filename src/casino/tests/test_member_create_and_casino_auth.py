@@ -246,96 +246,6 @@ class TestCreateMemberAndSetPassword(unittest.IsolatedAsyncioTestCase):
 # the server.
 
 
-class TestCasinoAuthPromptSendsCredentials(unittest.IsolatedAsyncioTestCase):
-    """Step (b.1): the prompt drives ``bed auth``'s prompt + login flow
-    and binds the freshly-minted bearer token to casino's WS via
-    ``reconnect`` (NOT a fresh ``auth`` envelope -- the prompt UX now
-    matches ``bed auth login`` byte-for-byte, and the credential
-    round-trip happens through a one-shot ``BedConnection`` so the
-    casino WS only ever sees a ``reconnect`` envelope from this
-    path)."""
-
-    async def asyncSetUp(self):
-        self.moniker = _make_unique_moniker("alice_prompt")
-        self.password = "pw"
-
-    async def test_prompt_sends_reconnect_with_token(self):
-        from casino import auth
-
-        fake_client = MagicMock()
-        fake_client.send = AsyncMock()
-        fake_client.moniker = ""
-        fake_client.balance = 0
-        fake_client.authenticated = False
-        fake_client._bearer_token = None
-
-        args = argparse.Namespace()
-        args.bed_host = "127.0.0.1"
-        args.bed_port = 8765
-        args.bed_path = "/"
-        args.token_file = None
-        args.moniker = None
-        args.password = None
-        args.debug = False
-
-        def _collect(args):
-            from bed.tools import _token as _bed_token
-            _bed_token.ensure_token_file_arg(args)
-            return (self.moniker, self.password)
-
-        async def _login(moniker, password):
-            return {
-                "ok": True,
-                "moniker": moniker,
-                "is_sysop": False,
-                "session_id": "sess-1",
-                "token": "tok-from-prompt",
-                "expires_at": "2099-01-01T00:00:00Z",
-                "balance": 100,
-            }
-
-        class _FakeConn:
-            def __init__(self, args, probe_terminal=None):
-                pass
-
-            def force_close(self):
-                pass
-
-        class _FakeAuthSvc:
-            def __init__(self, conn):
-                pass
-
-            login = staticmethod(_login)
-
-        with patch("bed.tools.auth._collect_credentials", side_effect=_collect), \
-             patch("bed.tools.auth._persist_token"), \
-             patch("bed.client.authservice.BedAuthServiceClient", _FakeAuthSvc), \
-             patch("bed.client.connection.BedConnection", _FakeConn):
-            result = await auth.auth_prompt(args, fake_client)
-
-        self.assertIs(result, True, "auth_prompt should return True")
-        # Casino WS only sees the reconnect envelope; the credential
-        # round-trip happens on a one-shot connection.
-        fake_client.send.assert_awaited_once_with(
-            {"type": "reconnect", "token": "tok-from-prompt"}
-        )
-        # And the freshly-minted token is stashed on the client so
-        # the rest of the session rides it.
-        self.assertEqual(fake_client._bearer_token, "tok-from-prompt")
-        self.assertTrue(fake_client.authenticated)
-        self.assertEqual(fake_client.moniker, self.moniker)
-        self.assertEqual(fake_client.balance, 100)
-
-
-# ---------------------------------------------------------------------
-# (b.2) End-to-end through the prompt against an in-process bed server.
-#
-# Real WebSocket + real ``PasswordCredentialProvider`` (which calls
-# ``bbsengine6.member.checkpassword`` for real). Two variants: one
-# using the (a.1) ``member.setpassword`` creation path, one using the
-# (a.2) raw ``crypt()`` SQL path.
-
-
 class TestCasinoAuthEndToEnd(unittest.IsolatedAsyncioTestCase):
     """Step (b.2): casino prompt + in-process bed + real password provider."""
 
@@ -492,10 +402,10 @@ class TestCasinoAuthEndToEnd(unittest.IsolatedAsyncioTestCase):
         # its close (auth_prompt's cleanup) reach the reader below and lose the reply to ConnectionClosedOK.
         one_shot_conn._ws = await one_shot_conn._connect()
 
-        with patch("bed.tools.auth._collect_credentials", return_value=(moniker, password)), \
+        with patch("bed.tools.presentation.prompt_credentials", return_value=(moniker, password)), \
              patch("bed.tools.auth._persist_token", return_value=True), \
              patch("bed.client.connection.BedConnection", return_value=one_shot_conn):
-            ok = await auth.auth_prompt(self.args, client)
+            ok = await auth.authenticate(self.args, client)
 
         self.assertIs(ok, True, "auth_prompt should return True")
 

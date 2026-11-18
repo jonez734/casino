@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### feat(auth): sign-in is bed's shared call; the round viewer and the TUI use it; version 0.5.1.dev
+
+`casino.auth.authenticate` is the TUI's sign-in. It runs bed's shared `authenticate` (the boxed prompt, the seam login,
+and the per-player token store), then binds the token to the casino socket with a `reconnect`, as before. The client hook
+is `CasinoClient.authenticate`. The round viewer's `ensure_token` reuses a stored token the daemon still accepts and
+otherwise calls the same shared sign-in. The viewer's own prompt, login, and token-name code are removed (`tk/token_name.py`
+moved to bed). Casino's bad-credentials code comes from the seam's `invalid_credentials`.
+
+Deprecated, removed in 0.5.2: `casino.auth.auth_prompt` and `CasinoClient.auth_prompt` (both still honoured), and round-view's
+`ensure_token` keeps its name but no longer owns the prompt.
+
+Tests: the two end-to-end sign-in cases (`b1`, `b2`) need a configured database for the real member round trip; they fail in
+an environment without one.
+
+Version: the build base moves from 0.4.0.dev to 0.5.1.dev. casino joins the 0.5 line the other projects use.
+
 ### refactor(api): shared codes come from the bbsengine6 seam; casino owns its table and money codes
 
 Casino's generic result codes (`not_authenticated`, `forbidden`, `invalid_action`, `service_error`)

@@ -35,6 +35,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import contextlib
+import warnings
 from typing import TYPE_CHECKING
 
 from bbsengine6 import bottombar, io, util
@@ -96,79 +97,44 @@ def _bed_auth_args(args: argparse.Namespace) -> argparse.Namespace:
     return bed_args
 
 
-async def auth_prompt(args: argparse.Namespace, client: CasinoClient) -> bool:
-    """Default BED auth prompt.
+async def authenticate(args: argparse.Namespace, client: CasinoClient) -> bool:
+    """Sign the player in at the TUI: bed's shared prompt and login, then bind the token to this socket.
 
-    Delegates the ``moniker:`` / ``password:`` prompts to
-    :func:`bed.tools.auth._collect_credentials` so the prompt UX
-    matches ``bed auth login`` byte-for-byte. The actual login is
-    driven through a one-shot :class:`bed.client.BedConnection` (a
-    parallel :class:`BedAuthServiceClient.login` round-trip) and
-    the resulting bearer token is then bound to casino's
-    already-open WebSocket via a ``reconnect`` envelope -- the same
-    wire shape :func:`_connect_with_token` uses when the operator
-    ran ``bed auth login`` ahead of time. The token is also
-    persisted via :func:`bed.tools.auth._persist_token` so the next
-    ``casino`` invocation can short-circuit through
-    :func:`_connect_with_token` instead of re-prompting.
+    The prompt, the login and the token store are bed's :func:`bed.tools.authenticate.authenticate`, the same call every
+    front end makes. What is casino's own is binding the token to the open WebSocket (a ``reconnect``) and setting the
+    client's moniker and balance.
 
-    Override this -- or assign a new callable to
-    `auth.auth_prompt`, or set `CasinoClient.auth_prompt` on a
-    subclass -- to customize the credential flow.
+    Override this, assign a new callable to ``auth.authenticate``, or set ``CasinoClient.authenticate`` on a subclass
+    to customize the credential flow.
 
     Returns:
-        True if the prompt completed and the reconnect envelope
-        was sent (whether or not the server accepted), False to
-        abort the connect flow.
+        True when the player signed in and the reconnect was sent; False to abort the connect flow.
     """
-    import bed.tools.auth as _bed_auth_tool
-    from bed.client.authservice import BedAuthServiceClient
-    from bed.client.connection import BedConnection
-    from bed.client.singleton import reset_bed_connection
+    import bed.tools.authenticate as _bed_authenticate
 
     bed_args = _bed_auth_args(args)
-
-    try:
-        moniker, password = _bed_auth_tool._collect_credentials(bed_args)
-    except RuntimeError:
-        return False
-
-    # One-shot credential check: no terminal report, so no probe or extra message.
-    one_shot_conn = BedConnection(bed_args, probe_terminal=False)
-    try:
-        auth_svc = BedAuthServiceClient(one_shot_conn)
-        reply = await auth_svc.login(moniker, password)
-    finally:
-        # Drop the singleton-cached connection (if any) so the next
-        # bed-tools call in this process gets a fresh handle; the
-        # one-shot conn we just opened is module-local and won't
-        # collide with casino's own ``client.ws``.
-        with contextlib.suppress(Exception):
-            reset_bed_connection(bed_args)
-        with contextlib.suppress(Exception):
-            one_shot_conn.force_close()
-
-    if not reply.get("ok"):
-        _bed_auth_tool._render_soft_failure(reply)
-        return False
-
-    token = (reply.get("token") or "").strip()
+    moniker, token = await asyncio.get_running_loop().run_in_executor(
+        None,
+        lambda: _bed_authenticate.authenticate(
+            directory=_bed_authenticate.token_directory(bed_args),
+            title="casino auth",
+            store_token=True,
+        ),
+    )
     if not token:
-        io.echo(
-            "server returned a malformed auth_result (missing token); "
-            "aborting",
-            level="error",
-        )
         return False
 
-    _bed_auth_tool._persist_token(reply, bed_args)
-
-    client.moniker = reply.get("moniker", moniker) or moniker
-    client.balance = int(reply.get("balance", 0) or 0)
+    client.moniker = moniker
     client._bearer_token = token
     client.authenticated = True
     await client.send({"type": "reconnect", "token": token})
     return True
+
+
+async def auth_prompt(args: argparse.Namespace, client: CasinoClient) -> bool:
+    """Deprecated: use :func:`authenticate`. Removed in casino 0.5.2."""
+    warnings.warn("casino.auth.auth_prompt is deprecated; use authenticate", DeprecationWarning, stacklevel=2)
+    return await authenticate(args, client)
 
 
 # ---- BBS module entry points -----------------------------------------
