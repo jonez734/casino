@@ -344,7 +344,7 @@ class BaseService:
             return
         await send_to_sessions(server, self._get_observers(table_moniker), state)
 
-    async def _send_each_seat_its_state(self, server: Any, table_moniker: str) -> None:
+    async def _send_each_seat_its_state(self, server: Any, table_moniker: str, settled: Optional[dict] = None) -> None:
         """Send every seated player their own game_state: their hand, on each of their sockets.
 
         The table broadcast carries no player's hand, so it cannot tell a seat its own cards. Each seat
@@ -361,6 +361,9 @@ class BaseService:
         for moniker in seated:
             state = _state_dict(self.game_service.get_game_state(table_moniker, moniker, deal=False))
             state["type"] = "game_state"
+            # A settled round rides on each seat's own view, with that seat's net, as the acting player's reply does.
+            if settled and settled.get("outcomes"):
+                state["round_settled"] = _round_settled_payload(settled, moniker)
             for session_id in self.sessions.sessions_for_moniker(moniker):
                 per_session[session_id] = state
         await send_per_session(server, per_session)
@@ -1309,7 +1312,7 @@ class GameServiceHandler(BaseService):
             )
             # The public state has no hands, so it goes to watchers only; each seat is sent its own view.
             await self._send_to_watchers(server, table_moniker, broadcast_state)
-            await self._send_each_seat_its_state(server, table_moniker)
+            await self._send_each_seat_its_state(server, table_moniker, settled=settled)
 
         return game_state
 
@@ -1475,7 +1478,7 @@ class BetServiceHandler(BaseService):
                 )
                 # The public state has no hands, so it goes to watchers only; each seat is sent its own view.
                 await self._send_to_watchers(server, table_moniker, broadcast_state)
-                await self._send_each_seat_its_state(server, table_moniker)
+                await self._send_each_seat_its_state(server, table_moniker, settled=settled)
 
             return None
         else:
