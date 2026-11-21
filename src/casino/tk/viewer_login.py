@@ -12,10 +12,38 @@ import warnings
 from bed.tools import token_name
 
 
-def _authenticate(directory: str, title: str) -> tuple[str, str]:
-    """Bed's shared sign-in, for this viewer's window. Returns ``(moniker, token)``; the token is "" on a refusal."""
-    from bed.tools.authenticate import authenticate
+def _configured_spec() -> str:
+    """The sign-in callable named by bed.json ``auth.authenticate`` (the bed default when the key is absent)."""
+    import json
+    from pathlib import Path
 
+    import bed
+
+    path = Path(bed.__file__).resolve().parent / "data" / "bed.json"
+    auth = json.loads(path.read_text(encoding="utf-8")).get("auth", {})
+    return auth.get("authenticate") or "bed.tools.authenticate:authenticate"
+
+
+def resolve_authenticate(spec: str):
+    """Resolve ``spec`` (``module:attr``) against bbsengine6's sign-in contract. Fails with the key named.
+
+    Raises ValueError for a spec that does not import, and TypeError for a callable that breaks the contract.
+    """
+    from bbsengine6 import module as be6_module
+
+    try:
+        return be6_module.resolve_callable(spec, be6_module._stub_authenticate)
+    except (ValueError, TypeError) as exc:
+        raise type(exc)(f"auth.authenticate in bed.json: {exc}") from exc
+
+
+def _authenticate(directory: str, title: str) -> tuple[str, str]:
+    """Bed's shared sign-in, for this viewer's window. Returns ``(moniker, token)``; the token is "" on a refusal.
+
+    The callable is resolved from bed.json ``auth.authenticate`` each time it is needed; a bad value raises at startup
+    (see ``resolve_authenticate``), before any prompt.
+    """
+    authenticate = resolve_authenticate(_configured_spec())
     return authenticate(directory=directory, title=title, store_token=True)
 
 

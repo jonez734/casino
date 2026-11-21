@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### feat(round-view): the sign-in callable is resolved from bed.json at startup
+
+`casino.tk.viewer_login` reads `auth.authenticate` from bed.json and resolves it against bbsengine6's sign-in contract
+(`resolve_authenticate`). A value that does not import or does not match the contract fails before the sign-in prompt,
+with the key named. The shipped value is bed's `authenticate`, so behaviour is unchanged. Casino's own TUI hook is not
+changed (see `handbook/todo/casino-auth-hook-configurable.md`). Tests: `test_viewer_login_resolves_configured_authenticate.py`.
+
 ### feat(auth): sign-in is bed's shared call; the round viewer and the TUI use it; version 0.5.1.dev
 
 `casino.auth.authenticate` is the TUI's sign-in. It runs bed's shared `authenticate` (the boxed prompt, the seam login,
