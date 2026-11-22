@@ -2,6 +2,12 @@
 
 All notable changes to `casino` are recorded here.
 
+## Unreleased
+
+- The root menu accepts `exit` (an alias of X): it leaves casino and returns to the caller (the shell, when hosted).
+- The root menu accepts `logout`: it ends the whole session, as Ctrl-D does (raises EOFError, which the hosting shell
+  treats as the end of the session).
+
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 

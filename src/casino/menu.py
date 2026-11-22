@@ -66,12 +66,18 @@ def _exit(args, **kw):
     return None
 
 
+def _logout(args, **kw):
+    """``logout``: end the whole session, as Ctrl-D does. Raised as EOFError, which the hosting shell treats as the end."""
+    raise EOFError
+
+
 def root_menu(**kw):
-    """The casino root menu. Each option carries its own action; X is the protected exit, Q its alias."""
+    """The casino root menu. X (and its alias Q) leaves casino; ``exit`` does the same. ``logout`` ends the session."""
     return (
         MenuOption(letter="B", label="Blackjack", action=lambda args: _blackjack(args, **kw)),
         MenuOption(letter="S", label="Stats", action=lambda args: _stats(args, **kw)),
-        MenuOption(letter="X", label="Exit", aliases=("Q",), action=lambda args: _exit(args)),
+        MenuOption(letter="X", label="Exit", aliases=("Q", "exit"), action=lambda args: _exit(args)),
+        MenuOption(letter="logout", label="Logout", action=lambda args: _logout(args, **kw)),
     )
 
 
@@ -81,6 +87,7 @@ def main(args, **kw):
     io.echo("{optioncolor}[B]{labelcolor} Blackjack")
     io.echo("{optioncolor}[S]{labelcolor} Stats")
     io.echo("{f6}{optioncolor}[X]{labelcolor} Exit{f6}")
+    io.echo("{optioncolor}[logout]{labelcolor} Logout the session")
 
     # Re-read until the exit runs. X and Q are the exit; Enter takes X as the default.
     while True:
