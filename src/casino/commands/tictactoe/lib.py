@@ -8,6 +8,11 @@ from casino import host
 from casino.commands import _common
 
 
+def _logout(state, **kwargs):
+    """``logout``: end the whole session, as Ctrl-D does. Raised as EOFError, which the hosting shell re-raises."""
+    raise EOFError
+
+
 def _send(client, message: dict) -> bool:
     client._loop.run_until_complete(client.send(message))
     return True
@@ -64,7 +69,8 @@ def _tictactoe_options(args, client, **kwargs):
     return (
         MenuOption("u", "quickplay (play vs AI)", action=_run(quickplay)),
         MenuOption("j", "oin       (take the O seat)", action=_run(join)),
-        MenuOption("x", "it       (back to main menu)", aliases=("q",), action=lambda s: None),
+        MenuOption("x", "it       (back to main menu)", aliases=("q", "exit"), action=lambda s: None),
+        MenuOption("logout", "logout   (end the session)", action=_logout),
     )
 
 

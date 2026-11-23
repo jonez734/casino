@@ -38,6 +38,11 @@ _SUBCMD_TO_OP: Dict[str, str] = {
 }
 
 
+def _logout(state, **kwargs):
+    """``logout``: end the whole session, as Ctrl-D does. Raised as EOFError, which the hosting shell re-raises."""
+    raise EOFError
+
+
 def bet(args, client=None, amount=None, **kwargs) -> bool:
     """Place a bet: ``game bet 5`` bets 5; with no amount it prompts for one."""
     client = client or get_client()
@@ -200,7 +205,8 @@ def game_menu(args, client=None, **kwargs):
         MenuOption(letter="D", label="Double", action=_run(double)),
         MenuOption(letter="P", label="Play", action=_run(play)),
         MenuOption(letter="L", label="Split", action=_run(split)),
-        MenuOption(letter="X", label="Exit", aliases=("Q",), action=lambda a: None),
+        MenuOption(letter="X", label="Exit", aliases=("Q", "exit"), action=lambda a: None),
+        MenuOption(letter="logout", label="Logout", action=_logout),
     )
 
 

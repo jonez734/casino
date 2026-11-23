@@ -46,6 +46,11 @@ _SUBCMD_TO_OP: Dict[str, str] = {
 }
 
 
+def _logout(state, **kwargs):
+    """``logout``: end the whole session, as Ctrl-D does. Raised as EOFError, which the hosting shell re-raises."""
+    raise EOFError
+
+
 def bank_balance(args, client=None, **kwargs) -> bool:
     """Handle bank balance query."""
     client = _require_authenticated_client(
@@ -231,7 +236,8 @@ def bank_menu(args, client=None, **kwargs):
         MenuOption(letter="P", label="Pending", action=_run(bank_pending)),
         MenuOption(letter="H", label="History", action=_run(bank_history)),
         MenuOption(letter="L", label="List all", action=_run(bank_list_all)),
-        MenuOption(letter="X", label="Exit", aliases=("Q",), action=lambda a: None),
+        MenuOption(letter="X", label="Exit", aliases=("Q", "exit"), action=lambda a: None),
+        MenuOption(letter="logout", label="Logout", action=_logout),
     )
 
 

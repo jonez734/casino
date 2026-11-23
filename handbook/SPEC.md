@@ -360,11 +360,13 @@ not table verbs.
 **Submenus.** `slots` and `tictactoe` read their menus through `read_menu(mode="key")`.
 Each option carries its `action`. `X` is the protected exit and `Q` is its alias.
 
-**Root menu.** The root menu (`casino` from the shell) also takes the shell's words:
+**The shell's words.** The root menu and every key-mode submenu (slots, tictactoe, the game menu, and bank) take the
+shell's words:
 
-- `exit` is an alias of `X`. It leaves casino and returns to the caller (the shell, when hosted).
+- `exit` is an alias of the menu's exit key. It leaves that menu and returns to the one that opened it (the shell, when
+  casino is hosted from it).
 - `logout` ends the whole session, as Ctrl-D does. It raises `EOFError`, which the hosting shell re-raises to its top
-  level. Use it to leave the system from inside casino.
+  level. Use it to leave the system from inside any casino menu.
 
 - Without `--rounds`, a submenu reads one key, runs it, and returns.
 - With `--rounds=<n>`, it keeps reading keys for up to `n` actions. `X` or `Q` exits

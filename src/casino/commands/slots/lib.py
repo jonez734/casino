@@ -43,6 +43,11 @@ _SUBCMD_TO_OP: Dict[str, str] = {
 }
 
 
+def _logout(state, **kwargs):
+    """``logout``: end the whole session, as Ctrl-D does. Raised as EOFError, which the hosting shell re-raises."""
+    raise EOFError
+
+
 def _require_authenticated_client(
     client, op: str
 ) -> Optional[Any]:
@@ -159,7 +164,8 @@ def _slots_options(args, client, **kwargs):
         MenuOption("h", "istory  (list your recent spins)", requires_seated=False,
                    action=_run(slot_history)),
         MenuOption("x", "it      (back to main menu)", requires_seated=False,
-                   aliases=("q",), action=lambda a: None),
+                   aliases=("q", "exit"), action=lambda a: None),
+        MenuOption("logout", "logout  (end the session)", requires_seated=False, action=_logout),
     )
 
 
@@ -168,7 +174,8 @@ _SLOTS_OPTIONS_SPEC = (
     MenuOption("s", "pin     (place a bet and pull the lever)", requires_seated=True, allowed_game_types=frozenset({"slots"})),
     MenuOption("p", "aytable (show the table's paytable)",     requires_seated=True, allowed_game_types=frozenset({"slots"})),
     MenuOption("h", "istory  (list your recent spins)",         requires_seated=False),
-    MenuOption("x", "it      (back to main menu)",              requires_seated=False, aliases=("q",)),
+    MenuOption("x", "it      (back to main menu)",              requires_seated=False, aliases=("q", "exit")),
+    MenuOption("logout", "logout  (end the session)",             requires_seated=False, action=_logout),
 )
 
 
