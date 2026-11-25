@@ -1,6 +1,6 @@
-"""Casino's credits <-> coins exchange: each player's ratio, passed to bbsengine6 BankService.exchange.
+"""Casino's credits <-> bank exchange: each player's ratio, passed to bbsengine6 BankService.exchange.
 
-A player's ratio is two positive integers (ratio_num, ratio_den): ``ratio_num`` credits for every ``ratio_den`` coins.
+A player's ratio is two positive integers (ratio_num, ratio_den): ``ratio_num`` casino credits for every ``ratio_den`` bank credits.
 A stored value that is missing or not two positive integers falls back to 1:1, so a bad row cannot mint or destroy coins.
 """
 
