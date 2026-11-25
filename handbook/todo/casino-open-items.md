@@ -2,6 +2,11 @@
 
 Status: open (2026-11-05). Everything below is committed locally in `casino/`, `bbsengine6/`, and `bed/`. Nothing is pushed.
 
+## Bank: promotions and VIP players (primary plan in bbsengine6)
+
+Planned, not started. The primary plan is `bbsengine6/handbook/todo/bank-promotions-and-vip.md`. Casino's
+`CasinoBankService` stays at a fixed 1:1 until that plan's rules are decided.
+
 ## Run against zoid6 (you run these; they need your shell as jam)
 
 - [ ] Live spin check on `zoid6`: play one spin as a test member, then confirm one new `casino.__slot_spin` row and one `bank.__transaction` row for that spin.
