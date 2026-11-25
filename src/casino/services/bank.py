@@ -605,3 +605,31 @@ class BankService:
                 "type": t["type"],
             })
         return result
+
+
+# Casino's credits and tokens are exchanged 1:1. Fixed for every player (unlike empyre's coin rate).
+CASINO_EXCHANGE_RATIO = (1, 1)
+
+
+class CasinoBankService:
+    """Exchange casino credits against the bank's tokens at the fixed 1:1 rate.
+
+    Passes the rate to bbsengine6's BankService.exchange and refuses any amount that is not a positive
+    whole number before it reaches the ledger.
+    """
+
+    def __init__(self, args: Any) -> None:
+        self.args = args
+        self._bank = BankModule(args)
+
+    def exchange(self, moniker: str, amount: int, *, to: str, token_moniker: str) -> dict[str, Any]:
+        """Convert ``amount`` between credits and tokens at 1:1 (``to`` is ``"tokens"`` or ``"credits"``)."""
+        if not isinstance(amount, int) or isinstance(amount, bool) or amount <= 0:
+            return {"success": False, "message": "Amount must be a positive whole number"}
+        return self._bank.exchange(
+            moniker,
+            amount,
+            to=to,
+            ratio=CASINO_EXCHANGE_RATIO,
+            token_moniker=token_moniker,
+        )

@@ -23,6 +23,12 @@ rows or code read it, so it is left in place unused. `casino.bankratio` reads th
 invalid stored value so a bad row cannot mint or destroy coins, and passes the ratio to bbsengine6 `BankService.exchange`.
 Tests: `tests/test_casino_exchange_ratio.py`.
 
+### feat(casino): CasinoBankService exchanges credits and tokens at a fixed 1:1
+
+`casino.services.bank.CasinoBankService` is casino's wrapper over bbsengine6 `BankService.exchange`, parallel to empyre's
+`EmpyreBankService`. The rate is fixed at 1:1 (`CASINO_EXCHANGE_RATIO`), not per player. It refuses any amount that is not
+a positive whole number before it reaches the ledger. Tests: `tests/test_casino_bank_service.py`.
+
 ### feat(round-view): the sign-in callable is resolved from bed.json at startup
 
 `casino.tk.viewer_login` reads `auth.authenticate` from bed.json and resolves it against bbsengine6's sign-in contract
