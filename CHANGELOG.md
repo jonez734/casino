@@ -15,6 +15,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### feat(casino): credits-to-coins ratio as two integers, passed to the bank exchange
+
+`casino.__bank_player` gains `ratio_num` and `ratio_den` (positive integers, default 1:1), via
+`sql/bank_player_ratio_migration.sql`. The old `credits_to_dollars_ratio numeric(4,2)` cannot hold a (num, den) pair, and no
+rows or code read it, so it is left in place unused. `casino.bankratio` reads the pair per player, falls back to 1:1 for any
+invalid stored value so a bad row cannot mint or destroy coins, and passes the ratio to bbsengine6 `BankService.exchange`.
+Tests: `tests/test_casino_exchange_ratio.py`.
+
 ### feat(round-view): the sign-in callable is resolved from bed.json at startup
 
 `casino.tk.viewer_login` reads `auth.authenticate` from bed.json and resolves it against bbsengine6's sign-in contract
