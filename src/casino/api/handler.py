@@ -39,7 +39,7 @@ def _resolve_pool(args: Any) -> Any:
     Prefers ``args.pool`` (set at bed startup) and falls back to
     ``database.getpool(args)`` so the daemon always owns the pool.
     Mirrors the resolution shape in
-    ``casino.services.player.PlayerService._pool``.
+    ``casino.services.player.CasinoPlayerService._pool``.
     """
     pool = getattr(args, "pool", None)
     if pool is not None:
@@ -377,11 +377,11 @@ class BaseService:
 class AuthService(BaseService):
     """Handle authentication messages."""
 
-    from casino.services.player import PlayerService
+    from casino.services.player import CasinoPlayerService
 
     def __init__(self, args: Any, session_manager: SessionManager, channel_state: Optional[ChannelState] = None):
         super().__init__(args, session_manager)
-        self.player_service = self.PlayerService(args)
+        self.player_service = self.CasinoPlayerService(args)
         self.channel_state = channel_state
 
     async def handle_message(
@@ -2001,7 +2001,7 @@ class MessageRouter:
         # CONN_POOL_PATTERN: resolve a single pool at daemon startup and
         # thread it into every handler that owns a DB-touching service.
         # Mirrors the resolution shape in
-        # casino.services.player.PlayerService._pool.
+        # casino.services.player.CasinoPlayerService._pool.
         pool = _resolve_pool(args)
         token_kwargs["pool"] = pool
 

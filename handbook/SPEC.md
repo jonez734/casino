@@ -87,7 +87,7 @@ It does **not** own:
 
 ### 2.1 Member vs casino player
 
-Casino has its own auth (`PlayerService.authenticate`,
+Casino has its own auth (`CasinoPlayerService.authenticate`,
 `AuthService._handle_auth`) on top of the BBS member layer
 (`bbsengine6.member`) so many concurrent BBS members can play casino at
 once, each with their own 1:1 casino player record. Two distinct rows
@@ -112,7 +112,7 @@ materialized by a single helper,
 `casino.services.player.ensure_casino_player(args, moniker, *, audit)`,
 called from both entry paths:
 
-- WS-client auth: `PlayerService.authenticate` calls
+- WS-client auth: `CasinoPlayerService.authenticate` calls
   `ensure_casino_player(audit=False)` on every successful login so the
   wire stays clean even on the first login.
 - Door-mode facade: `lib.CasinoPlayer.__init__` calls
@@ -201,8 +201,8 @@ live in `bbsengine6.member`, not in the daemon.
 
 `bbsengine6.member.verifyMemberFound` follows the
 **CONN_POOL_PATTERN**: the caller must supply a `pool=`.
-`PlayerService` resolves the pool once per `authenticate` call via
-`PlayerService._pool()`, which:
+`CasinoPlayerService` resolves the pool once per `authenticate` call via
+`CasinoPlayerService._pool()`, which:
 
 1. reuses `args.pool` when the daemon has set one at startup, otherwise
 2. falls back to the cached `database.getpool(args, database=...)`.

@@ -53,7 +53,7 @@ casino, via
 [`casino.services.player.ensure_casino_player`](../services/player.py),
 called from both entry paths:
 
-- WS-client auth: `PlayerService.authenticate` calls the helper on
+- WS-client auth: `CasinoPlayerService.authenticate` calls the helper on
   every successful login (with `audit=False` so the wire stays clean).
 - Door-mode facade: `lib.CasinoPlayer.__init__` calls it on every
   construction (with `audit=True` so `casino --debug` shows who was

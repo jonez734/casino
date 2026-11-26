@@ -15,6 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### refactor(casino): PlayerService is renamed CasinoPlayerService
+
+The class in `casino.services.player` is now `CasinoPlayerService`, so it is not confused with empyre's
+`EmpyrePlayerService` (planned rename). Behaviour is unchanged. Code, tests, and the live docs (`handbook/SPEC.md`,
+`src/casino/docs/AUTH.md`) use the new name; past CHANGELOG entries keep the old one.
+
 ### feat(casino): CasinoBankService exchanges credits and tokens at a fixed 1:1
 
 `casino.services.bank.CasinoBankService` is casino's wrapper over bbsengine6 `BankService.exchange`, parallel to empyre's

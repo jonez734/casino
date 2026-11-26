@@ -458,7 +458,7 @@ class CasinoPlayer:
     def _ensure_player_row(self):
         """Idempotently create the casino.__player row for this member.
 
-        Mirrors the WS-client path (``PlayerService.authenticate``),
+        Mirrors the WS-client path (``CasinoPlayerService.authenticate``),
         which also calls ``ensure_casino_player`` on every successful
         login. After this call, the row is present and ``self.credits``
         / ``self.lastplayed`` / ``self.stats`` are populated from the

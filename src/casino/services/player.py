@@ -75,7 +75,7 @@ def ensure_casino_player(
     return dal_player.get_or_create_player(args, moniker)
 
 
-class PlayerService:
+class CasinoPlayerService:
     """Service for player authentication and management."""
 
     def __init__(self, args: Any):

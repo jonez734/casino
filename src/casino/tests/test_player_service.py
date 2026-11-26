@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # casino/tests/test_player_service.py
-# Regression tests for casino.dal.player and PlayerService.
+# Regression tests for casino.dal.player and CasinoPlayerService.
 #
 # Skipped if CASINO_TEST_DB is not set in the environment.
 
@@ -154,11 +154,11 @@ class TestPlayerService(unittest.TestCase):
             self.assertIsNone(_credits(cur, TEST_MONIKER))
 
     def test_player_service_authenticate_succeeds_on_null_credits(self):
-        """End-to-end: PlayerService.authenticate must not raise TypeError
+        """End-to-end: CasinoPlayerService.authenticate must not raise TypeError
         and must return balance=0 for a member with credits=NULL."""
-        from casino.services.player import PlayerService
+        from casino.services.player import CasinoPlayerService
 
-        service = PlayerService(self._args)
+        service = CasinoPlayerService(self._args)
         result = service.authenticate(TEST_MONIKER, "any")
         self.assertTrue(result.get("success"))
         self.assertEqual(result.get("moniker"), TEST_MONIKER)
@@ -171,7 +171,7 @@ class TestEnsureCasinoPlayer(unittest.TestCase):
 
     Pins the lazy-but-auditable lifecycle: idempotent materialization,
     audit-echo on create, audit-echo suppressed when disabled, and the
-    refactor that ``PlayerService.authenticate`` calls the helper
+    refactor that ``CasinoPlayerService.authenticate`` calls the helper
     instead of poking ``dal.player`` directly.
     """
 
@@ -275,13 +275,13 @@ class TestEnsureCasinoPlayer(unittest.TestCase):
             )
 
     def test_player_service_authenticate_calls_ensure_casino_player(self):
-        """``PlayerService.authenticate`` goes through
+        """``CasinoPlayerService.authenticate`` goes through
         ``ensure_casino_player`` (not ``dal.player.get_or_create_player``
         directly) so both entry paths converge on the same lifecycle.
         """
-        from casino.services.player import PlayerService
+        from casino.services.player import CasinoPlayerService
 
-        service = PlayerService(self._args)
+        service = CasinoPlayerService(self._args)
         with patch(
             "casino.services.player.ensure_casino_player"
         ) as mock_ensure, patch(
