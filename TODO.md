@@ -893,6 +893,18 @@ Add tests for all casino message system features:
 
 - All core blackjack features (hit, stand, split, double, insurance, push, blackjack 3:2 payout) ARE implemented and tested.
 
+## Bank exchange and player service (status)
+
+- [x] `CasinoBankService` (`src/casino/services/bank.py`) exchanges credits and tokens at a fixed 1:1 and refuses
+  non-whole amounts (commit `2eb2865`). The per-player ratio was tried and removed (`40cfe7b`): nothing set it.
+- [x] `PlayerService` is renamed `CasinoPlayerService` (commit `d7d8b39`), so it is not confused with empyre's.
+- [ ] **Fixture gap.** Four DB-backed tests in `src/casino/tests/test_player_service.py` fail against `zoid6test`
+  with `no bank account for null_credits_test_user`. The fixture creates a casino player with no `bank.__account`
+  row. Fix the fixture or the balance rule (a design call). Only runs with `CASINO_TEST_DB` set.
+- [ ] **Collection error.** `src/casino/tests/test_tk_card_names.py` needs `playingcarddata`, which is not installed.
+- [ ] **Known failing tests.** `tests/test_commands_menus_host_choose.py` (3) and `tests/test_host_seam.py` (2).
+- [ ] **Bank promotions and VIP.** Planned in `bbsengine6/handbook/todo/bank-promotions-and-vip.md`. Not started.
+
 ## Known Issues
 
 - ~~**psycopg-pool 3.3.0 incompatibility**: The async database layer (`casino/dal/aiosql/`) is broken due to API changes in psycopg-pool 3.3.0. The `watch_table` feature fails with "object _AsyncGeneratorContextManager can't be used in 'await' expression". **Fix**: Downgrade to psycopg-pool 3.1.0 with `pip install psycopg-pool==3.1.0`~~ - RESOLVED (bbsengine6 now handles both 3.1.x and 3.3.0+ automatically)
